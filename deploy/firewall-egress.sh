@@ -1,53 +1,48 @@
 #!/bin/sh
-# ModelPing 容器出网隔离：禁止容器访问内网（服务器网段 / 其它容器 / 云元数据），
-# 但放行所有公网目标（允许任意自定义 baseUrl）。
+# ModelPing 容器出网隔离（nftables 版，适配 OpenWrt / IStoreOS fw4）。
+# 禁止 modelping 容器主动访问内网（服务器网段 / 其它容器 / 云元数据），放行所有公网目标。
 #
-# 原理：modelping 跑在 docker-compose 定义的固定子网 172.31.66.0/24（networks.egress）。
-# 在 Docker 的 DOCKER-USER 链（FORWARD 阶段、先于 Docker 自身规则）丢弃
-# 「该子网 -> 私有地址段」且 **NEW（容器主动新建）** 的连接。
-# - 容器主动连内网（SSRF）→ NEW + 目标私有段 → DROP。
-# - 容器连公网 → 目标不在私有段 → 放行。
-# - 内网设备/反代访问容器 8787 的回程包 → ESTABLISHED（非 NEW）→ 放行，不误伤入站访问。
-# - 容器到网关(宿主)的流量走 INPUT 而非 FORWARD，本就不受影响。
-# 依赖 conntrack（xt_conntrack），OpenWrt + Docker 默认具备。
+# 为什么用 nft 而非 iptables 的 DOCKER-USER 链：
+#   IStoreOS 用 nftables（iptables 是 nf_tables 兼容层），Docker 在此不创建传统的
+#   DOCKER-USER 链，所以基于该链的规则无效。改为建一张独立表 inet modelping，
+#   挂 forward 钩子、优先级 -200（排在 fw4 / docker 的转发规则之前先判定）。
 #
-# 用法：
-#   1) 先 docker compose up -d（确保 DOCKER-USER 链与子网已存在）
-#   2) sh deploy/firewall-egress.sh
-#   3) 持久化见文件末尾说明（让重启/Docker 重启后自动重建）。
+# 原理：modelping 跑在 docker-compose 固定子网 172.31.66.0/24（networks.egress）。
+#   只丢弃「源=该子网、目标=私有段、且 ct state new（容器主动新建）」的转发包。
+#   - 容器主动连内网（SSRF）→ new + 私有目标 → DROP。
+#   - 容器连公网 → 目标不在私有段 → 放行。
+#   - 内网/反代访问容器 8787 的回程包 → established（非 new）→ 放行，不误伤入站。
+#   - 容器到网关(宿主)走 input 而非 forward，本就不受影响。
+#   独立表不影响 fw4，fw4 reload 不会清掉它；仅在「reboot / nft flush ruleset」后消失。
+#
+# 用法：sh deploy/firewall-egress.sh   （docker compose up -d 之后执行；幂等，可重复跑）
 
 set -eu
 
-SUBNET="172.31.66.0/24"           # 与 docker-compose.yml networks.egress.subnet 保持一致
-PRIVATE="10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 169.254.0.0/16 100.64.0.0/10 127.0.0.0/8"
+SUBNET="172.31.66.0/24"   # 与 docker-compose.yml networks.egress.subnet 保持一致
 
-# 幂等：先删除可能已存在的同名规则，再插入，避免重复执行堆叠。
-for net in $PRIVATE; do
-  iptables -D DOCKER-USER -s "$SUBNET" -d "$net" -m conntrack --ctstate NEW -j DROP 2>/dev/null || true
-done
-# 插入到链首（-I），保证在 Docker 放行规则之前生效。仅拦容器主动新建(NEW)到内网的连接。
-for net in $PRIVATE; do
-  iptables -I DOCKER-USER -s "$SUBNET" -d "$net" -m conntrack --ctstate NEW -j DROP
-done
+# 幂等：先删除同名表再重建。
+nft delete table inet modelping 2>/dev/null || true
+nft add table inet modelping
+nft add chain inet modelping forward '{ type filter hook forward priority -200; policy accept; }'
+nft add rule inet modelping forward \
+  ip saddr "$SUBNET" \
+  ip daddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16, 100.64.0.0/10, 127.0.0.0/8 } \
+  ct state new counter drop
 
-echo "[ok] 已对 $SUBNET 拦截到内网私有段的访问。当前 DOCKER-USER 规则："
-iptables -L DOCKER-USER -n --line-numbers | sed 's/^/    /'
+echo "[ok] 已对 $SUBNET 拦截到内网私有段的主动访问。当前规则："
+nft list table inet modelping | sed 's/^/    /'
 
-# DOCKER-USER 链在「dockerd 重启 / 系统重启」后会被清空，需要重新执行本脚本。
-# 推荐做法（任选其一）：
+# —— 持久化 ——
+# 独立表在「重启」后消失（fw4 reload / dockerd 重启都不影响它）。
+# nft 规则用的是子网字面量，不依赖网桥/容器已存在，因此开机早于 docker 起来也能加。
+# 推荐二选一：
 #
-# A. 防火墙重载钩子（最省心）：把本脚本拷到固定路径，并在 /etc/config/firewall 里加 include：
+# A. 开机自动加载（最直接）：把本脚本拷到固定路径，在 /etc/rc.local 的 `exit 0` 之前加一行调用：
 #       cp deploy/firewall-egress.sh /etc/firewall.modelping.sh
-#       uci add firewall include
-#       uci set firewall.@include[-1].type='script'
-#       uci set firewall.@include[-1].path='/etc/firewall.modelping.sh'
-#       uci set firewall.@include[-1].reload='1'
-#       uci commit firewall
-#    之后每次 /etc/init.d/firewall reload 或开机都会重跑。
-#    注意：开机时若防火墙早于 dockerd 起来，DOCKER-USER 可能还不存在；脚本会报错但不影响系统，
-#    可在 dockerd 起来后再 `/etc/init.d/firewall reload` 一次，或用方案 B 更稳。
+#       # 然后编辑 /etc/rc.local，在 exit 0 前加： sh /etc/firewall.modelping.sh
 #
-# B. 跟随 Docker 启动（更稳）：让脚本在 dockerd 起来后执行，例如加一行 cron 兜底：
+# B. cron 兜底（顺带自愈，若规则被误清 5 分钟内恢复）：
+#       cp deploy/firewall-egress.sh /etc/firewall.modelping.sh
 #       echo '*/5 * * * * /etc/firewall.modelping.sh >/dev/null 2>&1' >> /etc/crontabs/root
-#       /etc/init.d/cron restart
-#    每 5 分钟幂等重建一次，重启后最多 5 分钟内恢复隔离。
+#       /etc/init.d/cron enable && /etc/init.d/cron restart
