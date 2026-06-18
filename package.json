@@ -1,0 +1,35 @@
+{
+  "name": "modelping",
+  "version": "1.0.0",
+  "description": "ModelPing — 开箱即用的 LLM API 测试工具：OpenAI / Responses / Gemini / Anthropic 协议，流式/非流式，延迟与 token 统计",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "concurrently -k -n web,api -c cyan,magenta \"vite\" \"tsx watch src/node.ts\"",
+    "build": "vite build && tsc -p tsconfig.server.json",
+    "start": "node dist/server/node.js",
+    "preview": "npm run build && npm run start",
+    "deploy:cf": "vite build && wrangler deploy",
+    "build:vercel": "vite build",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "hono": "^4.6.14",
+    "@hono/node-server": "^1.13.7",
+    "@vercel/blob": "^0.27.0",
+    "preact": "^10.25.1"
+  },
+  "devDependencies": {
+    "@preact/preset-vite": "^2.9.3",
+    "concurrently": "^9.1.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.3",
+    "wrangler": "^3.95.0",
+    "@cloudflare/workers-types": "^4.20241218.0",
+    "@types/node": "^22.10.2"
+  }
+}

@@ -1,0 +1,28 @@
+services:
+  modelping:
+    build: .
+    ports:
+      - "8787:8787"
+    environment:
+      # —— 访问控制 ——
+      # 可选：访问口令，设置后前端需输入口令才能调用 /api。
+      # APP_PASSWORD: "change-me"
+      # 可选：目标主机白名单（逗号分隔），防开放代理/SSRF。缺省不限制。
+      # ALLOWED_HOSTS: "api.openai.com,api.anthropic.com,generativelanguage.googleapis.com"
+      # 可选：CORS 允许来源（逗号分隔，* 表示全开）。缺省同源（不下发 ACAO，跨站 JS 调不动 /api）。
+      # CORS_ORIGIN: "https://your-frontend.example"
+
+      # —— 设置持久化（presets 跨设备共享，不存任何 apiKey）——
+      # Docker 默认用 file 驱动。把路径指到挂载卷，重建容器不丢失。
+      # 首次卷为空时 /presets.json 会自动回退到镜像内置默认预设。
+      STORAGE_DRIVER: "file"
+      SETTINGS_FILE: "/data/presets.json"
+
+      PORT: "8787"
+    volumes:
+      # 持久化 presets：宿主命名卷 → 容器 /data（SETTINGS_FILE 指向此处）。
+      - presets-data:/data
+    restart: unless-stopped
+
+volumes:
+  presets-data:

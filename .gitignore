@@ -1,0 +1,13 @@
+node_modules/
+dist/
+# 源码目录下的 tsc 编译产物（真正的构建输出在 dist/）
+src/**/*.js
+.wrangler/
+.vercel/
+.dev.vars
+*.log
+.DS_Store
+# 本地工具/私人配置，不进开源仓库
+CLAUDE.md
+.rtk/
+.claude/
