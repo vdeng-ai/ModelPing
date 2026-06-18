@@ -61,16 +61,29 @@ A set of default models and curated providers is bundled, maintained with refere
 
 ## Deployment
 
-### Docker (cloud server)
+### Docker (self-host / cloud server)
 
-```bash
-docker compose up -d --build      # http://<server>:8787
-```
+The repo ships a GitHub Actions workflow (`.github/workflows/docker-publish.yml`) that builds a multi-arch image and pushes it to GHCR on every push to `main`. Paired with the bundled Watchtower service, the update loop is: **edit code → `git push` → image rebuilt → server auto-pulls and restarts** (no SSH needed).
 
-The image bakes in no keys. Set environment variables in the `environment:` block of `docker-compose.yml` (or via `.env` / `env_file:`):
+One-time setup:
 
-- `APP_PASSWORD`: when set, the frontend must enter an access password to call `/api`
-- `ALLOWED_HOSTS`: comma-separated target-host allowlist, to prevent being used as an open proxy / SSRF
+1. **Publish the image** — after the first push, the workflow publishes `ghcr.io/<owner>/modelping`. In your repo's *Packages*, set its visibility to **Public** so the server can pull without credentials. (Forking? Change the `image:` in `docker-compose.yml` to your own `ghcr.io/<owner>/modelping`.)
+2. **On the server**:
+   ```bash
+   git clone https://github.com/<owner>/ModelPing.git
+   cd ModelPing
+   cp .env.example .env        # set a strong APP_PASSWORD (kept out of git via .gitignore)
+   docker compose up -d        # http://<server>:8787
+   ```
+
+`docker-compose.yml` runs two services: `modelping` (the app) and `watchtower` (checks GHCR every 5 min, pulls new images, restarts, prunes old ones). The image bakes in no keys.
+
+To update afterwards, just `git push` to `main` — the Action rebuilds and Watchtower redeploys within its interval. Prefer building on the box instead of GHCR? Replace `image:` with `build: .` and run `docker compose up -d --build`.
+
+Environment (set in `.env`, or the `environment:` block of `docker-compose.yml`):
+
+- `APP_PASSWORD` (required by compose): access-password gate for `/api`
+- `ALLOWED_HOSTS`: optional comma-separated target-host allowlist (open-proxy / SSRF protection). Leave unset to allow any custom target host; if you do, block intranet access at the network layer instead (see Security)
 - `CORS_ORIGIN`: comma-separated allowed cross-site origins (same-origin by default; see Security below)
 
 Settings persistence (presets shared across devices) uses the file driver by default. `docker-compose.yml` already points `SETTINGS_FILE` to `/data/presets.json` and mounts a named volume `presets-data`, so it survives container rebuilds. When the volume is empty on first run, `/presets.json` falls back to the defaults bundled in the image.

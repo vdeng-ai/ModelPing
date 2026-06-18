@@ -63,16 +63,29 @@ npm start        # http://localhost:8787
 
 ## 部署
 
-### Docker（云服务器）
+### Docker（自托管 / 云服务器）
 
-```bash
-docker compose up -d --build      # http://<server>:8787
-```
+仓库内置 GitHub Actions 工作流（`.github/workflows/docker-publish.yml`），每次 push 到 `main` 会自动构建多架构镜像并推送到 GHCR。配合 compose 里自带的 Watchtower，更新闭环就是：**改代码 → `git push` → 镜像重建 → 服务器自动拉取重启**（无需 SSH）。
 
-镜像不烘焙任何 key。环境变量在 `docker-compose.yml` 的 `environment:` 块里放开（或用 `.env` / `env_file:`）：
+一次性配置：
 
-- `APP_PASSWORD`：设置后前端需输入访问口令才能调用 `/api`
-- `ALLOWED_HOSTS`：逗号分隔的目标主机白名单，防止被当开放代理 / SSRF
+1. **公开镜像** —— 首次 push 后工作流会发布 `ghcr.io/<owner>/modelping`。到仓库 *Packages* 把可见性设为 **Public**，服务器才能免登录拉取。（fork 的话，把 `docker-compose.yml` 里的 `image:` 改成你自己的 `ghcr.io/<owner>/modelping`。）
+2. **在服务器上**：
+   ```bash
+   git clone https://github.com/<owner>/ModelPing.git
+   cd ModelPing
+   cp .env.example .env        # 设置强 APP_PASSWORD（已被 .gitignore 排除，不入库）
+   docker compose up -d        # http://<server>:8787
+   ```
+
+`docker-compose.yml` 跑两个服务：`modelping`（应用）和 `watchtower`（每 5 分钟检查 GHCR，拉新镜像、重启、清理旧镜像）。镜像不烘焙任何 key。
+
+之后更新只需 `git push` 到 `main` —— Action 重建、Watchtower 在一个间隔内自动重新部署。想在机器上本地构建而不走 GHCR？把 `image:` 换回 `build: .`，用 `docker compose up -d --build`。
+
+环境变量（写在 `.env`，或 `docker-compose.yml` 的 `environment:` 块）：
+
+- `APP_PASSWORD`（compose 要求必填）：`/api` 的访问口令闸
+- `ALLOWED_HOSTS`：可选，逗号分隔的目标主机白名单（防开放代理 / SSRF）。留空则允许任意自定义目标主机；若留空，请改在网络层阻断内网访问（见安全说明）
 - `CORS_ORIGIN`：逗号分隔的允许跨站来源（缺省同源，见下方安全说明）
 
 设置持久化（presets 跨设备共享）默认用 file 驱动，`docker-compose.yml` 已把 `SETTINGS_FILE` 指到 `/data/presets.json` 并挂了命名卷 `presets-data`，重建容器不丢失。首次卷为空时 `/presets.json` 会自动回退到镜像内置的默认预设。
