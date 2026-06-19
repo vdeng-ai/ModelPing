@@ -1,14 +1,16 @@
 import { useState } from "preact/hooks";
 import { getThemePref, setThemePref, type ThemePref } from "../lib/theme.js";
+import { useI18n } from "../lib/i18n.js";
 
 // 三段式主题按钮组：白天 / 暗黑 / 跟随系统。点击某段即切到该偏好。
-const SEGS: { pref: ThemePref; icon: string; text: string }[] = [
-  { pref: "light", icon: "☀", text: "白天" },
-  { pref: "dark", icon: "🌙", text: "暗黑" },
-  { pref: "system", icon: "🖥", text: "系统" },
+const SEGS: { pref: ThemePref; icon: string; key: string }[] = [
+  { pref: "light", icon: "☀", key: "theme.light" },
+  { pref: "dark", icon: "🌙", key: "theme.dark" },
+  { pref: "system", icon: "🖥", key: "theme.system" },
 ];
 
 export function ThemeToggle() {
+  const { t } = useI18n();
   const [pref, setPref] = useState<ThemePref>(getThemePref());
 
   const pick = (p: ThemePref) => {
@@ -17,14 +19,14 @@ export function ThemeToggle() {
   };
 
   return (
-    <div class="theme-toggle" role="group" aria-label="主题">
+    <div class="theme-toggle" role="group" aria-label={t("theme.label")}>
       {SEGS.map((s) => (
         <button
           class={"seg" + (pref === s.pref ? " active" : "")}
-          title={`主题：${s.text}`}
+          title={t("theme.titlePrefix", { name: t(s.key) })}
           onClick={() => pick(s.pref)}
         >
-          <span class="seg-icon">{s.icon}</span> {s.text}
+          <span class="seg-icon">{s.icon}</span> {t(s.key)}
         </button>
       ))}
     </div>

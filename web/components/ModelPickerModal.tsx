@@ -1,4 +1,5 @@
 import { useMemo, useState } from "preact/hooks";
+import { useI18n } from "../lib/i18n.js";
 
 interface Props {
   models: string[];          // 拉取到的模型 id 列表
@@ -8,6 +9,7 @@ interface Props {
 
 // 模型挑选弹层：搜索过滤 + 多选 + 全选/确定/取消。确定时把选中 id 透传给调用方。
 export function ModelPickerModal({ models, onConfirm, onClose }: Props) {
+  const { t } = useI18n();
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
@@ -45,13 +47,13 @@ export function ModelPickerModal({ models, onConfirm, onClose }: Props) {
     <div class="modal-overlay" onClick={onClose}>
       <div class="modal" onClick={(e) => e.stopPropagation()}>
         <div class="modal-head">
-          <h3>选择模型（{models.length}）</h3>
-          <button class="icon" title="关闭" onClick={onClose}>×</button>
+          <h3>{t("picker.title", { count: models.length })}</h3>
+          <button class="icon" title={t("common.close")} onClick={onClose}>×</button>
         </div>
 
         <input
           class="mono modal-search"
-          placeholder="搜索模型 id…"
+          placeholder={t("picker.searchPlaceholder")}
           value={query}
           onInput={(e) => setQuery((e.target as HTMLInputElement).value)}
           autofocus
@@ -59,7 +61,7 @@ export function ModelPickerModal({ models, onConfirm, onClose }: Props) {
 
         <div class="modal-list">
           {filtered.length === 0 ? (
-            <div class="empty">无匹配模型</div>
+            <div class="empty">{t("picker.noMatch")}</div>
           ) : (
             filtered.map((m) => (
               <label key={m} class="modal-item">
@@ -72,12 +74,12 @@ export function ModelPickerModal({ models, onConfirm, onClose }: Props) {
 
         <div class="modal-actions">
           <button disabled={filtered.length === 0} onClick={toggleAllFiltered}>
-            {allFilteredChecked ? "取消全选" : "全选"}
+            {allFilteredChecked ? t("common.deselectAll") : t("common.selectAll")}
           </button>
           <span class="spacer" />
-          <span class="modal-count">已选 {selected.size}</span>
-          <button onClick={onClose}>取消</button>
-          <button class="primary" disabled={selected.size === 0} onClick={confirm}>添加</button>
+          <span class="modal-count">{t("picker.selectedCount", { count: selected.size })}</span>
+          <button onClick={onClose}>{t("common.cancel")}</button>
+          <button class="primary" disabled={selected.size === 0} onClick={confirm}>{t("common.add")}</button>
         </div>
       </div>
     </div>
