@@ -4,6 +4,7 @@ import { CUSTOM_PROVIDER_ID } from "../lib/presets.js";
 import { fetchBalance, fetchModels } from "../lib/api.js";
 import { CopyButton } from "./CopyButton.js";
 import { ModelPickerModal } from "./ModelPickerModal.js";
+import { useI18n, translate, type Lang } from "../lib/i18n.js";
 
 export interface ConnValue {
   providerId: string;
@@ -21,20 +22,22 @@ interface Props {
 }
 
 // 余额展示文案。
-function fmtBalance(b: Balance): string {
-  if (!b.supported) return "该供应商不支持余额查询";
+function fmtBalance(b: Balance, lang: Lang): string {
+  const tr = (k: string, p?: Record<string, string | number>) => translate(lang, k, p);
+  if (!b.supported) return tr("conn.balanceUnsupported");
   const unit = b.currency ? ` ${b.currency}` : "";
   if (b.remaining != null) {
-    const extra = b.total != null && b.used != null ? `（总 ${b.total} / 已用 ${b.used}）` : "";
-    const invalid = b.isValid === false ? "（账户不可用）" : "";
-    return `余额 ${b.remaining}${unit}${extra}${invalid}`;
+    const extra = b.total != null && b.used != null ? tr("conn.balanceExtra", { total: b.total, used: b.used }) : "";
+    const invalid = b.isValid === false ? tr("conn.balanceInvalid") : "";
+    return tr("conn.balanceLine", { remaining: b.remaining, unit, extra, invalid });
   }
-  return "未解析到余额";
+  return tr("conn.balanceNotParsed");
 }
 
 // 连接面板：点选供应商自动填 baseUrl；或选「自定义」自填。
 // key 掩码显示，可切换明文，带复制按钮；并支持查询余额 / 拉取模型列表。
 export function ConnectionPanel({ providers, value, onChange, onAddModels, onToast }: Props) {
+  const { t, lang } = useI18n();
   const [showKey, setShowKey] = useState(false);
   const [balanceBusy, setBalanceBusy] = useState(false);
   const [balanceText, setBalanceText] = useState<string | null>(null);
@@ -46,12 +49,12 @@ export function ConnectionPanel({ providers, value, onChange, onAddModels, onToa
   const onQueryBalance = async () => {
     if (!canLookup || balanceBusy) return;
     setBalanceBusy(true);
-    setBalanceText("查询中…");
+    setBalanceText(t("conn.querying"));
     try {
       const b = await fetchBalance({ baseUrl: value.baseUrl, isFullUrl: value.isFullUrl, apiKey: value.apiKey });
-      setBalanceText(fmtBalance(b));
+      setBalanceText(fmtBalance(b, lang));
     } catch (e: any) {
-      setBalanceText(`查询失败：${e?.message ?? e}`);
+      setBalanceText(t("conn.queryFailed", { msg: e?.message ?? e }));
     } finally {
       setBalanceBusy(false);
     }
@@ -63,12 +66,12 @@ export function ConnectionPanel({ providers, value, onChange, onAddModels, onToa
     try {
       const { models } = await fetchModels({ baseUrl: value.baseUrl, isFullUrl: value.isFullUrl, apiKey: value.apiKey });
       if (!models.length) {
-        onToast("未拉取到模型");
+        onToast(t("conn.noModelsFetched"));
         return;
       }
       setPickerModels(models);
     } catch (e: any) {
-      onToast(`拉取模型失败：${e?.message ?? e}`);
+      onToast(t("conn.fetchModelsFailed", { msg: e?.message ?? e }));
     } finally {
       setModelsBusy(false);
     }
@@ -87,16 +90,16 @@ export function ConnectionPanel({ providers, value, onChange, onAddModels, onToa
 
   return (
     <section class="panel">
-      <h2>连接</h2>
+      <h2>{t("conn.title")}</h2>
       <div class="field">
-        <label>供应商</label>
+        <label>{t("conn.provider")}</label>
         <div class="provider-grid">
           <button
             type="button"
             class={"provider-card " + (value.providerId === CUSTOM_PROVIDER_ID ? "active" : "")}
             onClick={() => onProvider(CUSTOM_PROVIDER_ID)}
           >
-            自定义
+            {t("common.custom")}
           </button>
           {providers.map((p) => (
             <button
@@ -120,7 +123,7 @@ export function ConnectionPanel({ providers, value, onChange, onAddModels, onToa
               placeholder="https://api.example.com/v1"
               onInput={(e) => onChange({ ...value, baseUrl: (e.target as HTMLInputElement).value })}
             />
-            <CopyButton value={value.baseUrl} title="复制 Base URL" />
+            <CopyButton value={value.baseUrl} title={t("conn.copyBaseUrl")} />
           </div>
           <div class="field-tools">
             <label class="toggle">
@@ -129,7 +132,7 @@ export function ConnectionPanel({ providers, value, onChange, onAddModels, onToa
                 checked={Boolean(value.isFullUrl)}
                 onChange={(e) => onChange({ ...value, isFullUrl: (e.target as HTMLInputElement).checked })}
               />
-              完整 URL
+              {t("conn.fullUrl")}
             </label>
           </div>
         </div>
@@ -143,19 +146,19 @@ export function ConnectionPanel({ providers, value, onChange, onAddModels, onToa
               class="mono"
               type={showKey ? "text" : "password"}
               value={value.apiKey}
-              placeholder="粘贴你的 API Key"
+              placeholder={t("conn.apiKeyPlaceholder")}
               autocomplete="off"
               onInput={(e) => onChange({ ...value, apiKey: (e.target as HTMLInputElement).value })}
             />
-            <button class="icon" title={showKey ? "隐藏" : "显示"} onClick={() => setShowKey((s) => !s)}>
-              {showKey ? "隐藏" : "显示"}
+            <button class="icon" title={showKey ? t("conn.hide") : t("conn.show")} onClick={() => setShowKey((s) => !s)}>
+              {showKey ? t("conn.hide") : t("conn.show")}
             </button>
-            <CopyButton value={value.apiKey} title="复制 Key" />
+            <CopyButton value={value.apiKey} title={t("conn.copyKey")} />
           </div>
           <div class="field-tools">
             <button
               class="icon"
-              title="Base64 解码"
+              title={t("conn.b64Title")}
               onClick={(e) => {
                 e.stopPropagation();
                 try {
@@ -172,7 +175,7 @@ export function ConnectionPanel({ providers, value, onChange, onAddModels, onToa
             </button>
             <button
               class="icon"
-              title="Hex 解码(空格分隔的十六进制 → 明文)"
+              title={t("conn.hexTitle")}
               onClick={(e) => {
                 e.stopPropagation();
                 try {
@@ -196,30 +199,30 @@ export function ConnectionPanel({ providers, value, onChange, onAddModels, onToa
             </button>
             <button
               class="icon"
-              title="字符串倒序"
+              title={t("conn.reverseTitle")}
               onClick={(e) => {
                 e.stopPropagation();
                 onChange({ ...value, apiKey: Array.from(value.apiKey).reverse().join("") });
               }}
             >
-              倒序
+              {t("conn.reverse")}
             </button>
             <span class="field-tools-sep" />
             <button
               class="icon"
-              title="查询该供应商余额（按 baseUrl 主机识别）"
+              title={t("conn.queryBalanceTitle")}
               disabled={!canLookup || balanceBusy}
               onClick={(e) => { e.stopPropagation(); onQueryBalance(); }}
             >
-              查询余额
+              {t("conn.queryBalance")}
             </button>
             <button
               class="icon"
-              title="拉取该供应商可用模型列表"
+              title={t("conn.fetchModelsTitle")}
               disabled={!canLookup || modelsBusy}
               onClick={(e) => { e.stopPropagation(); onFetchModels(); }}
             >
-              {modelsBusy ? "拉取中…" : "拉取模型"}
+              {modelsBusy ? t("conn.fetchingModels") : t("conn.fetchModels")}
             </button>
           </div>
           {balanceText ? <div class="balance-line">{balanceText}</div> : null}
@@ -229,7 +232,7 @@ export function ConnectionPanel({ providers, value, onChange, onAddModels, onToa
       {pickerModels ? (
         <ModelPickerModal
           models={pickerModels}
-          onConfirm={(ids) => { onAddModels(ids); onToast(`已添加 ${ids.length} 个模型`); }}
+          onConfirm={(ids) => { onAddModels(ids); onToast(t("conn.addedModels", { count: ids.length })); }}
           onClose={() => setPickerModels(null)}
         />
       ) : null}

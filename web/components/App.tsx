@@ -7,7 +7,7 @@ import {
   type ConfigState, type ConnState,
 } from "../lib/storage.js";
 import {
-  CUSTOM_PROVIDER_ID, CUSTOM_PROVIDER_NAME,
+  CUSTOM_PROVIDER_ID,
   FALLBACK_DEFAULTS,
   loadLocalPresets, saveLocalPresets,
 } from "../lib/presets.js";
@@ -17,7 +17,9 @@ import { ConfigPanel } from "./ConfigPanel.js";
 import { ModelTable, PROTOCOLS, protocolsForModel, freshProbes, type ModelRow, type ProtocolProbe } from "./ModelTable.js";
 import { HistoryPanel } from "./HistoryPanel.js";
 import { ThemeToggle } from "./ThemeToggle.js";
+import { LangToggle } from "./LangToggle.js";
 import { SettingsPanel } from "./SettingsPanel.js";
+import { initLang, useI18n } from "../lib/i18n.js";
 
 const CONCURRENCY = 3; // 批量检测的模型级并发上限（每个模型内部再并发 4 协议）
 
@@ -61,6 +63,7 @@ function selectRowsForProvider(rows: ModelRow[], providerId: string): ModelRow[]
 }
 
 export function App() {
+  const { t } = useI18n();
   const [providers, setProviders] = useState<ProviderPreset[]>([]);
   const [presetDefaults, setPresetDefaults] = useState<Defaults>(FALLBACK_DEFAULTS);
   const [activeTab, setActiveTab] = useState<"test" | "settings">("test");
@@ -97,9 +100,10 @@ export function App() {
     setTimeout(() => setToast(null), 1800);
   };
 
-  // 应用主题（system 模式跟随系统切换）。
+  // 应用主题（system 模式跟随系统切换）与语言（<html lang> + 标题）。
   useEffect(() => {
     initTheme();
+    initLang();
   }, []);
 
   // 初始化：健康检查（是否需口令）→ 拉预设 → 恢复上次配置。
@@ -193,7 +197,7 @@ export function App() {
         saveLocalPresets(presets);
         saveSettings(presets)
           .then((ok) => { if (!ok) serverPersistRef.current = false; })
-          .catch((e) => showToast(`参数同步失败：${e?.message ?? e}`));
+          .catch((e) => showToast(t("app.toastConfigSyncFailed", { msg: e?.message ?? e })));
       }, 800);
     }
   };
@@ -205,7 +209,7 @@ export function App() {
     if (serverPersistRef.current) {
       saveSettings(presets)
         .then((ok) => { if (!ok) serverPersistRef.current = false; })
-        .catch((e) => showToast(`服务端保存失败：${e?.message ?? e}`));
+        .catch((e) => showToast(t("app.toastServerSaveFailed", { msg: e?.message ?? e })));
     }
   };
 
@@ -230,11 +234,11 @@ export function App() {
   };
 
   const onPresetProvidersChange = (nextProviders: ProviderPreset[]) => {
-    applyPresets({ providers: nextProviders, defaults: presetDefaults }, "供应商设置已保存");
+    applyPresets({ providers: nextProviders, defaults: presetDefaults }, t("app.toastProvidersSaved"));
   };
 
   const onImportPresets = (presets: PresetsResponse) => {
-    applyPresets(presets, "配置已导入");
+    applyPresets(presets, t("app.toastImported"));
   };
 
   const onTogglePersist = (on: boolean) => {
@@ -270,7 +274,7 @@ export function App() {
     if (!c.baseUrl || !c.apiKey) {
       const errResult: TestResult = {
         ok: false, status: 0, latencyMs: 0, ttftMs: null, usage: EMPTY_USAGE,
-        text: "", error: "请先填写 Base URL 和 API Key", attempts: 0,
+        text: "", error: t("conn.fillFirst"), attempts: 0,
       };
       for (const p of toTest) patchProbe(row.key, p, { status: "fail", result: errResult, streamVerdict: null, streamTtftMs: null });
       for (const p of skipped) patchProbe(row.key, p, { status: "skipped", result: null, streamVerdict: null, streamTtftMs: null });
@@ -282,7 +286,7 @@ export function App() {
     for (const p of skipped) patchProbe(row.key, p, { status: "skipped", result: null, streamVerdict: null, streamTtftMs: null });
 
     const provider = providers.find((p) => p.id === c.providerId);
-    const providerName = provider?.name ?? (c.providerId === CUSTOM_PROVIDER_ID ? CUSTOM_PROVIDER_NAME : c.providerId);
+    const providerName = provider?.name ?? (c.providerId === CUSTOM_PROVIDER_ID ? t("common.custom") : c.providerId);
 
     let anyPass = false;
 
@@ -368,8 +372,8 @@ export function App() {
     const total = targets.length;
     showToast(
       passed === total
-        ? `全部 ${total} 个模型至少一个协议通过`
-        : `完成：${passed}/${total} 个模型有协议通过`,
+        ? t("app.batchAllPass", { total })
+        : t("app.batchPartial", { passed, total }),
     );
   };
 
@@ -430,10 +434,10 @@ export function App() {
   if (needPassword && !authed) {
     return (
       <div class="pw-gate">
-        <h1>需要访问口令</h1>
+        <h1>{t("app.pwTitle")}</h1>
         <section class="panel">
           <div class="field">
-            <label>访问口令</label>
+            <label>{t("app.pwLabel")}</label>
             <input
               type="password"
               value={pwInput}
@@ -442,7 +446,7 @@ export function App() {
             />
           </div>
           <div class="actions">
-            <button class="primary" onClick={submitPassword}>进入</button>
+            <button class="primary" onClick={submitPassword}>{t("app.pwEnter")}</button>
           </div>
         </section>
       </div>
@@ -452,27 +456,28 @@ export function App() {
   return (
     <div class="app">
       <header class="top">
-        <h1>LLM API 测试工具</h1>
+        <h1>{t("app.title")}</h1>
         <span class="sub legend">
-          <span class="pbadge success"><span class="pbadge-label">协议</span></span>
+          <span class="pbadge success"><span class="pbadge-label">{t("app.legendProtocol")}</span></span>
           Chat·Resp·Gem·Claude
           <span class="legend-sep">·</span>
-          <span class="sw green" />通过<span class="sw red" />失败<span class="sw blue" />测试中
+          <span class="sw green" />{t("app.legendPass")}<span class="sw red" />{t("app.legendFail")}<span class="sw blue" />{t("app.legendTesting")}
           <span class="legend-sep">·</span>
-          <span class="stream-mark on">⚡</span>真流式<span class="stream-mark single">~</span>伪流式<span class="stream-mark off">⌁</span>无流式
+          <span class="stream-mark on">⚡</span>{t("app.legendStream")}<span class="stream-mark single">~</span>{t("app.legendSingle")}<span class="stream-mark off">⌁</span>{t("app.legendNone")}
         </span>
         <span class="spacer" />
+        <LangToggle />
         <ThemeToggle />
       </header>
 
-      <nav class="app-tabs" aria-label="主视图">
+      <nav class="app-tabs" aria-label={t("app.navLabel")}>
         <button
           type="button"
           class={"app-tab " + (activeTab === "test" ? "active" : "")}
           aria-current={activeTab === "test" ? "page" : undefined}
           onClick={() => setActiveTab("test")}
         >
-          测试
+          {t("app.tabTest")}
         </button>
         <button
           type="button"
@@ -480,14 +485,14 @@ export function App() {
           aria-current={activeTab === "settings" ? "page" : undefined}
           onClick={() => setActiveTab("settings")}
         >
-          设置
+          {t("app.tabSettings")}
         </button>
       </nav>
 
       {loadErr ? (
         <section class="panel">
-          <div class="status-text fail">加载失败：{loadErr}</div>
-          <div class="actions"><button onClick={init}>重试</button></div>
+          <div class="status-text fail">{t("app.loadFailed", { msg: loadErr })}</div>
+          <div class="actions"><button onClick={init}>{t("app.retry")}</button></div>
         </section>
       ) : null}
 
@@ -500,7 +505,7 @@ export function App() {
             conn={conn}
             providerName={
               providers.find((p) => p.id === conn.providerId)?.name ??
-              (conn.providerId === CUSTOM_PROVIDER_ID ? CUSTOM_PROVIDER_NAME : conn.providerId)
+              (conn.providerId === CUSTOM_PROVIDER_ID ? t("common.custom") : conn.providerId)
             }
             onToggle={onToggle}
             onToggleAll={onToggleAll}

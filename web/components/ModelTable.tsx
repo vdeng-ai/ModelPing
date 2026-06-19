@@ -2,6 +2,7 @@ import { useState } from "preact/hooks";
 import type { Protocol, StreamVerdict, TestResult } from "../lib/types.js";
 import { fmtMs, fmtTok, PROTOCOL_LABEL, streamGlyph } from "../lib/format.js";
 import { CcSwitchButton } from "./CcSwitchButton.js";
+import { useI18n, translate, type Lang } from "../lib/i18n.js";
 
 export const PROTOCOLS: Protocol[] = ["openai-chat", "openai-responses", "gemini", "anthropic"];
 
@@ -58,27 +59,29 @@ interface Props {
 
 // 协议徽章：带协议简称的状态药丸（绿通过 / 红失败 / 蓝测试中 / 中性待测），
 // 流式结论以内嵌图标显示（⚡真流式 / ~伪流式 / ⌁无流），完整文案在 tooltip。
-function streamText(verdict: ProtocolProbe["streamVerdict"], ttftMs: number | null): string {
+function streamText(verdict: ProtocolProbe["streamVerdict"], ttftMs: number | null, lang: Lang): string {
+  const tr = (k: string, p?: Record<string, string | number>) => translate(lang, k, p);
   switch (verdict) {
     case "stream":
-      return `，流式支持${ttftMs != null ? `，首字 ${fmtMs(ttftMs)}` : ""}`;
+      return tr("models.streamSupport", { ttft: ttftMs != null ? tr("models.streamSupportTtft", { ttft: fmtMs(ttftMs) }) : "" });
     case "single":
-      return "，流式一次性返回（非真流式）";
+      return tr("models.streamSingle");
     case "none":
-      return "，不支持流式";
+      return tr("models.streamNone");
     default:
       return "";
   }
 }
 
-function Badge({ probe }: { probe: ProtocolProbe }) {
+function Badge({ probe, lang }: { probe: ProtocolProbe; lang: Lang }) {
   const { protocol, status, result, streamVerdict, streamTtftMs } = probe;
+  const tr = (k: string, p?: Record<string, string | number>) => translate(lang, k, p);
   const title =
-    status === "fail" && result?.error ? `${protocol}: ${result.error}`
-    : status === "success" ? `${protocol}: 延迟 ${fmtMs(result?.latencyMs ?? null)}${streamText(streamVerdict, streamTtftMs)}`
-    : status === "testing" ? `${protocol}: 测试中...`
-    : status === "skipped" ? `${protocol}: 不适用（按模型族跳过）`
-    : `${protocol}: 待测`;
+    status === "fail" && result?.error ? tr("models.badgeFail", { protocol, error: result.error })
+    : status === "success" ? tr("models.badgeSuccess", { protocol, latency: fmtMs(result?.latencyMs ?? null), stream: streamText(streamVerdict, streamTtftMs, lang) })
+    : status === "testing" ? tr("models.badgeTesting", { protocol })
+    : status === "skipped" ? tr("models.badgeSkipped", { protocol })
+    : tr("models.badgePending", { protocol });
   const g = streamGlyph(streamVerdict);
   return (
     <span class={"pbadge " + status} title={title} aria-label={title}>
@@ -99,6 +102,7 @@ function shownProtocols(r: ModelRow): Protocol[] {
 }
 
 export function ModelTable(props: Props) {
+  const { t, lang } = useI18n();
   const { rows, busy, conn, providerName } = props;
   const [newModel, setNewModel] = useState("");
 
@@ -123,12 +127,12 @@ export function ModelTable(props: Props) {
   };
   const statusText = (r: ModelRow): string => {
     const testing = PROTOCOLS.filter((p) => r.probes[p].status === "testing").length;
-    if (testing) return "测试中";
+    if (testing) return t("models.statusTesting");
     const success = PROTOCOLS.filter((p) => r.probes[p].status === "success").length;
-    if (success) return `${success} 通过`;
+    if (success) return t("models.statusPassed", { count: success });
     const fail = PROTOCOLS.filter((p) => r.probes[p].status === "fail").length;
-    if (fail) return "未通过";
-    return "待测";
+    if (fail) return t("models.statusFailed");
+    return t("models.statusPending");
   };
 
   const add = () => {
@@ -139,14 +143,14 @@ export function ModelTable(props: Props) {
 
   return (
     <section class="panel">
-      <h2>模型</h2>
+      <h2>{t("models.title")}</h2>
 
       <div class="actions" style="margin-bottom:12px">
         <button class="primary" disabled={busy || !someChecked} onClick={props.onTestSelected}>
-          测试选中
+          {t("models.testSelected")}
         </button>
         <button disabled={busy || rows.length === 0} onClick={() => props.onToggleAll(!allChecked)}>
-          {allChecked ? "取消全选" : "全选"}
+          {allChecked ? t("common.deselectAll") : t("common.selectAll")}
         </button>
         <CcSwitchButton
           name={providerName}
@@ -159,7 +163,7 @@ export function ModelTable(props: Props) {
       </div>
 
       {rows.length === 0 ? (
-        <div class="empty">暂无模型。下方可添加自定义模型。</div>
+        <div class="empty">{t("models.empty")}</div>
       ) : (
         <div class="model-card-grid">
           {rows.map((r) => {
@@ -180,7 +184,7 @@ export function ModelTable(props: Props) {
                       class="model-remove"
                       role="button"
                       tabIndex={0}
-                      title="移除"
+                      title={t("common.remove")}
                       onClick={(e) => {
                         e.stopPropagation();
                         props.onRemove(r.key);
@@ -199,14 +203,14 @@ export function ModelTable(props: Props) {
                 </span>
                 <span class="model-card-status">
                   <span class="proto-badges">
-                    {shownProtocols(r).map((p) => <Badge probe={r.probes[p]} />)}
+                    {shownProtocols(r).map((p) => <Badge probe={r.probes[p]} lang={lang} />)}
                   </span>
                   <span class="status-text">{statusText(r)}</span>
                 </span>
                 <span class="model-card-usage">
                   {fs
                     ? `${fmtTok(fs.usage.inputTokens)} / ${fmtTok(fs.usage.outputTokens)} / ${fmtTok(fs.usage.totalTokens)}`
-                    : "in / out / total"}
+                    : t("models.inOutTotal")}
                 </span>
                 {preview ? (
                   <span class="text-preview model-preview">{preview}</span>
@@ -220,13 +224,13 @@ export function ModelTable(props: Props) {
       <div class="add-model">
         <input
           class="mono"
-          placeholder="自定义模型 id，如 my-model-x"
+          placeholder={t("models.addPlaceholder")}
           value={newModel}
           onInput={(e) => setNewModel((e.target as HTMLInputElement).value)}
           onKeyDown={(e) => { if (e.key === "Enter") add(); }}
         />
         <button disabled={!newModel.trim()} onClick={add}>
-          添加模型
+          {t("models.addModel")}
         </button>
       </div>
     </section>
