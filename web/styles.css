@@ -448,6 +448,8 @@ details.det summary { cursor: pointer; color: var(--text-dim); font-size: 11px; 
 .theme-toggle .seg:hover:not(.active) { background: var(--btn-hover); }
 .theme-toggle .seg.active { background: var(--accent); color: #fff; }
 .theme-toggle .seg-icon { font-size: 13px; line-height: 1; }
+.lang-toggle { margin-right: 8px; }
+.lang-toggle .seg { min-width: 30px; justify-content: center; }
 
 /* ---------- 协议状态药丸（带协议简称 + 内嵌流式图标） ---------- */
 .proto-badges { display: flex; gap: 6px; flex-wrap: wrap; }

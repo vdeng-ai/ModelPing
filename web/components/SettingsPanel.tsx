@@ -1,6 +1,7 @@
 import { useEffect, useState } from "preact/hooks";
 import type { Defaults, PresetsResponse, ProviderPreset } from "../lib/types.js";
 import { normalizePresets } from "../lib/presets.js";
+import { useI18n } from "../lib/i18n.js";
 
 interface Props {
   providers: ProviderPreset[];
@@ -37,6 +38,7 @@ function downloadJson(presets: PresetsResponse) {
 }
 
 export function SettingsPanel({ providers, defaults, busy, onChange, onImport }: Props) {
+  const { t } = useI18n();
   const [selectedId, setSelectedId] = useState(providers[0]?.id ?? "");
   const [draft, setDraft] = useState<ProviderPreset | null>(providers[0] ? cloneProvider(providers[0]) : null);
   const [error, setError] = useState<string | null>(null);
@@ -80,7 +82,7 @@ export function SettingsPanel({ providers, defaults, busy, onChange, onImport }:
 
   const deleteProvider = () => {
     if (!draft) return;
-    if (!confirm(`删除供应商「${draft.name}」及其模型？`)) return;
+    if (!confirm(t("settings.confirmDelete", { name: draft.name }))) return;
     applyProviders(providers.filter((p) => p.id !== selectedId));
   };
 
@@ -113,13 +115,13 @@ export function SettingsPanel({ providers, defaults, busy, onChange, onImport }:
 
   return (
     <section class="panel settings-panel">
-      <h2>设置</h2>
+      <h2>{t("settings.title")}</h2>
       <div class="settings-toolbar">
-        <span class="status-text">修改即自动保存为默认配置，可导入导出 JSON。</span>
+        <span class="status-text">{t("settings.toolbarHint")}</span>
         <span class="spacer" />
-        <button disabled={busy || providers.length === 0} onClick={() => downloadJson({ providers, defaults })}>导出配置</button>
+        <button disabled={busy || providers.length === 0} onClick={() => downloadJson({ providers, defaults })}>{t("settings.exportConfig")}</button>
         <label class={"button-like" + (busy ? " disabled" : "")}>
-          导入配置
+          {t("settings.importConfig")}
           <input
             type="file"
             accept="application/json,.json"
@@ -138,7 +140,7 @@ export function SettingsPanel({ providers, defaults, busy, onChange, onImport }:
       <div class="settings-layout">
         <div class="provider-list">
           {providers.length === 0 ? (
-            <div class="empty">暂无供应商。</div>
+            <div class="empty">{t("settings.emptyProviders")}</div>
           ) : providers.map((p) => (
             <button
               type="button"
@@ -149,7 +151,7 @@ export function SettingsPanel({ providers, defaults, busy, onChange, onImport }:
               {p.name}
             </button>
           ))}
-          <button type="button" disabled={busy} onClick={addProvider}>新增供应商</button>
+          <button type="button" disabled={busy} onClick={addProvider}>{t("settings.addProvider")}</button>
         </div>
 
         <div class="settings-form">
@@ -157,15 +159,15 @@ export function SettingsPanel({ providers, defaults, busy, onChange, onImport }:
             <>
               <div class="settings-grid">
                 <div class="field">
-                  <label>ID</label>
+                  <label>{t("settings.id")}</label>
                   <input class="mono" value={draft.id} onInput={(e) => updateDraft({ id: (e.target as HTMLInputElement).value })} />
                 </div>
                 <div class="field">
-                  <label>名称</label>
+                  <label>{t("settings.name")}</label>
                   <input value={draft.name} onInput={(e) => updateDraft({ name: (e.target as HTMLInputElement).value })} />
                 </div>
                 <div class="field full">
-                  <label>Base URL</label>
+                  <label>{t("settings.baseUrl")}</label>
                   <input class="mono" value={draft.baseUrl} onInput={(e) => updateDraft({ baseUrl: (e.target as HTMLInputElement).value })} />
                 </div>
                 <div class="field full">
@@ -175,51 +177,51 @@ export function SettingsPanel({ providers, defaults, busy, onChange, onImport }:
                       checked={Boolean(draft.isFullUrl)}
                       onChange={(e) => updateDraft({ isFullUrl: (e.target as HTMLInputElement).checked })}
                     />
-                    Base URL 是完整请求 URL
+                    {t("settings.baseUrlIsFull")}
                   </label>
                 </div>
                 <div class="field">
-                  <label>Key 提示</label>
+                  <label>{t("settings.keyHint")}</label>
                   <input value={draft.keyHint ?? ""} onInput={(e) => updateDraft({ keyHint: (e.target as HTMLInputElement).value })} />
                 </div>
                 <div class="field">
-                  <label>文档链接</label>
+                  <label>{t("settings.docs")}</label>
                   <input class="mono" value={draft.docs ?? ""} onInput={(e) => updateDraft({ docs: (e.target as HTMLInputElement).value })} />
                 </div>
               </div>
 
               <div class="models-editor">
                 <div class="models-editor-head">
-                  <label>模型</label>
-                  <button type="button" disabled={busy} onClick={() => updateDraft({ models: [...draft.models, { id: "" }] })}>新增模型</button>
+                  <label>{t("settings.models")}</label>
+                  <button type="button" disabled={busy} onClick={() => updateDraft({ models: [...draft.models, { id: "" }] })}>{t("settings.addModel")}</button>
                 </div>
                 {draft.models.length === 0 ? (
-                  <div class="empty">暂无模型，可新增或只保留供应商连接信息。</div>
+                  <div class="empty">{t("settings.emptyModels")}</div>
                 ) : draft.models.map((m, idx) => (
                   <div class="model-edit-row" key={idx}>
                     <input
                       class="mono"
-                      placeholder="model id"
+                      placeholder={t("settings.modelIdPlaceholder")}
                       value={m.id}
                       onInput={(e) => updateModel(idx, { id: (e.target as HTMLInputElement).value })}
                     />
                     <input
-                      placeholder="官方原始名称（可选）"
+                      placeholder={t("settings.modelLabelPlaceholder")}
                       value={m.label ?? ""}
                       onInput={(e) => updateModel(idx, { label: (e.target as HTMLInputElement).value })}
                     />
-                    <button class="icon" type="button" title="移除模型" disabled={busy} onClick={() => removeModel(idx)}>✕</button>
+                    <button class="icon" type="button" title={t("settings.removeModel")} disabled={busy} onClick={() => removeModel(idx)}>✕</button>
                   </div>
                 ))}
               </div>
 
               <div class="actions">
-                <button class="primary" disabled={busy} onClick={saveProvider}>保存供应商</button>
-                <button disabled={busy} onClick={deleteProvider}>删除供应商</button>
+                <button class="primary" disabled={busy} onClick={saveProvider}>{t("settings.saveProvider")}</button>
+                <button disabled={busy} onClick={deleteProvider}>{t("settings.deleteProvider")}</button>
               </div>
             </>
           ) : (
-            <div class="empty">请选择或新增供应商。</div>
+            <div class="empty">{t("settings.selectOrAdd")}</div>
           )}
         </div>
       </div>
