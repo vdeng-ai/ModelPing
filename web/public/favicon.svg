@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="ModelPing favicon">
+  <defs>
+    <linearGradient id="ping" x1="11" y1="8" x2="53" y2="56" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#67E8F9"/>
+      <stop offset="1" stop-color="#34D399"/>
+    </linearGradient>
+    <linearGradient id="node" x1="22" y1="17" x2="43" y2="42" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ECFEFF"/>
+      <stop offset="1" stop-color="#A7F3D0"/>
+    </linearGradient>
+  </defs>
+
+  <path d="M14.5 40C18 47 24.4 51.5 32 51.5S46 47 49.5 40" fill="none" stroke="url(#ping)" stroke-width="6.5" stroke-linecap="round"/>
+  <path d="M7.5 30C12.2 42.8 21 58 32 58s19.8-15.2 24.5-28" fill="none" stroke="#22D3EE" stroke-opacity=".58" stroke-width="5.25" stroke-linecap="round"/>
+
+  <circle cx="32" cy="30" r="16" fill="#0F172A" fill-opacity=".92"/>
+  <path d="M25.5 34.5 32 23.5l7 11" fill="none" stroke="#67E8F9" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <circle cx="32" cy="23.5" r="5.2" fill="url(#node)"/>
+  <circle cx="25.5" cy="34.5" r="5.2" fill="url(#node)"/>
+  <circle cx="39" cy="34.5" r="5.2" fill="url(#node)"/>
+
+  <circle cx="32" cy="23.5" r="2" fill="#0F172A" fill-opacity=".72"/>
+  <circle cx="25.5" cy="34.5" r="2" fill="#0F172A" fill-opacity=".72"/>
+  <circle cx="39" cy="34.5" r="2" fill="#0F172A" fill-opacity=".72"/>
+
+  <path d="M32 6v8M32 46v10M56 30h-9M17 30H8" stroke="#0F172A" stroke-opacity=".72" stroke-width="5.5" stroke-linecap="round"/>
+  <path d="M32 7v7M32 46v9M55 30h-8M17 30H9" stroke="#A7F3D0" stroke-opacity=".95" stroke-width="3.25" stroke-linecap="round"/>
+</svg>

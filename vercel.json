@@ -4,6 +4,6 @@
   "outputDirectory": "dist/client",
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api/index" },
-    { "source": "/((?!assets/|favicon.ico|presets.json).*)", "destination": "/index.html" }
+    { "source": "/((?!assets/|favicon.ico|favicon.svg|presets.json).*)", "destination": "/index.html" }
   ]
 }

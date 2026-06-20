@@ -28,6 +28,7 @@ const fetch = (req: Request) => app.fetch(req, env);
 const STATIC_ROOT = "./dist/client";
 app.use("/assets/*", serveStatic({ root: STATIC_ROOT }));
 app.get("/favicon.ico", serveStatic({ path: `${STATIC_ROOT}/favicon.ico` }));
+app.get("/favicon.svg", serveStatic({ path: `${STATIC_ROOT}/favicon.svg` }));
 
 // /presets.json 直接读源文件（与 FileStore 同源），改即生效、无需 rebuild；
 // 读不到时回退构建副本，兼容只部署 dist 的精简场景。
