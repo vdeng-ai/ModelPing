@@ -19,6 +19,7 @@
 - 自动探测非流式与流式（SSE）可用性
 - **查询余额**：按 baseUrl 主机识别供应商，一键查可用余额/额度（DeepSeek、SiliconFlow、OpenRouter、StepFun、Novita 等）
 - **拉取模型列表**：从供应商 `/models` 端点拉取可用模型，弹层搜索多选后批量加入测试表格
+- **一键导入 cc-switch**：把当前 provider 或已通过测试的 provider + model 导入到 Claude Code、Codex、Gemini CLI、OpenCode、OpenClaw
 - 可选自定义 User-Agent 预设，用于按客户端 UA 放行的 coding-plan 上游；模型测试、流式检测、模型列表和余额查询会一致生效
 - 返回总延迟、首字延迟（TTFT，流式）、输入/输出/总 token
 - 模型表格逐行状态灯：灰待测 → 蓝测试中 → 绿通过 / 红失败
@@ -39,6 +40,16 @@ npm run dev      # 前端 5173（开发） + 后端 8787，浏览器开 http://l
 npm run build
 npm start        # http://localhost:8787
 ```
+
+## 供应商辅助功能
+
+在连接面板填好供应商 `baseUrl` 和 API Key 后，ModelPing 还可以帮你完成几件常见配置工作：
+
+- **查询余额**：点击 API Key 输入框旁边的「余额」。后端会按 `baseUrl` 的 host 匹配供应商，调用对应余额端点；支持的供应商会返回剩余余额/额度，不支持的会明确提示不支持。
+- **拉取模型**：点击「拉模型」。ModelPing 会调用供应商 `/models` 端点，弹出可搜索、多选的模型列表，确认后批量加入测试表格。
+- **一键导入 cc-switch**：模型区的「→ cc-switch」可导入当前 provider；历史记录中测试成功的行也会出现同样按钮，可连同已验证的 model 一起导入。按钮左侧下拉可选择目标应用：Claude Code、Codex、Gemini CLI、OpenCode、OpenClaw，随后会唤起本机 `ccswitch://v1/import` 深链。
+
+这些辅助功能复用 UI 中配置的 `baseUrl`、API Key、完整 URL 模式和可选 User-Agent。API Key 只会在本次请求/深链导入动作中使用，后端不会持久化保存。
 
 ## 默认模型
 
