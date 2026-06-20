@@ -19,6 +19,7 @@ Features:
 - Auto-detects non-streaming and streaming (SSE) availability
 - **Balance lookup**: identifies the provider by baseUrl host and queries remaining credit/quota in one click (DeepSeek, SiliconFlow, OpenRouter, StepFun, Novita, …)
 - **Model list fetch**: pulls available models from the provider's `/models` endpoint; search, multi-select in a modal, and batch-add to the test table
+- **One-click cc-switch import**: opens `ccswitch://v1/import` deep links for the current provider or a passed test result, with target app selection for Claude Code, Codex, Gemini CLI, OpenCode, and OpenClaw
 - Optional custom User-Agent presets for coding-plan upstreams that gate access by client UA; applies consistently to model tests, stream checks, model listing, and balance lookup
 - Reports total latency, time-to-first-token (TTFT, streaming), and input/output/total tokens
 - Per-row status lights in the model table: gray (pending) → blue (testing) → green (pass) / red (fail)
@@ -39,6 +40,16 @@ Production mode (single process, frontend and backend same-origin):
 npm run build
 npm start        # http://localhost:8787
 ```
+
+## Provider helpers
+
+After entering a provider `baseUrl` and API key in the connection panel, ModelPing can help with a few adjacent setup tasks:
+
+- **Query balance**: click **Balance** next to the API key field. The backend matches the provider by the `baseUrl` host, calls the provider's balance endpoint, and returns remaining credit/quota when that provider is supported. Unsupported providers will be reported as unsupported instead of guessed.
+- **Fetch models**: click **Fetch models** next to the API key field. ModelPing calls the provider's `/models` endpoint, opens a searchable multi-select modal, and batch-adds selected model ids to the test table.
+- **Import to cc-switch**: use the **→ cc-switch** button in the model area to import the current provider, or use the same button in successful history rows to import a tested provider + model pair. The target app dropdown supports Claude Code, Codex, Gemini CLI, OpenCode, and OpenClaw, then opens the local `ccswitch://v1/import` deep link.
+
+These helpers use the same `baseUrl`, API key, full-URL mode, and optional User-Agent configured in the UI. API keys are only forwarded for the request/deep link action and are not persisted by the backend.
 
 ## Default models
 
