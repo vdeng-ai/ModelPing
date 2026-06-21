@@ -63,7 +63,7 @@ function selectRowsForProvider(rows: ModelRow[], providerId: string): ModelRow[]
 }
 
 export function App() {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const [providers, setProviders] = useState<ProviderPreset[]>([]);
   const [presetDefaults, setPresetDefaults] = useState<Defaults>(FALLBACK_DEFAULTS);
   const [activeTab, setActiveTab] = useState<"test" | "settings">("test");
@@ -84,6 +84,8 @@ export function App() {
   const serverPersistRef = useRef<boolean>(false);
   // ConfigPanel 参数 → defaults 同步到后端的防抖句柄。
   const configSyncRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 当前语言对应的默认输入文本；语言切换时若用户未自定义则跟随更新。
+  const defaultInputRef = useRef(t("config.defaultInput"));
 
   const historyRef = useRef(history);
   historyRef.current = history;
@@ -139,7 +141,7 @@ export function App() {
       // 恢复参数配置
       const savedCfg = loadConfig();
       const cfg: ConfigState = {
-        input: savedCfg?.input ?? defs.input,
+        input: savedCfg?.input ?? defaultInputRef.current,
         timeoutMs: savedCfg?.timeoutMs ?? defs.timeoutMs,
         maxRetries: savedCfg?.maxRetries ?? defs.maxRetries,
         maxTokens: savedCfg?.maxTokens ?? defs.maxTokens,
@@ -167,6 +169,21 @@ export function App() {
     // 仅在挂载时初始化一次（init 引用每渲染都变，故有意省略依赖）。
     init();
   }, []);
+
+  // 语言切换时，若输入文本仍为默认值（用户未自定义）则跟随语言更新。
+  useEffect(() => {
+    const newDefault = t("config.defaultInput");
+    setConfig((prev) => {
+      if (prev.input === defaultInputRef.current && prev.input !== newDefault) {
+        defaultInputRef.current = newDefault;
+        return { ...prev, input: newDefault };
+      }
+      defaultInputRef.current = newDefault;
+      return prev;
+    });
+    // t 的取值仅随 lang 变化，故依赖仅需 lang。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lang]);
 
   // 提交口令后重试初始化。
   const submitPassword = async () => {
