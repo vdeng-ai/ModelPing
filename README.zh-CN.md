@@ -4,6 +4,8 @@
 
 开箱即用的轻量 Web 工具，用于快速点测各家大模型 API 是否可用，并测量延迟与 token 消耗。
 
+![Screenshot](./web/public/screenshot.png)
+
 支持的协议：
 
 | 协议               | 端点                                          | 典型供应商                                                       |

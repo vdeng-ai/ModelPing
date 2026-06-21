@@ -4,6 +4,8 @@
 
 A lightweight, zero-config web tool to quickly check whether an LLM API is reachable, and to measure latency and token usage across providers.
 
+![Screenshot](./web/public/screenshot.png)
+
 Supported protocols:
 
 | Protocol           | Endpoint                                      | Typical providers                                                |
