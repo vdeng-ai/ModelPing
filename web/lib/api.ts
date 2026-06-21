@@ -121,11 +121,12 @@ export async function fetchBalance(payload: LookupPayload): Promise<Balance> {
 }
 
 // 非流式测试：直接返回 TestResult。
-export async function runTestJson(payload: TestPayload): Promise<TestResult> {
+export async function runTestJson(payload: TestPayload, signal?: AbortSignal): Promise<TestResult> {
   const res = await fetch("/api/test", {
     method: "POST",
     headers: { "content-type": "application/json", ...authHeaders() },
     body: JSON.stringify({ ...payload, stream: false }),
+    signal,
   });
   if (!res.ok) {
     let msg = `HTTP ${res.status}`;

@@ -8,6 +8,7 @@ export {
   CUSTOM_PROVIDER_ID,
   CUSTOM_PROVIDER_NAME,
   FALLBACK_DEFAULTS,
+  normalizeConcurrency,
 } from "../../src/presets-schema.js";
 
 const K_PRESETS = "llm-test:presets";

@@ -9,8 +9,12 @@ import type { ConnValue } from "./ConnectionPanel.js";
 import type { ConfigState } from "../lib/storage.js";
 import type { ProviderPreset, StreamVerdict } from "../lib/types.js";
 import { useI18n } from "../lib/i18n.js";
+import { runConcurrent } from "../lib/concurrency.js";
 
-const CONCURRENCY = 3; // 批量检测的模型级并发上限（每个模型内部再并发协议）
+export interface BatchProgress {
+  completed: number;
+  total: number;
+}
 
 export interface DetectDeps {
   // 当前连接/参数的 ref，供并发探测闭包读取最新值（避免闭包捕获过期 state）。
@@ -29,6 +33,8 @@ export function useDetect(deps: DetectDeps) {
   const { connRef, configRef, providers, setRows, historyRef, setHistory, showToast } = deps;
   const { t } = useI18n();
   const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState<BatchProgress>({ completed: 0, total: 0 });
+  const batchControllerRef = useRef<AbortController | null>(null);
   // setRows 的稳定引用，避免把它列进各回调依赖。
   const setRowsRef = useRef(setRows);
   setRowsRef.current = setRows;
@@ -43,7 +49,8 @@ export function useDetect(deps: DetectDeps) {
   };
 
   // 自动检测单行：按模型族挑协议，非流式 + 流式独立并行探测。返回是否有任一协议通过。
-  const detectRow = async (row: ModelRow): Promise<boolean> => {
+  const detectRow = async (row: ModelRow, signal: AbortSignal): Promise<boolean> => {
+    signal.throwIfAborted();
     const c = connRef.current;
     const cfg = configRef.current;
 
@@ -94,15 +101,18 @@ export function useDetect(deps: DetectDeps) {
         const sres = await runTestStream({ ...payload, stream: true }, (ev) => {
           if (ev.type === "delta") gotDelta = true;
           else if (ev.type === "ttft") ttft = ev.ttftMs;
-        });
+        }, signal);
         // 判定收紧：仅当收到 ≥1 个 delta 才算真流式；
         // stream:true 却一次性返回（无增量）判为 single，避免假阳性。
         const verdict: StreamVerdict = gotDelta ? "stream" : sres.ok ? "single" : "none";
         return { verdict, ttftMs: ttft ?? sres.ttftMs, sres };
       })();
 
-      const jsonResult = await runTestJson(payload);
-      const { verdict: streamVerdict, ttftMs: streamTtftMs, sres } = await streamProbe;
+      const [jsonResult, streamResult] = await Promise.all([
+        runTestJson(payload, signal),
+        streamProbe,
+      ]);
+      const { verdict: streamVerdict, ttftMs: streamTtftMs, sres } = streamResult;
 
       // 展示结果：优先非流式；非流式失败但流式成功时回退到流式结果。
       const result = jsonResult.ok ? jsonResult : sres.ok ? sres : jsonResult;
@@ -139,26 +149,56 @@ export function useDetect(deps: DetectDeps) {
   };
 
   // 并发池执行一批行的自动检测。
-  const runBatch = async (targets: ModelRow[]) => {
-    if (!targets.length || busy) return;
-    setBusy(true);
-    const queue = [...targets];
-    let passed = 0;
-    const workers = Array.from({ length: Math.min(CONCURRENCY, queue.length) }, async () => {
-      while (queue.length) {
-        const row = queue.shift()!;
-        if (await detectRow(row)) passed++;
+  const resetTestingProbes = () => {
+    setRowsRef.current((rows) => rows.map((row) => {
+      let changed = false;
+      const probes = { ...row.probes };
+      for (const protocol of PROTOCOLS) {
+        if (probes[protocol].status === "testing") {
+          probes[protocol] = { protocol, status: "idle", result: null, streamVerdict: null, streamTtftMs: null };
+          changed = true;
+        }
       }
-    });
-    await Promise.all(workers);
-    setBusy(false);
-    const total = targets.length;
-    showToast(
-      passed === total
-        ? t("app.batchAllPass", { total })
-        : t("app.batchPartial", { passed, total }),
-    );
+      return changed ? { ...row, probes } : row;
+    }));
   };
 
-  return { busy, runBatch };
+  const cancelBatch = () => batchControllerRef.current?.abort();
+
+  const runBatch = async (targets: ModelRow[]) => {
+    if (!targets.length || busy) return;
+    const controller = new AbortController();
+    batchControllerRef.current = controller;
+    setBusy(true);
+    setProgress({ completed: 0, total: targets.length });
+    let passed = 0;
+    let completed = 0;
+    const concurrency = Math.min(10, Math.max(1, Math.trunc(configRef.current.concurrency || 2)));
+    try {
+      await runConcurrent(
+        targets,
+        concurrency,
+        controller.signal,
+        async (row, signal) => {
+          if (await detectRow(row, signal)) passed++;
+        },
+        () => {
+          completed++;
+          setProgress({ completed, total: targets.length });
+        },
+      );
+      if (controller.signal.aborted) {
+        resetTestingProbes();
+        showToast(t("app.batchCanceled", { completed, total: targets.length }));
+      } else {
+        const total = targets.length;
+        showToast(passed === total ? t("app.batchAllPass", { total }) : t("app.batchPartial", { passed, total }));
+      }
+    } finally {
+      if (batchControllerRef.current === controller) batchControllerRef.current = null;
+      setBusy(false);
+    }
+  };
+
+  return { busy, progress, runBatch, cancelBatch };
 }
