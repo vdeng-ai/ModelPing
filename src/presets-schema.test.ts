@@ -67,3 +67,16 @@ describe("normalizePresets", () => {
     expect(out.providers[0].models[0]).toEqual({ id: "m" });
   });
 });
+
+describe("concurrency defaults", () => {
+  it("uses 2 for legacy or invalid settings", () => {
+    expect(normalizePresets({ providers: [], defaults: {} }).defaults.concurrency).toBe(2);
+    expect(normalizePresets({ providers: [], defaults: { concurrency: "nope" } }).defaults.concurrency).toBe(2);
+  });
+
+  it("keeps valid values and clamps them to 1-10", () => {
+    expect(normalizePresets({ providers: [], defaults: { concurrency: 7 } }).defaults.concurrency).toBe(7);
+    expect(normalizePresets({ providers: [], defaults: { concurrency: 0 } }).defaults.concurrency).toBe(1);
+    expect(normalizePresets({ providers: [], defaults: { concurrency: 99 } }).defaults.concurrency).toBe(10);
+  });
+});

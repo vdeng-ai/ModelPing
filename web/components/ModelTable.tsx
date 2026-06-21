@@ -46,6 +46,7 @@ export function freshProbes(): Record<Protocol, ProtocolProbe> {
 interface Props {
   rows: ModelRow[];
   busy: boolean;
+  progress: { completed: number; total: number };
   conn: { baseUrl: string; apiKey: string };
   providerName: string;
   onToggle: (key: string, checked: boolean) => void;
@@ -53,6 +54,7 @@ interface Props {
   onAdd: (model: string) => void;
   onRemove: (key: string) => void;
   onTestSelected: () => void;
+  onCancel: () => void;
   onTestAll: () => void;
   onLaunched: (msg: string) => void;
 }
@@ -149,6 +151,7 @@ export function ModelTable(props: Props) {
         <button class="primary" disabled={busy || !someChecked} onClick={props.onTestSelected}>
           {t("models.testSelected")}
         </button>
+        {busy ? <button class="danger" onClick={props.onCancel}>{t("models.cancelTests")}</button> : null}
         <button disabled={busy || rows.length === 0} onClick={() => props.onToggleAll(!allChecked)}>
           {allChecked ? t("common.deselectAll") : t("common.selectAll")}
         </button>
@@ -161,6 +164,20 @@ export function ModelTable(props: Props) {
           onLaunched={props.onLaunched}
         />
       </div>
+
+      {busy ? (
+        <div class="batch-progress" aria-live="polite">
+          <div class="batch-progress-label">
+            <span>{t("models.progress", props.progress)}</span>
+            <span>{Math.round((props.progress.completed / Math.max(1, props.progress.total)) * 100)}%</span>
+          </div>
+          <progress
+            max={Math.max(1, props.progress.total)}
+            value={props.progress.completed}
+            aria-label={t("models.progress", props.progress)}
+          />
+        </div>
+      ) : null}
 
       {rows.length === 0 ? (
         <div class="empty">{t("models.empty")}</div>

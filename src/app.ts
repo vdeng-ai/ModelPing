@@ -192,7 +192,7 @@ export function createApp() {
     }
 
     if (req.stream) {
-      const stream = runTestStream(req);
+      const stream = runTestStream(req, c.req.raw.signal);
       return new Response(stream, {
         headers: {
           "content-type": "text/event-stream; charset=utf-8",
@@ -202,8 +202,15 @@ export function createApp() {
       });
     }
 
-    const result = await runTest(req);
-    return c.json(result);
+    try {
+      const result = await runTest(req, c.req.raw.signal);
+      return c.json(result);
+    } catch (error) {
+      if (c.req.raw.signal.aborted || (error as { name?: string } | null)?.name === "AbortError") {
+        return new Response(null, { status: 499 });
+      }
+      throw error;
+    }
   });
 
   // 拉取供应商模型列表（GET 各家 /models 端点，经后端避开 CORS）。

@@ -46,6 +46,7 @@ export function ConfigPanel({ value, onChange }: Props) {
         {numField("timeoutMs", t("config.timeoutMs"), 1000, 600000, 1000)}
         {numField("maxRetries", t("config.maxRetries"), 0, 10)}
         {numField("maxTokens", t("config.maxTokens"), 1, 200000)}
+        {numField("concurrency", t("config.concurrency"), 1, 10)}
         <div class="field">
           <label>{t("config.userAgent")}</label>
           <select

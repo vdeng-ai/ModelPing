@@ -1,6 +1,6 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import type { TestRequest, Usage } from "./types.js";
-import { redactSecrets, sanitizeUrl, mergeUsage, isUnsupportedProtocol, retryable } from "./runner.js";
+import { redactSecrets, sanitizeUrl, mergeUsage, isUnsupportedProtocol, retryable, runTest, runTestStream } from "./runner.js";
 
 function req(over: Partial<TestRequest> = {}): TestRequest {
   return {
@@ -115,5 +115,63 @@ describe("retryable", () => {
     expect(retryable(400)).toBe(false);
     expect(retryable(401)).toBe(false);
     expect(retryable(404)).toBe(false);
+  });
+});
+
+describe("external cancellation", () => {
+  it("aborts an active non-stream upstream request", async () => {
+    const fetchMock = vi.fn((_input: unknown, init?: RequestInit) => new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")), { once: true });
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    const controller = new AbortController();
+
+    try {
+      const running = runTest(req(), controller.signal);
+      await Promise.resolve();
+      controller.abort();
+      await expect(running).rejects.toMatchObject({ name: "AbortError" });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("aborts retry backoff before another request starts", async () => {
+    const fetchMock = vi.fn(async () => new Response("retry", { status: 500 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const controller = new AbortController();
+
+    try {
+      const running = runTest(req({ maxRetries: 3 }), controller.signal);
+      setTimeout(() => controller.abort(), 10);
+      await expect(running).rejects.toMatchObject({ name: "AbortError" });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("aborts an active stream upstream request", async () => {
+    const capture: { signal?: AbortSignal } = {};
+    vi.stubGlobal("fetch", vi.fn((_input: unknown, init?: RequestInit) => {
+      capture.signal = init?.signal ?? undefined;
+      return new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")), { once: true });
+      });
+    }));
+    const controller = new AbortController();
+
+    try {
+      const reader = runTestStream(req({ stream: true }), controller.signal).getReader();
+      const reading = reader.read();
+      await Promise.resolve();
+      controller.abort();
+      await expect(reading).resolves.toEqual({ done: true, value: undefined });
+      expect(capture.signal).toBeDefined();
+      expect(capture.signal?.aborted).toBe(true);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

@@ -70,6 +70,7 @@ export interface Defaults {
   maxRetries: number;
   maxTokens: number;
   userAgent: string;
+  concurrency: number;
 }
 
 export interface PresetsResponse {
