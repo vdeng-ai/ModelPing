@@ -9,6 +9,7 @@ import {
 import {
   CUSTOM_PROVIDER_ID,
   FALLBACK_DEFAULTS,
+  normalizeConcurrency,
   loadLocalPresets, saveLocalPresets,
 } from "../lib/presets.js";
 import { initTheme } from "../lib/theme.js";
@@ -67,7 +68,7 @@ export function App() {
   const [presetDefaults, setPresetDefaults] = useState<Defaults>(FALLBACK_DEFAULTS);
   const [activeTab, setActiveTab] = useState<"test" | "settings">("test");
   const [conn, setConn] = useState<ConnValue>({ providerId: CUSTOM_PROVIDER_ID, baseUrl: "", isFullUrl: false, apiKey: "" });
-  const [config, setConfig] = useState<ConfigState>({ input: "", timeoutMs: 30000, maxRetries: 1, maxTokens: 512, userAgent: "" });
+  const [config, setConfig] = useState<ConfigState>({ input: "", timeoutMs: 30000, maxRetries: 1, maxTokens: 512, userAgent: "", concurrency: 2 });
   const [rows, setRows] = useState<ModelRow[]>([]);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [persist, setPersistState] = useState<boolean>(getPersist());
@@ -99,7 +100,7 @@ export function App() {
   };
 
   // 模型检测引擎（单行 4 协议探测 + 并发池）已抽到 useDetect；busy 由其持有。
-  const { busy, runBatch } = useDetect({
+  const { busy, progress, runBatch, cancelBatch } = useDetect({
     connRef, configRef, providers, setRows, historyRef, setHistory, showToast,
   });
 
@@ -143,6 +144,7 @@ export function App() {
         maxRetries: savedCfg?.maxRetries ?? defs.maxRetries,
         maxTokens: savedCfg?.maxTokens ?? defs.maxTokens,
         userAgent: savedCfg?.userAgent ?? defs.userAgent ?? "",
+        concurrency: normalizeConcurrency(savedCfg?.concurrency ?? defs.concurrency),
       };
       setConfig(cfg);
 
@@ -183,19 +185,21 @@ export function App() {
   };
 
   const onConfigChange = (v: ConfigState) => {
-    setConfig(v);
-    saveConfig(v);
+    const nextConfig = { ...v, concurrency: normalizeConcurrency(v.concurrency) };
+    setConfig(nextConfig);
+    saveConfig(nextConfig);
     // 参数当默认值同步到后端 defaults（防抖，避免逐字输入狂发请求）。
     if (serverPersistRef.current) {
       if (configSyncRef.current) clearTimeout(configSyncRef.current);
       configSyncRef.current = setTimeout(() => {
         const nextDefaults: Defaults = {
-          input: v.input,
+          input: nextConfig.input,
           stream: presetDefaults.stream,
-          timeoutMs: v.timeoutMs,
-          maxRetries: v.maxRetries,
-          maxTokens: v.maxTokens,
-          userAgent: v.userAgent,
+          timeoutMs: nextConfig.timeoutMs,
+          maxRetries: nextConfig.maxRetries,
+          maxTokens: nextConfig.maxTokens,
+          userAgent: nextConfig.userAgent,
+          concurrency: nextConfig.concurrency,
         };
         setPresetDefaults(nextDefaults);
         const presets = { providers, defaults: nextDefaults };
@@ -382,6 +386,7 @@ export function App() {
           <ModelTable
             rows={rows}
             busy={busy}
+            progress={progress}
             conn={conn}
             providerName={
               providers.find((p) => p.id === conn.providerId)?.name ??
@@ -392,6 +397,7 @@ export function App() {
             onAdd={onAddModel}
             onRemove={onRemoveModel}
             onTestSelected={onTestSelected}
+            onCancel={cancelBatch}
             onTestAll={onTestAll}
             onLaunched={showToast}
           />

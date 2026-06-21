@@ -13,7 +13,14 @@ export const FALLBACK_DEFAULTS: Defaults = {
   maxRetries: 1,
   maxTokens: 512,
   userAgent: "",
+  concurrency: 2,
 };
+
+export function normalizeConcurrency(value: unknown): number {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return FALLBACK_DEFAULTS.concurrency;
+  return Math.min(10, Math.max(1, Math.trunc(n)));
+}
 
 function asRecord(v: unknown): Record<string, unknown> {
   if (!v || typeof v !== "object" || Array.isArray(v)) throw new Error("配置必须是 JSON 对象");
@@ -56,6 +63,7 @@ export function normalizePresets(raw: unknown): PresetsResponse {
     maxRetries: numberDefault(defaultsRaw.maxRetries, FALLBACK_DEFAULTS.maxRetries),
     maxTokens: numberDefault(defaultsRaw.maxTokens, FALLBACK_DEFAULTS.maxTokens),
     userAgent: cleanString(defaultsRaw.userAgent),
+    concurrency: normalizeConcurrency(defaultsRaw.concurrency),
   };
 
   if (!Array.isArray(obj.providers)) throw new Error("providers 必须是数组");

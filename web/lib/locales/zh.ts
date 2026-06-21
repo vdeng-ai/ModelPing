@@ -23,6 +23,7 @@ export const zh = {
     toastServerSaveFailed: "服务端保存失败：{msg}",
     batchAllPass: "全部 {total} 个模型至少一个协议通过",
     batchPartial: "完成：{passed}/{total} 个模型有协议通过",
+    batchCanceled: "已取消，完成 {completed}/{total}",
   },
   lang: {
     label: "语言",
@@ -79,11 +80,12 @@ export const zh = {
     addedModels: "已添加 {count} 个模型",
   },
   config: {
-    title: "参数",
+    title: "测试设置",
     input: "输入文本",
     timeoutMs: "超时 (ms)",
     maxRetries: "最大重试",
     maxTokens: "最大输出 token",
+    concurrency: "并发数 (1-10)",
     userAgent: "User-Agent",
     userAgentCustom: "自定义 User-Agent",
     userAgentCustomOption: "自定义…",
@@ -100,6 +102,8 @@ export const zh = {
   models: {
     title: "模型",
     testSelected: "测试选中",
+    cancelTests: "取消测试",
+    progress: "进度：{completed}/{total}",
     empty: "暂无模型。下方可添加自定义模型。",
     addPlaceholder: "自定义模型 id，如 my-model-x",
     addModel: "添加模型",
@@ -142,7 +146,7 @@ export const zh = {
     urlFull: "\n完整 URL",
   },
   settings: {
-    title: "设置",
+    title: "供应商设置",
     toolbarHint: "修改即自动保存为默认配置，可导入导出 JSON。",
     exportConfig: "导出配置",
     importConfig: "导入配置",
