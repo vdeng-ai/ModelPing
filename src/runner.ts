@@ -118,16 +118,42 @@ export function retryable(status: number): boolean {
   return status === 0 || status === 408 || status === 429 || (status >= 500 && status < 600);
 }
 
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+function abortError(signal?: AbortSignal): Error {
+  return signal?.reason instanceof Error ? signal.reason : new DOMException("Aborted", "AbortError");
+}
 
-// 带超时的 fetch。超时通过 AbortController 触发，抛出标记了 isTimeout 的错误。
-async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number): Promise<Response> {
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) return Promise.reject(abortError(signal));
+  return new Promise((resolve, reject) => {
+    const finish = () => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    };
+    const timer = setTimeout(finish, ms);
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(abortError(signal));
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+// 带超时的 fetch。外部取消优先于超时，并与内部 AbortController 合并。
+async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number, signal?: AbortSignal): Promise<Response> {
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  let timedOut = false;
+  const onAbort = () => ctrl.abort(signal?.reason);
+  if (signal?.aborted) onAbort();
+  else signal?.addEventListener("abort", onAbort, { once: true });
+  const timer = setTimeout(() => {
+    timedOut = true;
+    ctrl.abort();
+  }, timeoutMs);
   try {
     return await fetch(url, { ...init, signal: ctrl.signal });
   } catch (e: any) {
-    if (e?.name === "AbortError") {
+    if (signal?.aborted) throw abortError(signal);
+    if (timedOut && e?.name === "AbortError") {
       const err = new Error(`请求超时 (${timeoutMs}ms)`);
       (err as any).isTimeout = true;
       throw err;
@@ -135,6 +161,7 @@ async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: numbe
     throw e;
   } finally {
     clearTimeout(timer);
+    signal?.removeEventListener("abort", onAbort);
   }
 }
 
@@ -149,7 +176,7 @@ async function readErrorBody(res: Response): Promise<string> {
 }
 
 // ---------- 非流式 ----------
-async function runOnce(adapter: Adapter, req: TestRequest, attempt: number): Promise<TestResult> {
+async function runOnce(adapter: Adapter, req: TestRequest, attempt: number, signal?: AbortSignal): Promise<TestResult> {
   const url = adapter.buildUrl(req);
   const requestUrl = sanitizeUrl(url, req);
   const headers = withUserAgent(adapter.buildHeaders(req), req.userAgent);
@@ -157,7 +184,7 @@ async function runOnce(adapter: Adapter, req: TestRequest, attempt: number): Pro
   const start = Date.now();
 
   try {
-    const res = await fetchWithTimeout(url, { method: "POST", headers, body }, req.timeoutMs);
+    const res = await fetchWithTimeout(url, { method: "POST", headers, body }, req.timeoutMs, signal);
     if (!res.ok) {
       const errBody = await readErrorBody(res);
       const latencyMs = Date.now() - start;
@@ -176,6 +203,7 @@ async function runOnce(adapter: Adapter, req: TestRequest, attempt: number): Pro
       error: null, requestUrl, attempts: 1,
     };
   } catch (e: any) {
+    if (signal?.aborted) throw abortError(signal);
     const status = e?.isTimeout ? 408 : 0;
     const latencyMs = Date.now() - start;
     const error = e?.message ?? String(e);
@@ -188,7 +216,7 @@ async function runOnce(adapter: Adapter, req: TestRequest, attempt: number): Pro
 }
 
 // ---------- 流式（内部生成器，逐事件 yield，最终 yield done） ----------
-async function* runStreamOnce(adapter: Adapter, req: TestRequest, attempt: number): AsyncGenerator<StreamEvent> {
+async function* runStreamOnce(adapter: Adapter, req: TestRequest, attempt: number, signal?: AbortSignal): AsyncGenerator<StreamEvent> {
   const url = adapter.buildUrl(req);
   const requestUrl = sanitizeUrl(url, req);
   const headers = withUserAgent({ ...adapter.buildHeaders(req), accept: "text/event-stream" }, req.userAgent);
@@ -201,6 +229,9 @@ async function* runStreamOnce(adapter: Adapter, req: TestRequest, attempt: numbe
   // 流式专用的超时控制：连接 + 每次读取之间各自计时（idle 超时）。
   // 上游发完响应头后若挂住不再发数据，idle 计时器到点即 abort，避免读循环无限阻塞。
   const ctrl = new AbortController();
+  const onAbort = () => ctrl.abort(signal?.reason);
+  if (signal?.aborted) onAbort();
+  else signal?.addEventListener("abort", onAbort, { once: true });
   let timedOut = false;
   let timer: ReturnType<typeof setTimeout> | null = null;
   const armTimer = () => {
@@ -214,13 +245,18 @@ async function* runStreamOnce(adapter: Adapter, req: TestRequest, attempt: numbe
     if (timer) clearTimeout(timer);
     timer = null;
   };
+  const cleanup = () => {
+    disarmTimer();
+    signal?.removeEventListener("abort", onAbort);
+  };
 
   let res: Response;
   armTimer();
   try {
     res = await fetch(url, { method: "POST", headers, body, signal: ctrl.signal });
   } catch (e: any) {
-    disarmTimer();
+    cleanup();
+    if (signal?.aborted) return;
     const isTimeout = timedOut || e?.name === "AbortError";
     const status = isTimeout ? 408 : 0;
     const latencyMs = Date.now() - start;
@@ -237,7 +273,7 @@ async function* runStreamOnce(adapter: Adapter, req: TestRequest, attempt: numbe
   }
 
   if (!res.ok || !res.body) {
-    disarmTimer();
+    cleanup();
     const errBody = await readErrorBody(res);
     const error = `HTTP ${res.status}: ${errBody}`;
     const latencyMs = Date.now() - start;
@@ -290,7 +326,7 @@ async function* runStreamOnce(adapter: Adapter, req: TestRequest, attempt: numbe
       armTimer(); // 每次读取前重置 idle 计时器；读到数据或正常结束即解除。
       const { done, value } = await reader.read();
       if (done) {
-        disarmTimer();
+        cleanup();
         break;
       }
       disarmTimer();
@@ -305,7 +341,8 @@ async function* runStreamOnce(adapter: Adapter, req: TestRequest, attempt: numbe
     // 处理残留缓冲
     if (buf.trim()) for (const ev of handleEventBlock(buf)) yield ev;
   } catch (e: any) {
-    disarmTimer();
+    cleanup();
+    if (signal?.aborted) return;
     const isTimeout = timedOut || e?.name === "AbortError" || e?.isTimeout;
     const error = isTimeout ? `流式读取超时 (${req.timeoutMs}ms)` : (e?.message ?? String(e));
     const status = isTimeout ? 408 : 0;
@@ -321,6 +358,7 @@ async function* runStreamOnce(adapter: Adapter, req: TestRequest, attempt: numbe
     return;
   }
 
+  cleanup();
   yield {
     type: "done",
     result: { ok: true, status: res.status, latencyMs: Date.now() - start, ttftMs, usage, text: truncate(text), error: null, requestUrl, attempts: 1 },
@@ -328,7 +366,8 @@ async function* runStreamOnce(adapter: Adapter, req: TestRequest, attempt: numbe
 }
 
 // ---------- 对外：非流式（含重试） ----------
-export async function runTest(req: TestRequest): Promise<TestResult> {
+export async function runTest(req: TestRequest, signal?: AbortSignal): Promise<TestResult> {
+  signal?.throwIfAborted();
   const adapter = getAdapter(req.protocol);
   if (!adapter) {
     return { ok: false, status: 0, latencyMs: 0, ttftMs: null, usage: { ...EMPTY_USAGE }, text: "", error: `未知协议: ${req.protocol}`, requestUrl: null, attempts: 0 };
@@ -336,20 +375,20 @@ export async function runTest(req: TestRequest): Promise<TestResult> {
 
   let last: TestResult | null = null;
   for (let attempt = 1; attempt <= req.maxRetries + 1; attempt++) {
-    const r = await runOnce(adapter, req, attempt);
+    const r = await runOnce(adapter, req, attempt, signal);
     r.attempts = attempt;
     if (r.ok || !retryable(r.status) || attempt > req.maxRetries) {
       return r;
     }
     last = r;
-    await sleep(Math.min(500 * 2 ** (attempt - 1), 4000)); // 指数退避，封顶 4s
+    await sleep(Math.min(500 * 2 ** (attempt - 1), 4000), signal); // 指数退避，封顶 4s
   }
   return last!;
 }
 
 // ---------- 对外：流式（含重试，整轮失败才重试） ----------
 // 返回一个 SSE 字符串的 ReadableStream，供 Hono c.body 直接返回。
-export function runTestStream(req: TestRequest): ReadableStream<Uint8Array> {
+export function runTestStream(req: TestRequest, signal?: AbortSignal): ReadableStream<Uint8Array> {
   const adapter = getAdapter(req.protocol);
   const encoder = new TextEncoder();
 
@@ -368,7 +407,7 @@ export function runTestStream(req: TestRequest): ReadableStream<Uint8Array> {
         let finalResult: TestResult | null = null;
         let producedDelta = false;
 
-        for await (const ev of runStreamOnce(adapter, req, attempt)) {
+        for await (const ev of runStreamOnce(adapter, req, attempt, signal)) {
           if (ev.type === "done") {
             finalResult = ev.result;
             finalResult.attempts = attempt;
@@ -391,7 +430,15 @@ export function runTestStream(req: TestRequest): ReadableStream<Uint8Array> {
           return;
         }
 
-        await sleep(Math.min(500 * 2 ** (attempt - 1), 4000));
+        try {
+          await sleep(Math.min(500 * 2 ** (attempt - 1), 4000), signal);
+        } catch (error) {
+          if (signal?.aborted) {
+            controller.close();
+            return;
+          }
+          throw error;
+        }
       }
       controller.close();
     },

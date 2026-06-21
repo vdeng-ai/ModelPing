@@ -81,6 +81,7 @@ export interface ConfigState {
   maxRetries: number;
   maxTokens: number;
   userAgent: string;
+  concurrency: number;
 }
 
 export function loadConfig(): Partial<ConfigState> | null {
