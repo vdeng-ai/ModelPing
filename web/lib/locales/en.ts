@@ -82,6 +82,7 @@ export const en = {
   config: {
     title: "Test Settings",
     input: "Input text",
+    defaultInput: "Hello, please introduce yourself in one sentence.",
     timeoutMs: "Timeout (ms)",
     maxRetries: "Max retries",
     maxTokens: "Max output tokens",

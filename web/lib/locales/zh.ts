@@ -82,6 +82,7 @@ export const zh = {
   config: {
     title: "测试设置",
     input: "输入文本",
+    defaultInput: "你好，请用一句话自我介绍。",
     timeoutMs: "超时 (ms)",
     maxRetries: "最大重试",
     maxTokens: "最大输出 token",
