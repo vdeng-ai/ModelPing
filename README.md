@@ -27,7 +27,8 @@ Features:
 - Per-row status lights in the model table: gray (pending) → blue (testing) → green (pass) / red (fail)
 - Batch testing (concurrency 3), custom models, adjustable timeout/retries/maxTokens/input text
 - History (toggleable persistence, copy baseUrl/masked key, export JSON)
-- **Stateless backend**: never stores or logs any API key; keys are forwarded by the browser only at test time
+- Status page: save common provider + model entries, batch-refresh endpoint latency, auto-refresh, and import to cc-switch
+- **Key safety**: the backend never stores API keys in plaintext and never logs them; private working state is saved only as an encrypted blob
 
 ## Quick start (local)
 
@@ -106,7 +107,7 @@ Environment (set in `.env`, or the `environment:` block of `docker-compose.yml`)
 
 Settings persistence (presets shared across devices) uses the file driver by default. `docker-compose.yml` already points `SETTINGS_FILE` to `/data/presets.json` and mounts a named volume `presets-data`, so it survives container rebuilds. When the volume is empty on first run, `/presets.json` falls back to the defaults bundled in the image.
 
-Private working state (history, the history persistence toggle, last connection, test settings, and Status entries, including API keys) is stored server-side as an encrypted blob when `PRIVATE_STATE_SECRET`, `STATUS_SECRET`, or `APP_PASSWORD` is available. For Docker, set a dedicated `PRIVATE_STATE_SECRET` so changing the access password does not make existing state undecryptable. Old sensitive localStorage keys are migrated once and removed; theme/language and non-sensitive preset cache stay local.
+Private working state (history, the history persistence toggle, last connection, test settings, and Status entries, including API keys) is stored server-side as an encrypted blob when `PRIVATE_STATE_SECRET`, `STATUS_SECRET`, or `APP_PASSWORD` is available. For Docker, set a dedicated `PRIVATE_STATE_SECRET` so changing the access password does not make existing state undecryptable. `STATUS_SECRET` is only a legacy fallback; old sensitive localStorage keys are migrated once and removed; theme/language and non-sensitive preset cache stay local.
 
 ### Cloudflare Workers (free tier)
 
@@ -160,7 +161,7 @@ Use `STORAGE_DRIVER` to force a driver, and `SETTINGS_FILE` to override the file
 | `SETTINGS_FILE`         | Presets path for the file driver; defaults to `./web/public/presets.json`    |
 | `PRIVATE_STATE_SECRET`  | Encryption secret for private working state; optional globally, required by the bundled Docker compose; falls back to `STATUS_SECRET`, then `APP_PASSWORD` |
 | `PRIVATE_STATE_FILE`    | File-driver path for encrypted private working state; defaults to `./data/private-state.enc` |
-| `STATUS_SECRET`         | Optional legacy Status encryption secret; also used as private-state fallback |
+| `STATUS_SECRET`         | Optional legacy secret; used only as a private-state fallback                |
 | `BLOB_READ_WRITE_TOKEN` | Vercel Blob token (injected automatically once Blob is added)                |
 | `PORT`                  | Node server listen port; defaults to 8787                                    |
 
@@ -170,6 +171,7 @@ Use `STORAGE_DRIVER` to force a driver, and `SETTINGS_FILE` to override the file
 - Keys in history, last connection, and Status entries are persisted only in the encrypted private-state blob. If private-state persistence is unavailable, they remain in memory for the current browser session and are not written to localStorage; old sensitive localStorage keys are deleted after one migration pass.
 - **CORS is same-origin by default**: when `CORS_ORIGIN` is unset, the backend sends no `Access-Control-Allow-Origin`, so other sites' JS cannot call your `/api`. Configure allowed origins explicitly only when you need cross-site calls.
 - A bare public deployment is effectively an open proxy. For personal Docker use, keep a strong `APP_PASSWORD`, expose it only behind HTTPS, and either set `ALLOWED_HOSTS` or run the bundled `deploy/firewall-egress.sh` network-layer egress guard. `APP_PASSWORD` is compared in constant time to reduce password-enumeration risk.
+- When accessed through a non-local address, the UI shows a non-blocking safety warning if the instance appears to be missing an access password or target-host/private-address restrictions.
 - If you frequently test local/intranet endpoints, leave `BLOCK_PRIVATE_HOSTS` off and rely on the Docker egress firewall rules for what the public instance may reach. For untrusted multi-tenant deployments, set `BLOCK_PRIVATE_HOSTS=1` as an app-level complement; it rejects literal private/loopback/metadata IPs but cannot stop DNS rebinding.
 - The backend never logs keys or request bodies; keys/tokens/authorization in failure logs are redacted.
 
@@ -215,4 +217,4 @@ Released under the [MIT License](./LICENSE) — free to use, modify, and distrib
 
 The default models and curated provider presets are referenced from [farion1231/cc-switch](https://github.com/farion1231/cc-switch) (provider / baseUrl / model / balance endpoints). Each provider's protocols, model ids, and endpoints belong to their respective owners. This tool only forwards and tests; it bundles no API keys and is not responsible for third-party service availability or billing.
 
-Issues and PRs welcome. Before submitting, please make sure `npm run typecheck` and `npm run build` pass.
+Issues and PRs welcome. Before submitting, please make sure `npm run typecheck`, `npm test`, `npm run lint`, and `npm run build` pass.

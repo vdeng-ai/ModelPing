@@ -17,6 +17,8 @@ export const en = {
     pwLabel: "Access password",
     pwEnter: "Enter",
     loadFailed: "Load failed: {msg}",
+    securityWarningTitle: "Public deployment safety",
+    securityWarningBody: "This instance may be missing an access password or target-host/private-address restrictions. For public use, configure APP_PASSWORD plus ALLOWED_HOSTS, BLOCK_PRIVATE_HOSTS, or the egress firewall script.",
     retry: "Retry",
     toastProvidersSaved: "Provider settings saved",
     toastImported: "Configuration imported",

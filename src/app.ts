@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { timingSafeEqual } from "hono/utils/buffer";
-import type { LookupRequest, PingRequest, Protocol, StatusEntry, TestRequest } from "./types.js";
+import type { LookupRequest, PingRequest, Protocol, TestRequest } from "./types.js";
 import { runTest, runTestStream } from "./runner.js";
 import { normalizePresets, FALLBACK_DEFAULTS } from "./presets-schema.js";
 import type { SettingsStore } from "./store/index.js";
@@ -9,7 +9,7 @@ import { fetchModels, modelsTargetUrls } from "./models-fetch.js";
 import { fetchBalance, balanceTargetUrl } from "./balance.js";
 import { pingEndpoint, pingTargetUrls } from "./ping.js";
 import { encrypt, decrypt } from "./crypto.js";
-import { emptyPrivateState, normalizePrivateState, normalizeStatusEntries } from "./private-state.js";
+import { emptyPrivateState, normalizePrivateState } from "./private-state.js";
 import { normalizeUserAgent } from "./user-agent.js";
 import { isPrivateUrl } from "./ssrf.js";
 
@@ -29,20 +29,12 @@ export interface Env {
   BLOCK_PRIVATE_HOSTS?: string;
   // 设置持久化存储（presets）。由各入口按部署平台注入；未注入时走前端纯本地模式。
   store?: SettingsStore;
-  // 状态列表持久化存储（含密钥，加密落盘）。各入口用 createStore(env,"status") 注入。
-  statusStore?: SettingsStore;
   // 私有工作态持久化存储（含历史/连接/参数/状态，加密落盘）。各入口用 createStore(env,"private") 注入。
   privateStore?: SettingsStore;
-  // 状态列表加密密钥源；缺省回退 APP_PASSWORD。两者都缺时禁用状态持久化。
+  // 旧状态页密钥源；仅作为 private-state 的兼容 fallback。
   STATUS_SECRET?: string;
   // 私有工作态加密密钥源；缺省回退 STATUS_SECRET，再回退 APP_PASSWORD。
   PRIVATE_STATE_SECRET?: string;
-}
-
-// 状态列表加密密钥源：优先 STATUS_SECRET，回退 APP_PASSWORD。
-function statusSecret(env?: Env): string | null {
-  const s = (env?.STATUS_SECRET || env?.APP_PASSWORD || "").trim();
-  return s || null;
 }
 
 function privateStateSecret(env?: Env): string | null {
@@ -164,7 +156,18 @@ export function createApp() {
   // 健康检查 + 是否需要口令（前端据此决定要不要弹口令输入）。
   // 必须放在口令中间件之前：前端正是靠它来发现「是否需要口令」，不能被口令挡住。
   app.get("/api/health", (c) => {
-    return c.json({ ok: true, needPassword: Boolean(c.env?.APP_PASSWORD) });
+    const hasAllowedHosts = Boolean((c.env?.ALLOWED_HOSTS ?? "").trim());
+    const blockPrivateHosts = blockPrivate(c.env);
+    return c.json({
+      ok: true,
+      needPassword: Boolean(c.env?.APP_PASSWORD),
+      security: {
+        hasPassword: Boolean(c.env?.APP_PASSWORD),
+        hasAllowedHosts,
+        blockPrivateHosts,
+        shouldWarnOpenProxy: !hasAllowedHosts && !blockPrivateHosts,
+      },
+    });
   });
 
   // 可选访问口令。设置 APP_PASSWORD 后，所有 /api 请求须带 x-app-password。
@@ -246,45 +249,6 @@ export function createApp() {
     }
     state.updatedAt = Date.now();
     await store.put(await encrypt(JSON.stringify(state), secret));
-    return c.json({ ok: true });
-  });
-
-  // ---------- 状态列表持久化（含密钥，加密落盘） ----------
-  // 受 APP_PASSWORD 中间件保护。未配置 statusStore 或无密钥源时：GET 返回 204、PUT 返回 501，
-  // 前端据此回退到「仅本会话内存」模式，绝不明文落本地。
-  app.get("/api/status", async (c) => {
-    const store = c.env?.statusStore;
-    const secret = statusSecret(c.env);
-    if (!store || !secret) return c.body(null, 204);
-    const raw = await store.get();
-    if (!raw) return c.body("[]", 200, { "content-type": "application/json", "cache-control": "no-store" });
-    let json: string;
-    try {
-      json = await decrypt(raw, secret);
-    } catch {
-      // 密钥变更/密文损坏：当作无数据，避免整页报错。
-      return c.body(null, 204);
-    }
-    return c.body(json, 200, { "content-type": "application/json", "cache-control": "no-store" });
-  });
-
-  app.put("/api/status", async (c) => {
-    const store = c.env?.statusStore;
-    const secret = statusSecret(c.env);
-    if (!store || !secret) return c.json({ error: "服务端未配置状态持久化（需 store + APP_PASSWORD/STATUS_SECRET）" }, 501);
-    let raw: unknown;
-    try {
-      raw = await c.req.json();
-    } catch {
-      return c.json({ error: "请求体须为 JSON" }, 400);
-    }
-    let entries: StatusEntry[];
-    try {
-      entries = normalizeStatusEntries(raw);
-    } catch (e: any) {
-      return c.json({ error: e?.message ?? "状态列表校验失败" }, 400);
-    }
-    await store.put(await encrypt(JSON.stringify(entries), secret));
     return c.json({ ok: true });
   });
 

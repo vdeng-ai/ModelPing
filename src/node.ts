@@ -56,8 +56,6 @@ serve({ fetch, port }, (info) => {
   if (env.APP_PASSWORD) console.log("访问口令已启用 (APP_PASSWORD)");
   if (env.ALLOWED_HOSTS) console.log(`目标主机白名单: ${env.ALLOWED_HOSTS}`);
   console.log(env.store ? "设置持久化已启用（跨设备共享）" : "设置持久化未启用（前端本地模式）");
-  const statusReady = env.statusStore && (env.STATUS_SECRET || env.APP_PASSWORD);
-  console.log(statusReady ? "状态持久化已启用（加密落盘）" : "状态持久化未启用（需 store + APP_PASSWORD/STATUS_SECRET，前端走内存模式）");
   const privateReady = env.privateStore && (env.PRIVATE_STATE_SECRET || env.STATUS_SECRET || env.APP_PASSWORD);
   console.log(privateReady ? "私有工作态持久化已启用（加密落盘）" : "私有工作态持久化未启用（需 store + APP_PASSWORD/STATUS_SECRET/PRIVATE_STATE_SECRET）");
 });

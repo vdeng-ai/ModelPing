@@ -78,6 +78,7 @@ export function App() {
   const [persist, setPersistState] = useState<boolean>(true);
   const [toast, setToast] = useState<string | null>(null);
   const [loadErr, setLoadErr] = useState<string | null>(null);
+  const [securityWarn, setSecurityWarn] = useState(false);
 
   // 口令门：need=后端要求口令，authed=已通过。
   const [needPassword, setNeedPassword] = useState(false);
@@ -142,6 +143,11 @@ export function App() {
     setTimeout(() => setToast(null), 1800);
   };
 
+  const isLocalOrigin = () => {
+    const host = window.location.hostname.toLowerCase();
+    return host === "localhost" || host === "127.0.0.1" || host === "::1" || host.endsWith(".localhost");
+  };
+
   // 模型检测引擎（单行 4 协议探测 + 并发池）已抽到 useDetect；busy 由其持有。
   const { busy, progress, runBatch, cancelBatch } = useDetect({
     connRef,
@@ -171,6 +177,8 @@ export function App() {
     setLoadErr(null);
     try {
       const health = await fetchHealth();
+      const security = health.security;
+      setSecurityWarn(Boolean(security && !isLocalOrigin() && (!security.hasPassword || security.shouldWarnOpenProxy)));
       if (health.needPassword) {
         setNeedPassword(true);
         const saved = sessionStorage.getItem("app_password");
@@ -527,6 +535,13 @@ export function App() {
         <section class="panel">
           <div class="status-text fail">{t("app.loadFailed", { msg: loadErr })}</div>
           <div class="actions"><button onClick={init}>{t("app.retry")}</button></div>
+        </section>
+      ) : null}
+
+      {securityWarn ? (
+        <section class="security-warning" role="status">
+          <strong>{t("app.securityWarningTitle")}</strong>
+          <span>{t("app.securityWarningBody")}</span>
         </section>
       ) : null}
 

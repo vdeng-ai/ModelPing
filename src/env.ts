@@ -5,7 +5,6 @@ import { createStore, type StoreEnv } from "./store/index.js";
 // This keeps auth, SSRF controls, and encrypted stores from drifting by platform.
 export async function buildAppEnv(raw: StoreEnv & Record<string, unknown>): Promise<Env> {
   const store = await createStore(raw);
-  const statusStore = await createStore(raw, "status");
   const privateStore = await createStore(raw, "private");
 
   return {
@@ -16,7 +15,6 @@ export async function buildAppEnv(raw: StoreEnv & Record<string, unknown>): Prom
     STATUS_SECRET: typeof raw.STATUS_SECRET === "string" ? raw.STATUS_SECRET : undefined,
     PRIVATE_STATE_SECRET: typeof raw.PRIVATE_STATE_SECRET === "string" ? raw.PRIVATE_STATE_SECRET : undefined,
     store: store ?? undefined,
-    statusStore: statusStore ?? undefined,
     privateStore: privateStore ?? undefined,
   };
 }

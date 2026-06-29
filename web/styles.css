@@ -155,6 +155,22 @@ header.top .spacer { flex: 1; }
 .hint { color: var(--text-dim); font-size: 11px; }
 .hint.fail { color: var(--red); }
 
+.security-warning {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: -2px 0 16px;
+  padding: 9px 12px;
+  border: 1px solid color-mix(in srgb, var(--yellow) 55%, var(--border));
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--yellow) 12%, var(--panel));
+  color: var(--text);
+  font-size: 12px;
+}
+.security-warning strong { color: var(--yellow); }
+.security-warning span { color: var(--text-dim); }
+
 .key-wrap { display: flex; gap: 6px; align-items: center; }
 .key-wrap input { flex: 1; }
 

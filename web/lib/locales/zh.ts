@@ -17,6 +17,8 @@ export const zh = {
     pwLabel: "访问口令",
     pwEnter: "进入",
     loadFailed: "加载失败：{msg}",
+    securityWarningTitle: "公网部署安全提醒",
+    securityWarningBody: "当前实例可能缺少访问口令或目标主机/私有地址限制。公网使用建议配置 APP_PASSWORD，并设置 ALLOWED_HOSTS、BLOCK_PRIVATE_HOSTS，或运行出站防火墙脚本。",
     retry: "重试",
     toastProvidersSaved: "供应商设置已保存",
     toastImported: "配置已导入",
