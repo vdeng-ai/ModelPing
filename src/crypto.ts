@@ -1,6 +1,6 @@
-// 轻量对称加密（AES-256-GCM），用于状态列表（含 apiKey）落盘前加密。
+// 轻量对称加密（AES-256-GCM），用于私有工作态（含 apiKey）落盘前加密。
 // 零依赖：用 WebCrypto（globalThis.crypto.subtle），Node 20+ / Workers / Vercel 均可用。
-// 密钥由 STATUS_SECRET || APP_PASSWORD 经 PBKDF2(SHA-256) 派生；每次加密用随机 salt+iv。
+// 密钥由 PRIVATE_STATE_SECRET || STATUS_SECRET || APP_PASSWORD 经 PBKDF2(SHA-256) 派生；每次加密用随机 salt+iv。
 // 落盘格式：JSON { v:1, salt, iv, ct }（均 base64）。
 
 const PBKDF2_ITERS = 120_000;

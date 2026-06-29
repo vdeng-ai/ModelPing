@@ -15,4 +15,22 @@ describe("runtime env injection", () => {
     }), env);
     expect(allowed.status).toBe(204);
   });
+
+  it("exposes runtime safety flags in health", async () => {
+    const app = createApp();
+    const env = await buildAppEnv({ APP_PASSWORD: "pw", ALLOWED_HOSTS: "api.example.com", STORAGE_DRIVER: "none" });
+
+    const res = await app.fetch(new Request("http://x.test/api/health"), env);
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toMatchObject({
+      ok: true,
+      needPassword: true,
+      security: {
+        hasPassword: true,
+        hasAllowedHosts: true,
+        blockPrivateHosts: false,
+        shouldWarnOpenProxy: false,
+      },
+    });
+  });
 });

@@ -5,7 +5,7 @@ import type { SettingsStore } from "./types.js";
 // 需环境变量 BLOB_READ_WRITE_TOKEN（Vercel 项目接入 Blob 后自动注入）。
 // 固定 pathname（addRandomSuffix:false）+ allowOverwrite，读时按前缀 list 再 fetch。
 export class VercelBlobStore implements SettingsStore {
-  // pathname 默认存预设；状态列表用 settings/status.enc（密文）。
+  // pathname 默认存预设；私有工作态用 settings/private-state.enc（密文）。
   constructor(
     private readonly token?: string,
     private readonly pathname: string = "settings/presets.json",

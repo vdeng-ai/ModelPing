@@ -8,7 +8,7 @@ interface KVNamespace {
 }
 
 export class CfKvStore implements SettingsStore {
-  // key 默认 "presets"；状态列表用 "status"，与预设分开存。
+  // key 默认 "presets"；私有工作态用 "private"，与预设分开存。
   constructor(
     private readonly kv: KVNamespace,
     private readonly key: string = "presets",

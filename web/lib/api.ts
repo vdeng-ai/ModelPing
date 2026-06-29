@@ -1,4 +1,4 @@
-import type { Balance, ModelsResult, PingResult, PresetsResponse, PrivateState, StatusEntry, StreamEvent, TestResult, Usage } from "./types.js";
+import type { Balance, ModelsResult, PingResult, PresetsResponse, PrivateState, StreamEvent, TestResult, Usage } from "./types.js";
 import { normalizePresets } from "./presets.js";
 import { drainSseBlocks, extractSseData } from "../../src/sse.js";
 
@@ -31,7 +31,18 @@ export interface TestPayload {
   userAgent?: string;
 }
 
-export async function fetchHealth(): Promise<{ ok: boolean; needPassword: boolean }> {
+export interface HealthResponse {
+  ok: boolean;
+  needPassword: boolean;
+  security?: {
+    hasPassword: boolean;
+    hasAllowedHosts: boolean;
+    blockPrivateHosts: boolean;
+    shouldWarnOpenProxy: boolean;
+  };
+}
+
+export async function fetchHealth(): Promise<HealthResponse> {
   const res = await fetch("/api/health");
   // 非 2xx（如反代 5xx / 返回 HTML 错误页）直接 res.json() 会抛解析错，
   // 这里显式判 ok 并回退，避免初始化整体崩在一个无信息的 SyntaxError。
@@ -196,38 +207,6 @@ export async function pingEndpoint(payload: PingPayload, signal?: AbortSignal): 
   } catch (e: any) {
     return { ok: false, status: res.status, latencyMs: 0, kind: "models", error: `响应解析失败: ${e?.message ?? e}` };
   }
-}
-
-// 拉取后端持久化的状态列表（加密存储）。204/501 表示未配置 → 返回 null，调用方走内存模式。
-export async function fetchStatus(): Promise<StatusEntry[] | null> {
-  const res = await fetch("/api/status", { headers: authHeaders(), cache: "no-cache" });
-  if (res.status === 204) return null;
-  if (!res.ok) return null;
-  try {
-    const arr = await res.json();
-    return Array.isArray(arr) ? arr : [];
-  } catch {
-    return null;
-  }
-}
-
-// 写回状态列表。返回 false 表示服务端未配置状态持久化（501）；其他错误抛出。
-export async function saveStatus(entries: StatusEntry[]): Promise<boolean> {
-  const res = await fetch("/api/status", {
-    method: "PUT",
-    headers: { "content-type": "application/json", ...authHeaders() },
-    body: JSON.stringify(entries),
-  });
-  if (res.status === 501) return false;
-  if (!res.ok) {
-    let msg = `HTTP ${res.status}`;
-    try {
-      const j: any = await res.json();
-      if (j?.error) msg = j.error;
-    } catch {}
-    throw new Error(msg);
-  }
-  return true;
 }
 
 // 查询供应商余额/额度（经后端代理）。
