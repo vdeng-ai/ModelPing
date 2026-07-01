@@ -1,7 +1,9 @@
 name: Build and push Docker image
 
-# push 到 main（或打 v* tag）时，自动构建多架构镜像并推送到 GHCR。
+# push 到 main（或打 v* tag）时，自动构建 amd64 镜像并推送到 GHCR。
 # 用仓库内置的 GITHUB_TOKEN 登录，无需额外配置 secret。
+# 只构建 amd64：部署盒子为 x86_64，无需 arm64。避免 QEMU 交叉构建下
+# esbuild 安装期自检 (esbuild --version) 触发 ETXTBSY 导致 npm ci 失败。
 on:
   push:
     branches: [main]
@@ -17,7 +19,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: docker/setup-qemu-action@v3      # 多架构交叉构建
       - uses: docker/setup-buildx-action@v3
 
       - uses: docker/login-action@v3
@@ -39,7 +40,7 @@ jobs:
       - uses: docker/build-push-action@v6
         with:
           context: .
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/amd64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
