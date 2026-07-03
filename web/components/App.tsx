@@ -10,7 +10,7 @@ import {
 import { initTheme } from "../lib/theme.js";
 import { ConnectionPanel, type ConnValue } from "./ConnectionPanel.js";
 import { ConfigPanel } from "./ConfigPanel.js";
-import { ModelTable, freshProbes, type ModelRow } from "./ModelTable.js";
+import { ModelTable } from "./ModelTable.js";
 import { HistoryPanel } from "./HistoryPanel.js";
 import { ThemeToggle } from "./ThemeToggle.js";
 import { LangToggle } from "./LangToggle.js";
@@ -19,51 +19,14 @@ import { StatusPanel } from "./StatusPanel.js";
 import { initLang, useI18n } from "../lib/i18n.js";
 import { useDetect } from "./useDetect.js";
 import { migrateLegacyPrivateState } from "../lib/storage.js";
+import { buildRows, freshProbes, nextModelRowKey, selectRowsForProvider, type ModelRow } from "../lib/model-rows.js";
 
-let rowSeq = 0;
-const nextKey = () => `r${++rowSeq}`;
 let statusSeq = 0;
 const nextStatusId = () => `s${Date.now()}-${++statusSeq}`;
 const MAX_HISTORY = 200;
 type PrivateStateScope = "full" | "config" | "none";
 
 type StatusDraft = Omit<StatusEntry, "id">;
-
-// 由全部供应商预设生成按官方名去重的模型行（每行含 4 个 idle 协议探针）。
-function buildRows(providers: ProviderPreset[], selectedProviderId = CUSTOM_PROVIDER_ID): ModelRow[] {
-  const byLabel = new Map<string, ModelRow>();
-  for (const provider of providers) {
-    for (const m of provider.models) {
-      const label = (m.label ?? m.id).trim();
-      if (!label) continue;
-      const existing = byLabel.get(label);
-      if (existing) {
-        existing.modelByProvider[provider.id] = m.id;
-        if (selectedProviderId !== CUSTOM_PROVIDER_ID && provider.id === selectedProviderId) {
-          existing.checked = true;
-        }
-      } else {
-        byLabel.set(label, {
-          key: nextKey(),
-          label,
-          modelByProvider: { [provider.id]: m.id },
-          custom: false,
-          checked: selectedProviderId !== CUSTOM_PROVIDER_ID && provider.id === selectedProviderId,
-          probes: freshProbes(),
-        });
-      }
-    }
-  }
-  return [...byLabel.values()];
-}
-
-function selectRowsForProvider(rows: ModelRow[], providerId: string): ModelRow[] {
-  return rows.map((row) => ({
-    ...row,
-    checked: providerId === CUSTOM_PROVIDER_ID ? row.custom : !row.custom && providerId in row.modelByProvider,
-    probes: freshProbes(),
-  }));
-}
 
 export function App() {
   const { t, lang } = useI18n();
@@ -408,7 +371,7 @@ export function App() {
       return [
         ...rs,
         {
-          key: nextKey(),
+          key: nextModelRowKey(),
           label: model,
           modelByProvider: {},
           custom: true,
@@ -478,7 +441,7 @@ export function App() {
           next[idx] = { ...existing, checked: true, probes: freshProbes() };
         } else {
           next.push({
-            key: nextKey(),
+            key: nextModelRowKey(),
             label: model,
             modelByProvider: {},
             custom: true,

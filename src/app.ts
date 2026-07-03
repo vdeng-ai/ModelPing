@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import type { Context } from "hono";
 import { cors } from "hono/cors";
 import { timingSafeEqual } from "hono/utils/buffer";
 import type { DualTestResult, LookupRequest, PingRequest, TestRequest } from "./types.js";
@@ -37,6 +38,8 @@ export interface Env {
   // 私有工作态持久化范围：full=全部；config=连接/参数/状态页，不保存历史；none=关闭。
   PRIVATE_STATE_SCOPE?: string;
 }
+
+type AppContext = Context<{ Bindings: Env }>;
 
 function privateStateSecret(env?: Env): string | null {
   const s = (env?.PRIVATE_STATE_SECRET || env?.STATUS_SECRET || env?.APP_PASSWORD || "").trim();
@@ -185,6 +188,23 @@ function hostAllowed(baseUrl: string, allowed?: string): boolean {
   }
 }
 
+async function readJsonBody(c: AppContext): Promise<{ raw: unknown } | { response: Response }> {
+  try {
+    return { raw: await c.req.json() };
+  } catch {
+    return { response: c.json({ error: "请求体须为 JSON" }, 400) };
+  }
+}
+
+function targetPolicyError(targets: Iterable<string | null | undefined>, env?: Env): string | null {
+  for (const target of targets) {
+    if (!target) continue;
+    if (!hostAllowed(target, env?.ALLOWED_HOSTS)) return "目标主机不在允许列表内";
+    if (blockPrivate(env) && isPrivateUrl(target)) return "目标主机为私有/本地地址，已被禁止";
+  }
+  return null;
+}
+
 // 校验「余额/模型」查询请求体（仅需 baseUrl + apiKey）。
 function normalizeLookup(raw: any): { req?: LookupRequest; error?: string } {
   if (!raw || typeof raw !== "object") return { error: "请求体非法" };
@@ -283,15 +303,11 @@ export function createApp() {
   app.put("/api/settings", async (c) => {
     const store = c.env?.store;
     if (!store) return c.json({ error: "服务端未配置持久化存储" }, 501);
-    let raw: unknown;
-    try {
-      raw = await c.req.json();
-    } catch {
-      return c.json({ error: "请求体须为 JSON" }, 400);
-    }
+    const parsed = await readJsonBody(c);
+    if ("response" in parsed) return parsed.response;
     let normalized;
     try {
-      normalized = normalizePresets(raw);
+      normalized = normalizePresets(parsed.raw);
     } catch (e: any) {
       return c.json({ error: e?.message ?? "预设校验失败" }, 400);
     }
@@ -325,15 +341,11 @@ export function createApp() {
     const store = c.env?.privateStore;
     const secret = privateStateSecret(c.env);
     if (!store || !secret || scope === "none") return c.json({ error: "服务端未配置私有工作态持久化（需 store + PRIVATE_STATE_SECRET/STATUS_SECRET/APP_PASSWORD）" }, 501);
-    let raw: unknown;
-    try {
-      raw = await c.req.json();
-    } catch {
-      return c.json({ error: "请求体须为 JSON" }, 400);
-    }
+    const parsed = await readJsonBody(c);
+    if ("response" in parsed) return parsed.response;
     let state;
     try {
-      state = normalizePrivateState(raw);
+      state = normalizePrivateState(parsed.raw);
     } catch (e: any) {
       return c.json({ error: e?.message ?? "私有工作态校验失败" }, 400);
     }
@@ -345,22 +357,14 @@ export function createApp() {
 
   // 核心测试端点。stream=true 时返回 SSE，否则返回 JSON。
   app.post("/api/test", async (c) => {
-    let raw: any;
-    try {
-      raw = await c.req.json();
-    } catch {
-      return c.json({ error: "请求体须为 JSON" }, 400);
-    }
+    const parsed = await readJsonBody(c);
+    if ("response" in parsed) return parsed.response;
 
-    const { req, error } = normalize(raw);
+    const { req, error } = normalize(parsed.raw);
     if (error || !req) return c.json({ error: error ?? "参数错误" }, 400);
 
-    if (!hostAllowed(req.baseUrl, c.env?.ALLOWED_HOSTS)) {
-      return c.json({ error: "目标主机不在允许列表内" }, 403);
-    }
-    if (blockPrivate(c.env) && isPrivateUrl(req.baseUrl)) {
-      return c.json({ error: "目标主机为私有/本地地址，已被禁止" }, 403);
-    }
+    const targetError = targetPolicyError([req.baseUrl], c.env);
+    if (targetError) return c.json({ error: targetError }, 403);
 
     if (req.stream) {
       const stream = runTestStream(req, c.req.raw.signal);
@@ -386,22 +390,14 @@ export function createApp() {
 
   // 合并探测端点：一次 Worker 请求内并行完成非流式与流式探测，降低免费版请求数。
   app.post("/api/test-dual", async (c) => {
-    let raw: any;
-    try {
-      raw = await c.req.json();
-    } catch {
-      return c.json({ error: "请求体须为 JSON" }, 400);
-    }
+    const parsed = await readJsonBody(c);
+    if ("response" in parsed) return parsed.response;
 
-    const { req, error } = normalize(raw);
+    const { req, error } = normalize(parsed.raw);
     if (error || !req) return c.json({ error: error ?? "参数错误" }, 400);
 
-    if (!hostAllowed(req.baseUrl, c.env?.ALLOWED_HOSTS)) {
-      return c.json({ error: "目标主机不在允许列表内" }, 403);
-    }
-    if (blockPrivate(c.env) && isPrivateUrl(req.baseUrl)) {
-      return c.json({ error: "目标主机为私有/本地地址，已被禁止" }, 403);
-    }
+    const targetError = targetPolicyError([req.baseUrl], c.env);
+    if (targetError) return c.json({ error: targetError }, 403);
 
     try {
       return c.json(await runDualTest(req, c.req.raw.signal));
@@ -415,24 +411,14 @@ export function createApp() {
 
   // 拉取供应商模型列表（GET 各家 /models 端点，经后端避开 CORS）。
   app.post("/api/models", async (c) => {
-    let raw: any;
-    try {
-      raw = await c.req.json();
-    } catch {
-      return c.json({ error: "请求体须为 JSON" }, 400);
-    }
-    const { req, error } = normalizeLookup(raw);
+    const parsed = await readJsonBody(c);
+    if ("response" in parsed) return parsed.response;
+    const { req, error } = normalizeLookup(parsed.raw);
     if (error || !req) return c.json({ error: error ?? "参数错误" }, 400);
 
     // 对每个候选目标 URL 做 allowlist 校验，任一不在列表即拒绝。
-    for (const target of modelsTargetUrls(req)) {
-      if (!hostAllowed(target, c.env?.ALLOWED_HOSTS)) {
-        return c.json({ error: "目标主机不在允许列表内" }, 403);
-      }
-      if (blockPrivate(c.env) && isPrivateUrl(target)) {
-        return c.json({ error: "目标主机为私有/本地地址，已被禁止" }, 403);
-      }
-    }
+    const targetError = targetPolicyError(modelsTargetUrls(req), c.env);
+    if (targetError) return c.json({ error: targetError }, 403);
     try {
       return c.json(await fetchModels(req));
     } catch (e: any) {
@@ -442,22 +428,14 @@ export function createApp() {
 
   // 查询供应商余额/额度（按 host 匹配已知端点；不支持的 host 返回 supported:false）。
   app.post("/api/balance", async (c) => {
-    let raw: any;
-    try {
-      raw = await c.req.json();
-    } catch {
-      return c.json({ error: "请求体须为 JSON" }, 400);
-    }
-    const { req, error } = normalizeLookup(raw);
+    const parsed = await readJsonBody(c);
+    if ("response" in parsed) return parsed.response;
+    const { req, error } = normalizeLookup(parsed.raw);
     if (error || !req) return c.json({ error: error ?? "参数错误" }, 400);
 
     const target = balanceTargetUrl(req.baseUrl);
-    if (target && !hostAllowed(target, c.env?.ALLOWED_HOSTS)) {
-      return c.json({ error: "目标主机不在允许列表内" }, 403);
-    }
-    if (target && blockPrivate(c.env) && isPrivateUrl(target)) {
-      return c.json({ error: "目标主机为私有/本地地址，已被禁止" }, 403);
-    }
+    const targetError = targetPolicyError([target], c.env);
+    if (targetError) return c.json({ error: targetError }, 403);
     try {
       return c.json(await fetchBalance(req));
     } catch (e: any) {
@@ -467,24 +445,14 @@ export function createApp() {
 
   // 端点延迟测速（不消耗 token）。优先 GET /models，无该端点时回退最小补全。
   app.post("/api/ping", async (c) => {
-    let raw: any;
-    try {
-      raw = await c.req.json();
-    } catch {
-      return c.json({ error: "请求体须为 JSON" }, 400);
-    }
-    const { req, error } = normalizePing(raw);
+    const parsed = await readJsonBody(c);
+    if ("response" in parsed) return parsed.response;
+    const { req, error } = normalizePing(parsed.raw);
     if (error || !req) return c.json({ error: error ?? "参数错误" }, 400);
 
     // 校验本次测速会请求的目标主机（/models 与补全回退同 host，host 校验已覆盖）。
-    for (const target of pingTargetUrls(req)) {
-      if (!hostAllowed(target, c.env?.ALLOWED_HOSTS)) {
-        return c.json({ error: "目标主机不在允许列表内" }, 403);
-      }
-      if (blockPrivate(c.env) && isPrivateUrl(target)) {
-        return c.json({ error: "目标主机为私有/本地地址，已被禁止" }, 403);
-      }
-    }
+    const targetError = targetPolicyError(pingTargetUrls(req), c.env);
+    if (targetError) return c.json({ error: targetError }, 403);
     try {
       return c.json(await pingEndpoint(req, c.req.raw.signal));
     } catch (e: any) {

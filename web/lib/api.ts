@@ -5,6 +5,19 @@ import { drainSseBlocks, extractSseData } from "../../src/sse.js";
 // 空用量（探测失败/无结果时的占位）。前后端共享同一形状。
 export const EMPTY_USAGE: Usage = { inputTokens: null, outputTokens: null, totalTokens: null };
 
+function failedTestResult(error: string, status = 0): TestResult {
+  return {
+    ok: false, status, latencyMs: 0, ttftMs: null,
+    usage: { ...EMPTY_USAGE },
+    text: "", error, requestUrl: null, attempts: 0,
+  };
+}
+
+function failedDualResult(error: string, status = 0): DualTestResult {
+  const failed = failedTestResult(error, status);
+  return { json: failed, stream: failed, streamVerdict: "none", streamTtftMs: null };
+}
+
 // 访问口令（可选）。若后端启用 APP_PASSWORD，前端把口令存内存 + sessionStorage。
 let appPassword: string | null = sessionStorage.getItem("app_password");
 
@@ -248,28 +261,16 @@ export async function runTestJson(payload: TestPayload, signal?: AbortSignal): P
       signal,
     });
   } catch (e: any) {
-    return {
-      ok: false, status: 0, latencyMs: 0, ttftMs: null,
-      usage: EMPTY_USAGE,
-      text: "", error: e?.message ?? String(e), requestUrl: null, attempts: 0,
-    };
+    return failedTestResult(e?.message ?? String(e));
   }
   if (!res.ok) {
     const msg = await parseErrorMessage(res);
-    return {
-      ok: false, status: res.status, latencyMs: 0, ttftMs: null,
-      usage: EMPTY_USAGE,
-      text: "", error: msg, requestUrl: null, attempts: 0,
-    };
+    return failedTestResult(msg, res.status);
   }
   try {
     return await res.json();
   } catch (e: any) {
-    return {
-      ok: false, status: res.status, latencyMs: 0, ttftMs: null,
-      usage: EMPTY_USAGE,
-      text: "", error: `响应解析失败: ${e?.message ?? e}`, requestUrl: null, attempts: 0,
-    };
+    return failedTestResult(`响应解析失败: ${e?.message ?? e}`, res.status);
   }
 }
 
@@ -283,33 +284,18 @@ export async function runTestDual(payload: TestPayload, signal?: AbortSignal): P
       signal,
     });
   } catch (e: any) {
-    const failed: TestResult = {
-      ok: false, status: 0, latencyMs: 0, ttftMs: null,
-      usage: EMPTY_USAGE,
-      text: "", error: e?.message ?? String(e), requestUrl: null, attempts: 0,
-    };
-    return { json: failed, stream: failed, streamVerdict: "none", streamTtftMs: null };
+    return failedDualResult(e?.message ?? String(e));
   }
 
   if (!res.ok) {
     const msg = await parseErrorMessage(res);
-    const failed: TestResult = {
-      ok: false, status: res.status, latencyMs: 0, ttftMs: null,
-      usage: EMPTY_USAGE,
-      text: "", error: msg, requestUrl: null, attempts: 0,
-    };
-    return { json: failed, stream: failed, streamVerdict: "none", streamTtftMs: null };
+    return failedDualResult(msg, res.status);
   }
 
   try {
     return await res.json();
   } catch (e: any) {
-    const failed: TestResult = {
-      ok: false, status: res.status, latencyMs: 0, ttftMs: null,
-      usage: EMPTY_USAGE,
-      text: "", error: `响应解析失败: ${e?.message ?? e}`, requestUrl: null, attempts: 0,
-    };
-    return { json: failed, stream: failed, streamVerdict: "none", streamTtftMs: null };
+    return failedDualResult(`响应解析失败: ${e?.message ?? e}`, res.status);
   }
 }
 
@@ -329,22 +315,14 @@ export async function runTestStream(
       signal,
     });
   } catch (e: any) {
-    const result: TestResult = {
-      ok: false, status: 0, latencyMs: 0, ttftMs: null,
-      usage: EMPTY_USAGE,
-      text: "", error: e?.message ?? String(e), requestUrl: null, attempts: 0,
-    };
+    const result = failedTestResult(e?.message ?? String(e));
     onEvent({ type: "error", error: result.error!, status: 0 });
     return result;
   }
 
   if (!res.ok || !res.body) {
     const msg = await parseErrorMessage(res);
-    const result: TestResult = {
-      ok: false, status: res.status, latencyMs: 0, ttftMs: null,
-      usage: EMPTY_USAGE,
-      text: "", error: msg, requestUrl: null, attempts: 0,
-    };
+    const result = failedTestResult(msg, res.status);
     onEvent({ type: "error", error: msg, status: res.status });
     return result;
   }
@@ -379,20 +357,8 @@ export async function runTestStream(
     if (buf.trim()) handleBlock(buf);
   } catch (e: any) {
     // 流读取异常（连接中断等）：若已收到 done 则用之，否则返回错误结果。
-    return (
-      finalResult ?? {
-        ok: false, status: 0, latencyMs: 0, ttftMs: null,
-        usage: EMPTY_USAGE,
-        text: "", error: e?.message ?? String(e), requestUrl: null, attempts: 0,
-      }
-    );
+    return finalResult ?? failedTestResult(e?.message ?? String(e));
   }
 
-  return (
-    finalResult ?? {
-      ok: false, status: 0, latencyMs: 0, ttftMs: null,
-      usage: EMPTY_USAGE,
-      text: "", error: "流式未返回最终结果", requestUrl: null, attempts: 0,
-    }
-  );
+  return finalResult ?? failedTestResult("流式未返回最终结果");
 }
