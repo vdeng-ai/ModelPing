@@ -1,6 +1,6 @@
 services:
   modelping:
-    # 默认用 GitHub Actions 构建并推到 GHCR 的镜像（push 到 main 自动出新 latest）。
+    # 默认用 GitHub Actions 手动或 v* tag 构建并推到 GHCR；不随 main push 自动更新。
     # 首次推送后到 GitHub 仓库 Packages 把该镜像设为 Public，Watchtower 才能免登录拉取。
     # 想在盒子上本地构建，把下面一行换成 `build: .`。
     image: ghcr.io/deng-wei/modelping:latest

@@ -1,6 +1,6 @@
-import type { ConfigState, ConnState, HistoryEntry, PrivateState, Protocol, StatusEntry, TestResult } from "./types.js";
+import type { ConfigState, ConnState, HistoryEntry, PrivateState, StatusEntry, TestResult } from "./types.js";
+import { protocolOf } from "./protocols.js";
 
-const PROTOCOLS: Protocol[] = ["openai-chat", "openai-responses", "gemini", "anthropic"];
 export const MAX_PRIVATE_HISTORY = 200;
 
 export function emptyPrivateState(): PrivateState {
@@ -13,11 +13,6 @@ export function emptyPrivateState(): PrivateState {
     statusEntries: [],
     updatedAt: Date.now(),
   };
-}
-
-function protocolOf(value: unknown): Protocol | null {
-  const protocol = String(value ?? "").trim();
-  return PROTOCOLS.includes(protocol as Protocol) ? protocol as Protocol : null;
 }
 
 function intOrNull(value: unknown, min: number, max: number): number | null {

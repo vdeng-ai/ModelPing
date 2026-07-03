@@ -61,7 +61,6 @@ export interface ProviderPreset {
 
 export interface Defaults {
   input: string;
-  stream: boolean;
   timeoutMs: number;
   maxRetries: number;
   maxTokens: number;

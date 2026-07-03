@@ -17,7 +17,7 @@ Supported protocols:
 
 Features:
 
-- Pick a provider to auto-fill its baseUrl; each model auto-probes the 4 protocols
+- Pick a provider to auto-fill its baseUrl; each model auto-probes provider-appropriate protocols
 - Auto-detects non-streaming and streaming (SSE) availability
 - **Balance lookup**: identifies the provider by baseUrl host and queries remaining credit/quota in one click (DeepSeek, SiliconFlow, OpenRouter, StepFun, Novita, …)
 - **Model list fetch**: pulls available models from the provider's `/models` endpoint; search, multi-select in a modal, and batch-add to the test table
@@ -25,7 +25,7 @@ Features:
 - Optional custom User-Agent presets for coding-plan upstreams that gate access by client UA; applies consistently to model tests, stream checks, model listing, and balance lookup
 - Reports total latency, time-to-first-token (TTFT, streaming), and input/output/total tokens
 - Per-row status lights in the model table: gray (pending) → blue (testing) → green (pass) / red (fail)
-- Batch testing (concurrency 3), custom models, adjustable timeout/retries/maxTokens/input text
+- Batch testing (default concurrency 2), custom models, adjustable timeout/retries/maxTokens/input text
 - History (toggleable persistence, copy baseUrl/masked key, export JSON)
 - Status page: save common provider + model entries, batch-refresh endpoint latency, auto-refresh, and import to cc-switch
 - **Key safety**: the backend never stores API keys in plaintext and never logs them; private working state is saved only as an encrypted blob
@@ -70,9 +70,10 @@ A set of default models and curated providers is bundled, maintained with refere
 | ---------------- | ------------------------------------------------ |
 | Input text       | 你好，请用一句话自我介绍。                        |
 | Transport        | Auto-probe non-streaming and streaming           |
-| Timeout          | 60000 ms                                          |
+| Timeout          | 30000 ms                                          |
 | Max retries      | 1 (exponential backoff; only network/timeout/429/5xx) |
-| Max output tokens| 1024                                             |
+| Max output tokens| 512                                              |
+| Concurrency      | 2                                                |
 | User-Agent       | Empty (do not override runtime default)          |
 
 ## Deployment
@@ -152,7 +153,7 @@ vercel            # link the project on first run; later use vercel --prod
 
 Static hosting + a single serverless function (`api/index.ts`, which `vercel.json` routes `/api/*` to). Settings/private-state persistence uses Vercel Blob by default: once you add Blob to the project, `BLOB_READ_WRITE_TOKEN` is injected automatically and the store enables the vercel driver; otherwise server-side persistence is disabled and the UI falls back where possible.
 
-> ⚠️ Vercel free-tier serverless functions have an execution limit of ~10s, while this tool defaults to `timeoutMs=60000`. Testing slow models or long streaming responses may be cut off mid-flight by the platform, surfacing as unexpected failures. Use it privately, lower the timeout, or set a higher `maxDuration` in `vercel.json` (requires a suitable plan).
+> ⚠️ Vercel free-tier serverless functions have an execution limit of ~10s, while this tool defaults to `timeoutMs=30000`. Testing slow models or long streaming responses may be cut off mid-flight by the platform, surfacing as unexpected failures. Use it privately, lower the timeout, or set a higher `maxDuration` in `vercel.json` (requires a suitable plan).
 
 ### Settings persistence (presets shared across devices)
 

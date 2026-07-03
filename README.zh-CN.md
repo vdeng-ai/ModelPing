@@ -17,7 +17,7 @@
 
 特性：
 
-- 选供应商自动填入 baseUrl；每个模型会自动探测 4 种协议
+- 选供应商自动填入 baseUrl；每个模型会按供应商自动探测合适协议
 - 自动探测非流式与流式（SSE）可用性
 - **查询余额**：按 baseUrl 主机识别供应商，一键查可用余额/额度（DeepSeek、SiliconFlow、OpenRouter、StepFun、Novita 等）
 - **拉取模型列表**：从供应商 `/models` 端点拉取可用模型，弹层搜索多选后批量加入测试表格
@@ -25,7 +25,7 @@
 - 可选自定义 User-Agent 预设，用于按客户端 UA 放行的 coding-plan 上游；模型测试、流式检测、模型列表和余额查询会一致生效
 - 返回总延迟、首字延迟（TTFT，流式）、输入/输出/总 token
 - 模型表格逐行状态灯：灰待测 → 蓝测试中 → 绿通过 / 红失败
-- 批量测试（并发 3）、自定义模型、可调超时/重试/maxTokens/输入文本
+- 批量测试（默认并发 2）、自定义模型、可调超时/重试/maxTokens/输入文本
 - 历史记录（可持久化开关、复制 baseUrl/掩码 key、导出 JSON）
 - 状态页：保存常用 provider + model，批量刷新端点延迟，支持自动刷新与 cc-switch 导入
 - **密钥安全**：后端不明文存储、不打印任何 API Key；启用私有工作态时仅以加密 blob 保存
@@ -72,9 +72,10 @@ npm start        # http://localhost:8787
 | -------------- | --------------------------------------- |
 | 输入文本       | 你好，请用一句话自我介绍。              |
 | 传输           | 自动探测非流式与流式                    |
-| 超时           | 60000 ms                                |
+| 超时           | 30000 ms                                |
 | 最大重试       | 1（指数退避，仅网络/超时/429/5xx 重试） |
-| 最大输出 token | 1024                                    |
+| 最大输出 token | 512                                     |
+| 并发数         | 2                                       |
 | User-Agent     | 空（不覆盖运行时默认 UA）               |
 
 ## 部署
@@ -154,7 +155,7 @@ vercel            # 首次按提示关联项目，后续 vercel --prod
 
 前端静态托管 + 单个 serverless function（`api/index.ts`，由 `vercel.json` 把 `/api/*` 路由过去）。设置/私有工作态持久化默认走 Vercel Blob：在项目里接入 Blob 后会自动注入 `BLOB_READ_WRITE_TOKEN`，store 据此启用 vercel 驱动；未接入则关闭服务端持久化，UI 尽量降级。
 
-> ⚠️ Vercel 免费版 serverless function 执行时长约 10s 上限，而本工具默认 `timeoutMs=60000`。测较慢的模型或长流式响应可能被平台中途切断，表现为非预期失败。建议私用、调小超时，或在 `vercel.json` 配置更高的 `maxDuration`（需对应套餐支持）。
+> ⚠️ Vercel 免费版 serverless function 执行时长约 10s 上限，而本工具默认 `timeoutMs=30000`。测较慢的模型或长流式响应可能被平台中途切断，表现为非预期失败。建议私用、调小超时，或在 `vercel.json` 配置更高的 `maxDuration`（需对应套餐支持）。
 
 ### 设置持久化（presets 跨设备共享）
 

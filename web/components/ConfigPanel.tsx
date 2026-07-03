@@ -7,7 +7,7 @@ interface Props {
   onChange: (v: ConfigState) => void;
 }
 
-// 参数面板：输入文本、流式开关、超时、重试、maxTokens。缺省值由上层注入。
+// 参数面板：输入文本、超时、重试、maxTokens、并发数。缺省值由上层注入。
 export function ConfigPanel({ value, onChange }: Props) {
   const { t } = useI18n();
   const uaPresetValues = new Set<string>(USER_AGENT_PRESETS.map((p) => p.value));

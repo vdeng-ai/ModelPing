@@ -8,7 +8,6 @@ export const CUSTOM_PROVIDER_NAME = "自定义";
 
 export const FALLBACK_DEFAULTS: Defaults = {
   input: "你好，请用一句话自我介绍。",
-  stream: false,
   timeoutMs: 30000,
   maxRetries: 1,
   maxTokens: 512,
@@ -58,7 +57,6 @@ export function normalizePresets(raw: unknown): PresetsResponse {
   const defaultsRaw = asRecord(obj.defaults ?? FALLBACK_DEFAULTS);
   const defaults: Defaults = {
     input: typeof defaultsRaw.input === "string" ? defaultsRaw.input : FALLBACK_DEFAULTS.input,
-    stream: Boolean(defaultsRaw.stream ?? FALLBACK_DEFAULTS.stream),
     timeoutMs: numberDefault(defaultsRaw.timeoutMs, FALLBACK_DEFAULTS.timeoutMs),
     maxRetries: numberDefault(defaultsRaw.maxRetries, FALLBACK_DEFAULTS.maxRetries),
     maxTokens: numberDefault(defaultsRaw.maxTokens, FALLBACK_DEFAULTS.maxTokens),

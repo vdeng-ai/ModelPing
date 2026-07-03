@@ -3,7 +3,8 @@ import type { Dispatch, StateUpdater } from "preact/hooks";
 import type { HistoryEntry, Protocol, TestResult } from "../lib/types.js";
 import { EMPTY_USAGE, runTestDual, type TestPayload } from "../lib/api.js";
 import { CUSTOM_PROVIDER_ID } from "../lib/presets.js";
-import { PROTOCOLS, protocolsForModel, type ModelRow, type ProtocolProbe } from "./ModelTable.js";
+import { PROTOCOLS, protocolsForProvider } from "../../src/protocols.js";
+import type { ModelRow, ProtocolProbe } from "./ModelTable.js";
 import type { ConnValue } from "./ConnectionPanel.js";
 import type { ConfigState, ProviderPreset, StreamVerdict } from "../lib/types.js";
 import { useI18n } from "../lib/i18n.js";
@@ -53,8 +54,8 @@ export function useDetect(deps: DetectDeps) {
     const cfg = configRef.current;
 
     const model = c.providerId === CUSTOM_PROVIDER_ID ? row.label : row.modelByProvider[c.providerId] ?? row.label;
-    // 按模型族挑选要测的协议；未选中的协议标记为「跳过」，不发请求、不写历史。
-    const toTest = protocolsForModel(`${row.label} ${model}`);
+    // 按 provider + 模型族挑选要测的协议；未选中的协议标记为「跳过」，不发请求、不写历史。
+    const toTest = protocolsForProvider(c.providerId, `${row.label} ${model}`);
     const skipped = PROTOCOLS.filter((p) => !toTest.includes(p));
 
     if (!c.baseUrl || !c.apiKey) {

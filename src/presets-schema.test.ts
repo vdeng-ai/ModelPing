@@ -8,6 +8,12 @@ describe("normalizePresets", () => {
     expect(out.providers).toEqual([]);
   });
 
+  it("accepts legacy defaults.stream but omits it from normalized output", () => {
+    const out = normalizePresets({ providers: [], defaults: { stream: true } });
+    expect(out.defaults).toEqual(FALLBACK_DEFAULTS);
+    expect("stream" in out.defaults).toBe(false);
+  });
+
   it("normalizes a valid provider", () => {
     const out = normalizePresets({
       providers: [{ id: "p1", name: "P1", baseUrl: "https://api.x.com", models: [{ id: "m1", label: "Model 1" }] }],
