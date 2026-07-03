@@ -1,42 +1,11 @@
 import { useState } from "preact/hooks";
-import type { Protocol, StatusEntry, StreamVerdict, TestResult } from "../lib/types.js";
+import type { Protocol, StatusEntry, TestResult } from "../lib/types.js";
 import { fmtMs, fmtTok, PROTOCOL_LABEL, streamGlyph } from "../lib/format.js";
 import { CcSwitchButton } from "./CcSwitchButton.js";
 import { useI18n, translate, type Lang } from "../lib/i18n.js";
 import { PROTOCOLS, protocolsForProvider } from "../../src/protocols.js";
-
-// 兼容旧调用点：自定义 provider 仍按模型名启发式选择协议。
-export function protocolsForModel(name: string): Protocol[] {
-  return protocolsForProvider("custom", name);
-}
-
-// 单个「模型 × 协议」探测的运行时状态。
-export interface ProtocolProbe {
-  protocol: Protocol;
-  status: "idle" | "skipped" | "testing" | "success" | "fail";
-  result: TestResult | null;        // 非流式结果（延迟/token/error）
-  streamVerdict: StreamVerdict;     // 流式探测结论（null=未探测）
-  streamTtftMs: number | null;
-}
-
-// 一行模型：聚合 4 个协议的探测结果。App 持有并维护。
-export interface ModelRow {
-  key: string;          // 唯一行 id
-  label: string;        // 官方原始模型名
-  modelByProvider: Record<string, string>; // 供应商 id -> 实际请求 model id
-  custom: boolean;      // 是否用户自定义添加
-  checked: boolean;
-  probes: Record<Protocol, ProtocolProbe>;
-}
-
-// 生成 4 个 idle 探针。
-export function freshProbes(): Record<Protocol, ProtocolProbe> {
-  const out = {} as Record<Protocol, ProtocolProbe>;
-  for (const p of PROTOCOLS) {
-    out[p] = { protocol: p, status: "idle", result: null, streamVerdict: null, streamTtftMs: null };
-  }
-  return out;
-}
+import type { ModelRow, ProtocolProbe } from "../lib/model-rows.js";
+export { protocolsForModel } from "../lib/model-rows.js";
 
 interface Props {
   rows: ModelRow[];

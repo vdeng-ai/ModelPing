@@ -4,7 +4,7 @@ import type { HistoryEntry, Protocol, TestResult } from "../lib/types.js";
 import { EMPTY_USAGE, runTestDual, type TestPayload } from "../lib/api.js";
 import { CUSTOM_PROVIDER_ID } from "../lib/presets.js";
 import { PROTOCOLS, protocolsForProvider } from "../../src/protocols.js";
-import type { ModelRow, ProtocolProbe } from "./ModelTable.js";
+import type { ModelRow, ProtocolProbe } from "../lib/model-rows.js";
 import type { ConnValue } from "./ConnectionPanel.js";
 import type { ConfigState, ProviderPreset, StreamVerdict } from "../lib/types.js";
 import { useI18n } from "../lib/i18n.js";
