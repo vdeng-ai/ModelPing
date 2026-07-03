@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import type { ConfigState, Defaults, HistoryEntry, PresetsResponse, PrivateState, ProviderPreset, StatusEntry } from "../lib/types.js";
-import { emptyPrivateState, fetchHealth, fetchPresets, fetchPrivateState, fetchSettings, savePrivateState, saveSettings, setAppPassword } from "../lib/api.js";
+import { emptyPrivateState, fetchHealth, fetchPresets, fetchPrivateState, fetchSettings, isAuthError, savePrivateState, saveSettings, setAppPassword } from "../lib/api.js";
 import {
   CUSTOM_PROVIDER_ID,
   FALLBACK_DEFAULTS,
@@ -260,6 +260,13 @@ export function App() {
       setRows(buildRows(provs, CUSTOM_PROVIDER_ID));
       setAuthed(true);
     } catch (e: any) {
+      if (isAuthError(e)) {
+        setNeedPassword(true);
+        setAuthed(false);
+        setPwInput("");
+        setLoadErr(null);
+        return;
+      }
       setLoadErr(e?.message ?? String(e));
     }
   };
@@ -309,7 +316,6 @@ export function App() {
       configSyncRef.current = setTimeout(() => {
         const nextDefaults: Defaults = {
           input: nextConfig.input,
-          stream: presetDefaults.stream,
           timeoutMs: nextConfig.timeoutMs,
           maxRetries: nextConfig.maxRetries,
           maxTokens: nextConfig.maxTokens,

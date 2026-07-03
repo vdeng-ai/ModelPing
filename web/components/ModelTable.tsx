@@ -3,16 +3,11 @@ import type { Protocol, StatusEntry, StreamVerdict, TestResult } from "../lib/ty
 import { fmtMs, fmtTok, PROTOCOL_LABEL, streamGlyph } from "../lib/format.js";
 import { CcSwitchButton } from "./CcSwitchButton.js";
 import { useI18n, translate, type Lang } from "../lib/i18n.js";
+import { PROTOCOLS, protocolsForProvider } from "../../src/protocols.js";
 
-export const PROTOCOLS: Protocol[] = ["openai-chat", "openai-responses", "gemini", "anthropic"];
-
-// 按模型名挑选需要测试的协议族：已知厂商只测其原生协议，其余（含 gpt 与未知）默认走 OpenAI 两套。
-// 用 label + 实际请求 id 拼接后匹配，避免某一项不含关键字时漏判。
+// 兼容旧调用点：自定义 provider 仍按模型名启发式选择协议。
 export function protocolsForModel(name: string): Protocol[] {
-  const n = name.toLowerCase();
-  if (n.includes("claude")) return ["anthropic"];
-  if (n.includes("gemini")) return ["gemini"];
-  return ["openai-chat", "openai-responses"];
+  return protocolsForProvider("custom", name);
 }
 
 // 单个「模型 × 协议」探测的运行时状态。
@@ -96,11 +91,13 @@ function Badge({ probe, lang }: { probe: ProtocolProbe; lang: Lang }) {
 }
 
 // 该模型卡要显示哪些协议徽章：测试前只显示计划要测的协议，测试中/后显示实际跑的，隐藏跳过的。
-function shownProtocols(r: ModelRow): Protocol[] {
+function shownProtocols(r: ModelRow, providerId: string): Protocol[] {
+  const model = r.modelByProvider[providerId] ?? r.label;
+  const planned = protocolsForProvider(providerId, `${r.label} ${model}`);
   return PROTOCOLS.filter((p) => {
     const s = r.probes[p].status;
     if (s === "skipped") return false;
-    if (s === "idle") return protocolsForModel(r.label).includes(p);
+    if (s === "idle") return planned.includes(p);
     return true; // testing / success / fail
   });
 }
@@ -148,7 +145,8 @@ export function ModelTable(props: Props) {
 
   const statusDraft = (r: ModelRow): Omit<StatusEntry, "id"> => {
     const successProtocol = PROTOCOLS.find((p) => r.probes[p].status === "success");
-    const protocol = successProtocol ?? protocolsForModel(r.label)[0];
+    const model = r.modelByProvider[conn.providerId] ?? r.label;
+    const protocol = successProtocol ?? protocolsForProvider(conn.providerId, `${r.label} ${model}`)[0];
     return {
       providerName,
       protocol,
@@ -156,7 +154,7 @@ export function ModelTable(props: Props) {
       isFullUrl: Boolean(conn.isFullUrl),
       apiKey: conn.apiKey,
       userAgent: props.userAgent || undefined,
-      model: r.modelByProvider[conn.providerId] ?? r.label,
+      model,
     };
   };
 
@@ -267,7 +265,7 @@ export function ModelTable(props: Props) {
                 </span>
                 <span class="model-card-status">
                   <span class="proto-badges">
-                    {shownProtocols(r).map((p) => <Badge probe={r.probes[p]} lang={lang} />)}
+                    {shownProtocols(r, conn.providerId).map((p) => <Badge probe={r.probes[p]} lang={lang} />)}
                   </span>
                   <span class="status-text">{statusText(r)}</span>
                 </span>

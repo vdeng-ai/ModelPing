@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { timingSafeEqual } from "hono/utils/buffer";
-import type { DualTestResult, LookupRequest, PingRequest, Protocol, TestRequest } from "./types.js";
+import type { DualTestResult, LookupRequest, PingRequest, TestRequest } from "./types.js";
 import { runTest, runTestStream } from "./runner.js";
 import { normalizePresets, FALLBACK_DEFAULTS } from "./presets-schema.js";
 import type { SettingsStore } from "./store/index.js";
@@ -12,8 +12,7 @@ import { encrypt, decrypt } from "./crypto.js";
 import { emptyPrivateState, normalizePrivateState } from "./private-state.js";
 import { normalizeUserAgent } from "./user-agent.js";
 import { isPrivateUrl } from "./ssrf.js";
-
-const PROTOCOLS: Protocol[] = ["openai-chat", "openai-responses", "gemini", "anthropic"];
+import { protocolOf } from "./protocols.js";
 
 // 框架无关的 Hono app。node.ts / worker.ts 共用。
 // 环境变量（两处入口都通过 env 注入）：
@@ -134,10 +133,12 @@ function normalize(raw: any): { req?: TestRequest; error?: string } {
   const baseUrl = String(raw.baseUrl ?? "").trim();
   const apiKey = String(raw.apiKey ?? "");
   const model = String(raw.model ?? "").trim();
-  const protocol = String(raw.protocol ?? "").trim();
+  const rawProtocol = String(raw.protocol ?? "").trim();
+  const protocol = protocolOf(rawProtocol);
   if (!baseUrl) return { error: "缺少 baseUrl" };
   if (!model) return { error: "缺少 model" };
-  if (!protocol) return { error: "缺少 protocol" };
+  if (!rawProtocol) return { error: "缺少 protocol" };
+  if (!protocol) return { error: "protocol 非法" };
 
   let url: URL;
   try {
@@ -156,13 +157,13 @@ function normalize(raw: any): { req?: TestRequest; error?: string } {
   };
 
   const req: TestRequest = {
-    protocol: protocol as TestRequest["protocol"],
+    protocol,
     baseUrl,
     isFullUrl: Boolean(raw.isFullUrl),
     apiKey,
     model,
     input: typeof raw.input === "string" && raw.input.length ? raw.input : FALLBACK_DEFAULTS.input,
-    stream: Boolean(raw.stream ?? FALLBACK_DEFAULTS.stream),
+    stream: Boolean(raw.stream ?? false),
     timeoutMs: toInt(raw.timeoutMs, FALLBACK_DEFAULTS.timeoutMs, 1000, 600000),
     maxRetries: toInt(raw.maxRetries, FALLBACK_DEFAULTS.maxRetries, 0, 10),
     maxTokens: toInt(raw.maxTokens, FALLBACK_DEFAULTS.maxTokens, 1, 200000),
@@ -207,11 +208,11 @@ function normalizeLookup(raw: any): { req?: LookupRequest; error?: string } {
 function normalizePing(raw: any): { req?: PingRequest; error?: string } {
   const lookup = normalizeLookup(raw);
   if (lookup.error || !lookup.req) return { error: lookup.error };
-  const protocol = String(raw.protocol ?? "").trim();
+  const protocol = protocolOf(raw.protocol);
   const model = String(raw.model ?? "").trim();
-  if (!PROTOCOLS.includes(protocol as Protocol)) return { error: "protocol 非法" };
+  if (!protocol) return { error: "protocol 非法" };
   if (!model) return { error: "缺少 model" };
-  return { req: { ...lookup.req, protocol: protocol as Protocol, model } };
+  return { req: { ...lookup.req, protocol, model } };
 }
 
 // 轻量校验状态列表：保留形状合法的条目，丢弃非法项。落盘前用于 PUT。

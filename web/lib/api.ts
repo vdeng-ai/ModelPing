@@ -13,8 +13,38 @@ export function setAppPassword(pw: string) {
   sessionStorage.setItem("app_password", pw);
 }
 
+export class AuthError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "AuthError";
+  }
+}
+
+export function isAuthError(error: unknown): error is AuthError {
+  return error instanceof AuthError || (error instanceof Error && error.name === "AuthError");
+}
+
+export function clearAppPassword() {
+  appPassword = null;
+  sessionStorage.removeItem("app_password");
+}
+
 function authHeaders(): Record<string, string> {
   return appPassword ? { "x-app-password": appPassword } : {};
+}
+
+async function parseErrorMessage(res: Response, fallback = `HTTP ${res.status}`): Promise<string> {
+  try {
+    const j: any = await res.json();
+    if (j?.error) return String(j.error);
+  } catch {}
+  return fallback;
+}
+
+async function authErrorFromResponse(res: Response): Promise<AuthError> {
+  const msg = await parseErrorMessage(res);
+  clearAppPassword();
+  return new AuthError(msg);
 }
 
 export interface TestPayload {
@@ -65,7 +95,8 @@ export async function fetchPresets(): Promise<PresetsResponse> {
 // 服务端持久化的预设（跨设备共享）。204/501 表示未配置 store，返回 null 让调用方降级到本地。
 export async function fetchSettings(): Promise<PresetsResponse | null> {
   const res = await fetch("/api/settings", { headers: authHeaders(), cache: "no-cache" });
-  if (res.status === 204) return null;
+  if (res.status === 204 || res.status === 501) return null;
+  if (res.status === 401) throw await authErrorFromResponse(res);
   if (!res.ok) return null;
   try {
     return normalizePresets(await res.json());
@@ -83,12 +114,7 @@ export async function saveSettings(presets: PresetsResponse): Promise<boolean> {
   });
   if (res.status === 501) return false;
   if (!res.ok) {
-    let msg = `HTTP ${res.status}`;
-    try {
-      const j: any = await res.json();
-      if (j?.error) msg = j.error;
-    } catch {}
-    throw new Error(msg);
+    throw new Error(await parseErrorMessage(res));
   }
   return true;
 }
@@ -107,14 +133,10 @@ export function emptyPrivateState(): PrivateState {
 
 export async function fetchPrivateState(): Promise<PrivateState | null> {
   const res = await fetch("/api/private-state", { headers: authHeaders(), cache: "no-cache" });
-  if (res.status === 204) return null;
+  if (res.status === 204 || res.status === 501) return null;
+  if (res.status === 401) throw await authErrorFromResponse(res);
   if (res.status === 409) {
-    let msg = "私有工作态无法解密";
-    try {
-      const j: any = await res.json();
-      if (j?.error) msg = j.error;
-    } catch {}
-    throw new Error(msg);
+    throw new Error(await parseErrorMessage(res, "私有工作态无法解密"));
   }
   if (!res.ok) return null;
   try {
@@ -142,12 +164,7 @@ export async function savePrivateState(state: PrivateState): Promise<boolean> {
   });
   if (res.status === 501) return false;
   if (!res.ok) {
-    let msg = `HTTP ${res.status}`;
-    try {
-      const j: any = await res.json();
-      if (j?.error) msg = j.error;
-    } catch {}
-    throw new Error(msg);
+    throw new Error(await parseErrorMessage(res));
   }
   return true;
 }
@@ -167,12 +184,7 @@ export async function fetchModels(payload: LookupPayload): Promise<ModelsResult>
     body: JSON.stringify(payload),
   });
   if (!res.ok) {
-    let msg = `HTTP ${res.status}`;
-    try {
-      const j: any = await res.json();
-      if (j?.error) msg = j.error;
-    } catch {}
-    throw new Error(msg);
+    throw new Error(await parseErrorMessage(res));
   }
   return res.json();
 }
@@ -200,11 +212,7 @@ export async function pingEndpoint(payload: PingPayload, signal?: AbortSignal): 
     return { ok: false, status: 0, latencyMs: 0, kind: "models", error: e?.message ?? String(e) };
   }
   if (!res.ok) {
-    let msg = `HTTP ${res.status}`;
-    try {
-      const j: any = await res.json();
-      if (j?.error) msg = j.error;
-    } catch {}
+    const msg = await parseErrorMessage(res);
     return { ok: false, status: res.status, latencyMs: 0, kind: "models", error: msg };
   }
   try {
@@ -222,12 +230,7 @@ export async function fetchBalance(payload: LookupPayload): Promise<Balance> {
     body: JSON.stringify(payload),
   });
   if (!res.ok) {
-    let msg = `HTTP ${res.status}`;
-    try {
-      const j: any = await res.json();
-      if (j?.error) msg = j.error;
-    } catch {}
-    throw new Error(msg);
+    throw new Error(await parseErrorMessage(res));
   }
   return res.json();
 }
@@ -252,11 +255,7 @@ export async function runTestJson(payload: TestPayload, signal?: AbortSignal): P
     };
   }
   if (!res.ok) {
-    let msg = `HTTP ${res.status}`;
-    try {
-      const j: any = await res.json();
-      if (j?.error) msg = j.error;
-    } catch {}
+    const msg = await parseErrorMessage(res);
     return {
       ok: false, status: res.status, latencyMs: 0, ttftMs: null,
       usage: EMPTY_USAGE,
@@ -293,11 +292,7 @@ export async function runTestDual(payload: TestPayload, signal?: AbortSignal): P
   }
 
   if (!res.ok) {
-    let msg = `HTTP ${res.status}`;
-    try {
-      const j: any = await res.json();
-      if (j?.error) msg = j.error;
-    } catch {}
+    const msg = await parseErrorMessage(res);
     const failed: TestResult = {
       ok: false, status: res.status, latencyMs: 0, ttftMs: null,
       usage: EMPTY_USAGE,
@@ -344,11 +339,7 @@ export async function runTestStream(
   }
 
   if (!res.ok || !res.body) {
-    let msg = `HTTP ${res.status}`;
-    try {
-      const j: any = await res.json();
-      if (j?.error) msg = j.error;
-    } catch {}
+    const msg = await parseErrorMessage(res);
     const result: TestResult = {
       ok: false, status: res.status, latencyMs: 0, ttftMs: null,
       usage: EMPTY_USAGE,
