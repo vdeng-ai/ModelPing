@@ -68,6 +68,19 @@ function applyPrivateStateScope(state: ReturnType<typeof normalizePrivateState>,
   };
 }
 
+function asBodyObject(raw: unknown): Record<string, unknown> | null {
+  return raw && typeof raw === "object" && !Array.isArray(raw) ? raw as Record<string, unknown> : null;
+}
+
+function httpBaseUrlError(baseUrl: string): string | null {
+  try {
+    const url = new URL(baseUrl);
+    return url.protocol === "https:" || url.protocol === "http:" ? null : "baseUrl 协议须为 http/https";
+  } catch {
+    return "baseUrl 不是合法 URL";
+  }
+}
+
 async function runDualTest(req: TestRequest, signal?: AbortSignal): Promise<DualTestResult> {
   let gotDelta = false;
   let streamTtftMs: number | null = null;
@@ -132,26 +145,20 @@ async function runDualTest(req: TestRequest, signal?: AbortSignal): Promise<Dual
 
 // 把前端传入的部分字段补齐为完整 TestRequest，并做基本校验。
 function normalize(raw: any): { req?: TestRequest; error?: string } {
-  if (!raw || typeof raw !== "object") return { error: "请求体非法" };
-  const baseUrl = String(raw.baseUrl ?? "").trim();
-  const apiKey = String(raw.apiKey ?? "");
-  const model = String(raw.model ?? "").trim();
-  const rawProtocol = String(raw.protocol ?? "").trim();
+  const body = asBodyObject(raw);
+  if (!body) return { error: "请求体非法" };
+  const baseUrl = String(body.baseUrl ?? "").trim();
+  const apiKey = String(body.apiKey ?? "");
+  const model = String(body.model ?? "").trim();
+  const rawProtocol = String(body.protocol ?? "").trim();
   const protocol = protocolOf(rawProtocol);
   if (!baseUrl) return { error: "缺少 baseUrl" };
   if (!model) return { error: "缺少 model" };
   if (!rawProtocol) return { error: "缺少 protocol" };
   if (!protocol) return { error: "protocol 非法" };
 
-  let url: URL;
-  try {
-    url = new URL(baseUrl);
-  } catch {
-    return { error: "baseUrl 不是合法 URL" };
-  }
-  if (url.protocol !== "https:" && url.protocol !== "http:") {
-    return { error: "baseUrl 协议须为 http/https" };
-  }
+  const baseUrlError = httpBaseUrlError(baseUrl);
+  if (baseUrlError) return { error: baseUrlError };
 
   const toInt = (v: unknown, def: number, min: number, max: number) => {
     const n = Number(v);
@@ -162,15 +169,15 @@ function normalize(raw: any): { req?: TestRequest; error?: string } {
   const req: TestRequest = {
     protocol,
     baseUrl,
-    isFullUrl: Boolean(raw.isFullUrl),
+    isFullUrl: Boolean(body.isFullUrl),
     apiKey,
     model,
-    input: typeof raw.input === "string" && raw.input.length ? raw.input : FALLBACK_DEFAULTS.input,
-    stream: Boolean(raw.stream ?? false),
-    timeoutMs: toInt(raw.timeoutMs, FALLBACK_DEFAULTS.timeoutMs, 1000, 600000),
-    maxRetries: toInt(raw.maxRetries, FALLBACK_DEFAULTS.maxRetries, 0, 10),
-    maxTokens: toInt(raw.maxTokens, FALLBACK_DEFAULTS.maxTokens, 1, 200000),
-    userAgent: normalizeUserAgent(raw.userAgent) ?? "",
+    input: typeof body.input === "string" && body.input.length ? body.input : FALLBACK_DEFAULTS.input,
+    stream: Boolean(body.stream ?? false),
+    timeoutMs: toInt(body.timeoutMs, FALLBACK_DEFAULTS.timeoutMs, 1000, 600000),
+    maxRetries: toInt(body.maxRetries, FALLBACK_DEFAULTS.maxRetries, 0, 10),
+    maxTokens: toInt(body.maxTokens, FALLBACK_DEFAULTS.maxTokens, 1, 200000),
+    userAgent: normalizeUserAgent(body.userAgent) ?? "",
   };
   return { req };
 }
@@ -207,29 +214,24 @@ function targetPolicyError(targets: Iterable<string | null | undefined>, env?: E
 
 // 校验「余额/模型」查询请求体（仅需 baseUrl + apiKey）。
 function normalizeLookup(raw: any): { req?: LookupRequest; error?: string } {
-  if (!raw || typeof raw !== "object") return { error: "请求体非法" };
-  const baseUrl = String(raw.baseUrl ?? "").trim();
-  const apiKey = String(raw.apiKey ?? "");
+  const body = asBodyObject(raw);
+  if (!body) return { error: "请求体非法" };
+  const baseUrl = String(body.baseUrl ?? "").trim();
+  const apiKey = String(body.apiKey ?? "");
   if (!baseUrl) return { error: "缺少 baseUrl" };
   if (!apiKey) return { error: "缺少 apiKey" };
-  let url: URL;
-  try {
-    url = new URL(baseUrl);
-  } catch {
-    return { error: "baseUrl 不是合法 URL" };
-  }
-  if (url.protocol !== "https:" && url.protocol !== "http:") {
-    return { error: "baseUrl 协议须为 http/https" };
-  }
-  return { req: { baseUrl, isFullUrl: Boolean(raw.isFullUrl), apiKey, userAgent: normalizeUserAgent(raw.userAgent) } };
+  const baseUrlError = httpBaseUrlError(baseUrl);
+  if (baseUrlError) return { error: baseUrlError };
+  return { req: { baseUrl, isFullUrl: Boolean(body.isFullUrl), apiKey, userAgent: normalizeUserAgent(body.userAgent) } };
 }
 
 // 校验测速请求体（baseUrl + apiKey + protocol + model）。
 function normalizePing(raw: any): { req?: PingRequest; error?: string } {
   const lookup = normalizeLookup(raw);
   if (lookup.error || !lookup.req) return { error: lookup.error };
-  const protocol = protocolOf(raw.protocol);
-  const model = String(raw.model ?? "").trim();
+  const body = asBodyObject(raw);
+  const protocol = protocolOf(body?.protocol);
+  const model = String(body?.model ?? "").trim();
   if (!protocol) return { error: "protocol 非法" };
   if (!model) return { error: "缺少 model" };
   return { req: { ...lookup.req, protocol, model } };

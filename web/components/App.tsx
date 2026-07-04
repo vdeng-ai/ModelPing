@@ -21,10 +21,17 @@ import { initLang, useI18n } from "../lib/i18n.js";
 import { useDetect } from "./useDetect.js";
 import { migrateLegacyPrivateState } from "../lib/storage.js";
 import { buildRows, freshProbes, nextModelRowKey, selectRowsForProvider, type ModelRow } from "../lib/model-rows.js";
+import {
+  hasLegacyPrivateState,
+  mergePrivateState,
+  privateStateForScope,
+  serializePrivateStateForScope,
+  type PrivateStateScope,
+} from "../lib/private-state-sync.js";
+import { statusEntryKey } from "../lib/status-entries.js";
 
 let statusSeq = 0;
 const nextStatusId = () => `s${Date.now()}-${++statusSeq}`;
-type PrivateStateScope = "full" | "config" | "none";
 
 type StatusDraft = Omit<StatusEntry, "id">;
 
@@ -86,9 +93,7 @@ export function App() {
     if (privateSaveRef.current) clearTimeout(privateSaveRef.current);
     privateSaveRef.current = setTimeout(() => {
       const scope = privateStateScopeRef.current;
-      const state = scope === "config"
-        ? { ...privateStateRef.current, historyPersist: false, history: [], updatedAt: privateStateRef.current.updatedAt }
-        : privateStateRef.current;
+      const state = privateStateForScope(privateStateRef.current, scope);
       const serialized = JSON.stringify(state);
       if (serialized === lastPrivateSaveRef.current) return;
       savePrivateState(state)
@@ -174,20 +179,10 @@ export function App() {
       statusPersistedRef.current = privateCanPersist;
       setStatusPersisted(privateCanPersist);
       const legacy = migrateLegacyPrivateState();
-      const historyCanPersist = scope === "full";
-      const mergedPrivateState: PrivateState = {
-        ...(privateState ?? emptyPrivateState()),
-        historyPersist: historyCanPersist ? (privateState?.historyPersist ?? legacy.historyPersist ?? true) : false,
-        history: historyCanPersist
-          ? (privateState?.history?.length ? privateState.history : (legacy.history ?? []))
-          : [],
-        conn: privateState?.conn ?? legacy.conn ?? null,
-        config: privateState?.config ?? legacy.config ?? null,
-        statusEntries: privateState?.statusEntries ?? [],
-      };
+      const mergedPrivateState = mergePrivateState(privateState, legacy, scope);
       privateStateRef.current = mergedPrivateState;
-      lastPrivateSaveRef.current = JSON.stringify(scope === "config" ? { ...mergedPrivateState, historyPersist: false, history: [] } : mergedPrivateState);
-      if (privateCanPersist && (legacy.historyPersist !== undefined || legacy.history || legacy.conn || legacy.config)) {
+      lastPrivateSaveRef.current = serializePrivateStateForScope(mergedPrivateState, scope);
+      if (privateCanPersist && hasLegacyPrivateState(legacy)) {
         syncPrivateRef(mergedPrivateState);
         schedulePrivateSave();
       }
@@ -383,17 +378,14 @@ export function App() {
   };
   const onRemoveModel = (key: string) => setRows((rs) => rs.filter((r) => r.key !== key));
 
-  const statusKey = (entry: Pick<StatusEntry, "baseUrl" | "protocol" | "model">) =>
-    `${entry.baseUrl.trim()}|${entry.protocol}|${entry.model.trim()}`;
-
   const onAddToStatus = (drafts: StatusDraft[]) => {
     const clean = drafts.filter((entry) => entry.baseUrl.trim() && entry.apiKey.trim() && entry.model.trim());
     if (clean.length === 0) return;
     const byKey = new Map<string, StatusEntry>();
-    for (const entry of statusEntriesRef.current) byKey.set(statusKey(entry), entry);
+    for (const entry of statusEntriesRef.current) byKey.set(statusEntryKey(entry), entry);
     let changed = false;
     for (const draft of clean) {
-      const key = statusKey(draft);
+      const key = statusEntryKey(draft);
       const existing = byKey.get(key);
       if (existing) {
         byKey.set(key, { ...existing, ...draft });

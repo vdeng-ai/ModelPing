@@ -3,6 +3,7 @@ import { getAdapter, type Adapter, type StreamChunk } from "./adapters/index.js"
 import { EMPTY_USAGE } from "./adapters/base.js";
 import { withUserAgent } from "./user-agent.js";
 import { drainSseBlocks, extractSseData } from "./sse.js";
+import { fetchWithTimeout, isTimeoutError } from "./fetch-timeout.js";
 
 // 单次输出文本展示上限，避免超长响应撑爆历史记录/前端。
 const MAX_TEXT = 4000;
@@ -138,33 +139,6 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   });
 }
 
-// 带超时的 fetch。外部取消优先于超时，并与内部 AbortController 合并。
-async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number, signal?: AbortSignal): Promise<Response> {
-  const ctrl = new AbortController();
-  let timedOut = false;
-  const onAbort = () => ctrl.abort(signal?.reason);
-  if (signal?.aborted) onAbort();
-  else signal?.addEventListener("abort", onAbort, { once: true });
-  const timer = setTimeout(() => {
-    timedOut = true;
-    ctrl.abort();
-  }, timeoutMs);
-  try {
-    return await fetch(url, { ...init, signal: ctrl.signal });
-  } catch (e: any) {
-    if (signal?.aborted) throw abortError(signal);
-    if (timedOut && e?.name === "AbortError") {
-      const err = new Error(`请求超时 (${timeoutMs}ms)`);
-      (err as any).isTimeout = true;
-      throw err;
-    }
-    throw e;
-  } finally {
-    clearTimeout(timer);
-    signal?.removeEventListener("abort", onAbort);
-  }
-}
-
 // 提取错误体文本（限长），便于前端定位（如 401/400 的供应商报错）。
 async function readErrorBody(res: Response): Promise<string> {
   try {
@@ -216,7 +190,7 @@ async function runOnce(adapter: Adapter, req: TestRequest, attempt: number, sign
     };
   } catch (e: any) {
     if (signal?.aborted) throw abortError(signal);
-    const status = e?.isTimeout ? 408 : 0;
+    const status = isTimeoutError(e) ? 408 : 0;
     const latencyMs = Date.now() - start;
     const error = e?.message ?? String(e);
     return {
@@ -355,7 +329,7 @@ async function* runStreamOnce(adapter: Adapter, req: TestRequest, attempt: numbe
   } catch (e: any) {
     cleanup();
     if (signal?.aborted) return;
-    const isTimeout = timedOut || e?.name === "AbortError" || e?.isTimeout;
+    const isTimeout = timedOut || e?.name === "AbortError" || isTimeoutError(e);
     const error = isTimeout ? `流式读取超时 (${req.timeoutMs}ms)` : (e?.message ?? String(e));
     const status = isTimeout ? 408 : 0;
     const latencyMs = Date.now() - start;
