@@ -1,4 +1,5 @@
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { SettingsStore } from "./types.js";
 
@@ -18,8 +19,13 @@ export class FileStore implements SettingsStore {
 
   async put(value: string): Promise<void> {
     await mkdir(dirname(this.path), { recursive: true });
-    const tmp = `${this.path}.${process.pid}.tmp`;
-    await writeFile(tmp, value, "utf-8");
-    await rename(tmp, this.path);
+    const tmp = `${this.path}.${process.pid}.${randomUUID()}.tmp`;
+    try {
+      await writeFile(tmp, value, "utf-8");
+      await rename(tmp, this.path);
+    } catch (e) {
+      await unlink(tmp).catch(() => {});
+      throw e;
+    }
   }
 }

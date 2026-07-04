@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ProviderPreset } from "./types.js";
-import { buildRows, freshProbes, selectRowsForProvider, type ModelRow } from "./model-rows.js";
+import { buildRows, freshProbes, selectRowsForProvider, upsertCustomModelRows, type ModelRow } from "./model-rows.js";
 
 const providers: ProviderPreset[] = [
   {
@@ -62,5 +62,27 @@ describe("model rows", () => {
 
     expect(next.map((row) => row.checked)).toEqual([true, true]);
     expect(next.every((row) => row.probes["openai-chat"].status === "idle")).toBe(true);
+  });
+
+  it("upserts custom rows and resets existing probes", () => {
+    const probes = freshProbes();
+    probes.gemini = { ...probes.gemini, status: "success" };
+    const rows: ModelRow[] = [
+      { key: "old", label: "existing", modelByProvider: {}, custom: true, checked: false, probes },
+    ];
+    const keys = ["new"];
+
+    const next = upsertCustomModelRows(rows, [" existing ", "", "new-model"], () => keys.shift()!);
+
+    expect(next).toHaveLength(2);
+    expect(next[0].checked).toBe(true);
+    expect(next[0].probes.gemini.status).toBe("idle");
+    expect(next[1]).toMatchObject({
+      key: "new",
+      label: "new-model",
+      custom: true,
+      checked: true,
+      modelByProvider: {},
+    });
   });
 });
