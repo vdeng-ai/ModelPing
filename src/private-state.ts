@@ -2,6 +2,7 @@ import type { ConfigState, ConnState, HistoryEntry, PrivateState, StatusEntry, T
 import { protocolOf } from "./protocols.js";
 
 export const MAX_PRIVATE_HISTORY = 200;
+export type PrivateStateScope = "full" | "config" | "none";
 
 export function emptyPrivateState(): PrivateState {
   return {
@@ -12,6 +13,15 @@ export function emptyPrivateState(): PrivateState {
     config: null,
     statusEntries: [],
     updatedAt: Date.now(),
+  };
+}
+
+export function applyPrivateStateScope(state: PrivateState, scope: PrivateStateScope): PrivateState {
+  if (scope === "full") return state;
+  return {
+    ...state,
+    historyPersist: false,
+    history: [],
   };
 }
 

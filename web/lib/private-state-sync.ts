@@ -1,16 +1,15 @@
 import type { PrivateState } from "./types.js";
 import type { LegacyPrivateState } from "./storage.js";
-import { emptyPrivateState } from "../../src/private-state.js";
+import {
+  applyPrivateStateScope,
+  emptyPrivateState,
+  type PrivateStateScope,
+} from "../../src/private-state.js";
 
-export type PrivateStateScope = "full" | "config" | "none";
+export type { PrivateStateScope };
 
 export function privateStateForScope(state: PrivateState, scope: PrivateStateScope): PrivateState {
-  if (scope === "full") return state;
-  return {
-    ...state,
-    historyPersist: false,
-    history: [],
-  };
+  return applyPrivateStateScope(state, scope);
 }
 
 export function serializePrivateStateForScope(state: PrivateState, scope: PrivateStateScope): string {
