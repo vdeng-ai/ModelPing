@@ -24,6 +24,6 @@ BLOCK_PRIVATE_HOSTS = "1"
 # 设置持久化（presets，跨设备共享）。先创建 KV 命名空间再填入 id：
 #   wrangler kv namespace create SETTINGS_KV
 # 然后取消下面注释并把 id 填进去（绑定名固定为 SETTINGS_KV，store 据此自动启用 cf-kv 驱动）：
-# [[kv_namespaces]]
-# binding = "SETTINGS_KV"
-# id = "<your-kv-namespace-id>"
+[[kv_namespaces]]
+binding = "SETTINGS_KV"
+id = "262b5e4e02794a27909718a738e7206a"

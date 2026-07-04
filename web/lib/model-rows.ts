@@ -80,3 +80,29 @@ export function selectRowsForProvider(rows: ModelRow[], providerId: string): Mod
     probes: freshProbes(),
   }));
 }
+
+export function upsertCustomModelRows(
+  rows: ModelRow[],
+  ids: string[],
+  makeKey: () => string = nextModelRowKey,
+): ModelRow[] {
+  const next = [...rows];
+  for (const id of ids) {
+    const model = id.trim();
+    if (!model) continue;
+    const idx = next.findIndex((row) => row.label === model);
+    if (idx !== -1) {
+      next[idx] = { ...next[idx], checked: true, probes: freshProbes() };
+    } else {
+      next.push({
+        key: makeKey(),
+        label: model,
+        modelByProvider: {},
+        custom: true,
+        checked: true,
+        probes: freshProbes(),
+      });
+    }
+  }
+  return next;
+}

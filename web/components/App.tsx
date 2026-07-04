@@ -20,7 +20,7 @@ import { StatusPanel } from "./StatusPanel.js";
 import { initLang, useI18n } from "../lib/i18n.js";
 import { useDetect } from "./useDetect.js";
 import { migrateLegacyPrivateState } from "../lib/storage.js";
-import { buildRows, freshProbes, nextModelRowKey, selectRowsForProvider, type ModelRow } from "../lib/model-rows.js";
+import { buildRows, selectRowsForProvider, upsertCustomModelRows, type ModelRow } from "../lib/model-rows.js";
 import {
   hasLegacyPrivateState,
   mergePrivateState,
@@ -58,7 +58,6 @@ export function App() {
 
   // 服务端是否启用了持久化（presets 跨设备共享）。null=未知，初始化时探测。
   const serverPersistRef = useRef<boolean>(false);
-  const statusPersistedRef = useRef(true);
   const privatePersistRef = useRef(false);
   const privateStateScopeRef = useRef<PrivateStateScope>("none");
   const privateSaveRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -102,7 +101,6 @@ export function App() {
         .then((ok) => {
           if (!ok) {
             privatePersistRef.current = false;
-            statusPersistedRef.current = false;
             setStatusPersisted(false);
             showToast(t("app.privateStateUnavailable"));
           } else {
@@ -182,7 +180,6 @@ export function App() {
       const privateState = await fetchPrivateState();
       const privateCanPersist = privateState !== null;
       privatePersistRef.current = privateCanPersist;
-      statusPersistedRef.current = privateCanPersist;
       setStatusPersisted(privateCanPersist);
       const legacy = migrateLegacyPrivateState();
       const mergedPrivateState = mergePrivateState(privateState, legacy, scope);
@@ -364,29 +361,12 @@ export function App() {
   };
 
   const onTestSelected = () => runBatch(rows.filter((r) => r.checked));
-  const onTestAll = () => runBatch(rows);
 
   const onToggle = (key: string, checked: boolean) => setRows((rs) => rs.map((r) => (r.key === key ? { ...r, checked } : r)));
   const onToggleAll = (checked: boolean) => setRows((rs) => rs.map((r) => ({ ...r, checked })));
 
   const onAddModel = (model: string) => {
-    setRows((rs) => {
-      const existing = rs.find((r) => r.label === model);
-      if (existing) {
-        return rs.map((r) => (r.key === existing.key ? { ...r, checked: true, probes: freshProbes() } : r));
-      }
-      return [
-        ...rs,
-        {
-          key: nextModelRowKey(),
-          label: model,
-          modelByProvider: {},
-          custom: true,
-          checked: true,
-          probes: freshProbes(),
-        },
-      ];
-    });
+    setRows((rs) => upsertCustomModelRows(rs, [model]));
   };
   const onRemoveModel = (key: string) => setRows((rs) => rs.filter((r) => r.key !== key));
 
@@ -434,28 +414,7 @@ export function App() {
 
   // 批量加入模型（来自「拉取模型」弹层）：已存在则勾选，否则新增 custom 行。
   const onAddModels = (ids: string[]) => {
-    setRows((rs) => {
-      const next = [...rs];
-      for (const id of ids) {
-        const model = id.trim();
-        if (!model) continue;
-        const existing = next.find((r) => r.label === model);
-        if (existing) {
-          const idx = next.indexOf(existing);
-          next[idx] = { ...existing, checked: true, probes: freshProbes() };
-        } else {
-          next.push({
-            key: nextModelRowKey(),
-            label: model,
-            modelByProvider: {},
-            custom: true,
-            checked: true,
-            probes: freshProbes(),
-          });
-        }
-      }
-      return next;
-    });
+    setRows((rs) => upsertCustomModelRows(rs, ids));
   };
 
   // 口令门：未通过时只显示口令输入。
@@ -558,7 +517,6 @@ export function App() {
             onRemove={onRemoveModel}
             onTestSelected={onTestSelected}
             onCancel={cancelBatch}
-            onTestAll={onTestAll}
             onAddToStatus={onAddToStatus}
             onLaunched={showToast}
           />

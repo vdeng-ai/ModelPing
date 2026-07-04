@@ -20,7 +20,6 @@ interface Props {
   onRemove: (key: string) => void;
   onTestSelected: () => void;
   onCancel: () => void;
-  onTestAll: () => void;
   onAddToStatus: (entries: Array<Omit<StatusEntry, "id">>) => void;
   onLaunched: (msg: string) => void;
 }
