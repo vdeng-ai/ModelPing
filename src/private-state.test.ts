@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createApp, type Env } from "./app.js";
 import { encrypt } from "./crypto.js";
-import { emptyPrivateState, normalizePrivateState } from "./private-state.js";
+import { applyPrivateStateScope, emptyPrivateState, normalizePrivateState } from "./private-state.js";
 import type { SettingsStore } from "./store/index.js";
 
 class MemoryStore implements SettingsStore {
@@ -20,6 +20,41 @@ function req(path: string, init?: RequestInit) {
 }
 
 describe("private state", () => {
+  it("applies config scope by stripping history only", () => {
+    const state = {
+      ...emptyPrivateState(),
+      historyPersist: true,
+      history: [{
+        id: "h1",
+        ts: 1,
+        providerName: "P",
+        protocol: "openai-chat" as const,
+        baseUrl: "https://api.example.com",
+        apiKey: "sk",
+        model: "m",
+        modelLabel: "m",
+        streamVerdict: null,
+        result: {
+          ok: true,
+          status: 200,
+          latencyMs: 1,
+          ttftMs: null,
+          usage: { inputTokens: null, outputTokens: null, totalTokens: null },
+          text: "ok",
+          error: null,
+          attempts: 1,
+        },
+      }],
+      conn: { providerId: "custom", baseUrl: "https://api.example.com", apiKey: "sk" },
+    };
+
+    expect(applyPrivateStateScope(state, "config")).toMatchObject({
+      historyPersist: false,
+      history: [],
+      conn: { apiKey: "sk" },
+    });
+  });
+
   it("normalizes defaults and trims history", () => {
     const state = normalizePrivateState({
       historyPersist: false,

@@ -1,7 +1,10 @@
 import type { Balance, DualTestResult, ModelsResult, PingResult, PresetsResponse, PrivateState, StreamEvent, TestResult, Usage } from "./types.js";
 import { normalizePresets } from "./presets.js";
 import { drainSseBlocks, extractSseData } from "../../src/sse.js";
-import { emptyPrivateState as sharedEmptyPrivateState } from "../../src/private-state.js";
+import {
+  emptyPrivateState as sharedEmptyPrivateState,
+  normalizePrivateState as sharedNormalizePrivateState,
+} from "../../src/private-state.js";
 
 // 空用量（探测失败/无结果时的占位）。前后端共享同一形状。
 export const EMPTY_USAGE: Usage = { inputTokens: null, outputTokens: null, totalTokens: null };
@@ -146,17 +149,7 @@ export async function fetchPrivateState(): Promise<PrivateState | null> {
   }
   if (!res.ok) return null;
   try {
-    const raw = await res.json();
-    const state = raw && typeof raw === "object" ? raw as Partial<PrivateState> : {};
-    return {
-      ...emptyPrivateState(),
-      ...state,
-      historyPersist: state?.historyPersist !== false,
-      history: Array.isArray(state?.history) ? state.history : [],
-      conn: state?.conn ?? null,
-      config: state?.config ?? null,
-      statusEntries: Array.isArray(state?.statusEntries) ? state.statusEntries : [],
-    };
+    return sharedNormalizePrivateState(await res.json());
   } catch {
     return null;
   }

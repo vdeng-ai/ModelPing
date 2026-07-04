@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import type { Context } from "hono";
 import { cors } from "hono/cors";
 import { timingSafeEqual } from "hono/utils/buffer";
-import type { DualTestResult, LookupRequest, PingRequest, TestRequest } from "./types.js";
+import type { DualTestResult, LookupRequest, PingRequest, StreamEvent, TestRequest, TestResult } from "./types.js";
 import { runTest, runTestStream } from "./runner.js";
 import { normalizePresets, FALLBACK_DEFAULTS } from "./presets-schema.js";
 import type { SettingsStore } from "./store/index.js";
@@ -10,10 +10,11 @@ import { fetchModels, modelsTargetUrls } from "./models-fetch.js";
 import { fetchBalance, balanceTargetUrl } from "./balance.js";
 import { pingEndpoint, pingTargetUrls } from "./ping.js";
 import { encrypt, decrypt } from "./crypto.js";
-import { emptyPrivateState, normalizePrivateState } from "./private-state.js";
+import { applyPrivateStateScope, emptyPrivateState, normalizePrivateState, type PrivateStateScope } from "./private-state.js";
 import { normalizeUserAgent } from "./user-agent.js";
 import { isPrivateUrl } from "./ssrf.js";
 import { protocolOf } from "./protocols.js";
+import { drainSseBlocks, extractSseData } from "./sse.js";
 
 // 框架无关的 Hono app。node.ts / worker.ts 共用。
 // 环境变量（两处入口都通过 env 注入）：
@@ -52,20 +53,11 @@ function blockPrivate(env?: Env): boolean {
   return v === "1" || v === "true" || v === "yes";
 }
 
-function privateStateScope(env?: Env): "full" | "config" | "none" {
+function privateStateScope(env?: Env): PrivateStateScope {
   const v = (env?.PRIVATE_STATE_SCOPE ?? "").trim().toLowerCase();
   if (v === "none") return "none";
   if (v === "config") return "config";
   return "full";
-}
-
-function applyPrivateStateScope(state: ReturnType<typeof normalizePrivateState>, scope: "full" | "config" | "none") {
-  if (scope === "full") return state;
-  return {
-    ...state,
-    historyPersist: false,
-    history: [],
-  };
 }
 
 function asBodyObject(raw: unknown): Record<string, unknown> | null {
@@ -84,7 +76,7 @@ function httpBaseUrlError(baseUrl: string): string | null {
 async function runDualTest(req: TestRequest, signal?: AbortSignal): Promise<DualTestResult> {
   let gotDelta = false;
   let streamTtftMs: number | null = null;
-  let streamResult: any = null;
+  let streamResult: TestResult | null = null;
 
   const streamPromise = (async () => {
     const stream = runTestStream({ ...req, stream: true }, signal);
@@ -93,11 +85,11 @@ async function runDualTest(req: TestRequest, signal?: AbortSignal): Promise<Dual
     let buf = "";
 
     const handleBlock = (block: string) => {
-      const line = block.split(/\r?\n/).find((l) => l.startsWith("data:"));
-      if (!line) return;
-      let ev: any;
+      const data = extractSseData(block);
+      if (data === null || data === "[DONE]") return;
+      let ev: StreamEvent;
       try {
-        ev = JSON.parse(line.slice(5).trim());
+        ev = JSON.parse(data);
       } catch {
         return;
       }
@@ -110,8 +102,8 @@ async function runDualTest(req: TestRequest, signal?: AbortSignal): Promise<Dual
       const { done, value } = await reader.read();
       if (done) break;
       buf += decoder.decode(value, { stream: true });
-      const blocks = buf.split(/\r?\n\r?\n/);
-      buf = blocks.pop() ?? "";
+      const { blocks, rest } = drainSseBlocks(buf);
+      buf = rest;
       for (const block of blocks) handleBlock(block);
     }
     if (buf.trim()) handleBlock(buf);

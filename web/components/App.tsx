@@ -66,6 +66,7 @@ export function App() {
   const privateStateRef = useRef<PrivateState>(emptyPrivateState());
   // ConfigPanel 参数 → defaults 同步到后端的防抖句柄。
   const configSyncRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // 当前语言对应的默认输入文本；语言切换时若用户未自定义则跟随更新。
   const defaultInputRef = useRef(t("config.defaultInput"));
 
@@ -92,6 +93,7 @@ export function App() {
     if (!privatePersistRef.current) return;
     if (privateSaveRef.current) clearTimeout(privateSaveRef.current);
     privateSaveRef.current = setTimeout(() => {
+      privateSaveRef.current = null;
       const scope = privateStateScopeRef.current;
       const state = privateStateForScope(privateStateRef.current, scope);
       const serialized = JSON.stringify(state);
@@ -117,8 +119,12 @@ export function App() {
   };
 
   const showToast = (msg: string) => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     setToast(msg);
-    setTimeout(() => setToast(null), 1800);
+    toastTimerRef.current = setTimeout(() => {
+      toastTimerRef.current = null;
+      setToast(null);
+    }, 1800);
   };
 
   const isLocalOrigin = () => {
@@ -232,6 +238,11 @@ export function App() {
   useEffect(() => {
     // 仅在挂载时初始化一次（init 引用每渲染都变，故有意省略依赖）。
     init();
+    return () => {
+      if (privateSaveRef.current) clearTimeout(privateSaveRef.current);
+      if (configSyncRef.current) clearTimeout(configSyncRef.current);
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    };
   }, []);
 
   // 语言切换时，若输入文本仍为默认值（用户未自定义）则跟随语言更新。
@@ -272,6 +283,7 @@ export function App() {
     if (serverPersistRef.current) {
       if (configSyncRef.current) clearTimeout(configSyncRef.current);
       configSyncRef.current = setTimeout(() => {
+        configSyncRef.current = null;
         const nextDefaults: Defaults = {
           input: nextConfig.input,
           timeoutMs: nextConfig.timeoutMs,
