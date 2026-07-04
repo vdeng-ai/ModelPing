@@ -55,6 +55,8 @@ export function App() {
   const [needPassword, setNeedPassword] = useState(false);
   const [authed, setAuthed] = useState(true);
   const [pwInput, setPwInput] = useState("");
+  const [pwError, setPwError] = useState<string | null>(null);
+  const [pwSubmitting, setPwSubmitting] = useState(false);
 
   // 服务端是否启用了持久化（presets 跨设备共享）。null=未知，初始化时探测。
   const serverPersistRef = useRef<boolean>(false);
@@ -154,7 +156,7 @@ export function App() {
     initLang();
   }, []);
 
-  // 初始化：健康检查（是否需口令）→ 拉预设 → 恢复上次配置。
+  // 初始化：健康检查（是否需口令）→ 验证口令/拉预设 → 恢复上次配置。
   const init = async () => {
     setLoadErr(null);
     try {
@@ -163,20 +165,23 @@ export function App() {
       const scope = health.persistence?.privateState ? health.persistence.privateStateScope : "none";
       privateStateScopeRef.current = scope;
       setSecurityWarn(Boolean(security && !isLocalOrigin() && (!security.hasPassword || security.shouldWarnOpenProxy)));
+      setNeedPassword(Boolean(health.needPassword));
       if (health.needPassword) {
-        setNeedPassword(true);
         const saved = sessionStorage.getItem("app_password");
         if (!saved) {
           setAuthed(false);
           return; // 等用户输入口令
         }
       }
-      // 静态默认（重置目标 + 兜底）。
-      const fetchedPresets = await fetchPresets();
       // 预设来源优先级：服务端（跨设备共享）→ 本地缓存 → 静态默认。
+      // fetchSettings 是第一个受口令保护的请求；它成功后才认为口令已通过。
       const serverPresets = await fetchSettings();
+      setAuthed(true);
+      setPwError(null);
       serverPersistRef.current = serverPresets !== null;
-      const activePresets = serverPresets ?? loadLocalPresets() ?? fetchedPresets;
+      // 静态默认兜底。
+      const localPresets = loadLocalPresets();
+      const activePresets = serverPresets ?? localPresets ?? await fetchPresets();
       const privateState = await fetchPrivateState();
       const privateCanPersist = privateState !== null;
       privatePersistRef.current = privateCanPersist;
@@ -224,7 +229,7 @@ export function App() {
       if (isAuthError(e)) {
         setNeedPassword(true);
         setAuthed(false);
-        setPwInput("");
+        setPwError(e?.message ?? t("app.pwInvalid"));
         setLoadErr(null);
         return;
       }
@@ -258,10 +263,18 @@ export function App() {
 
   // 提交口令后重试初始化。
   const submitPassword = async () => {
-    if (!pwInput.trim()) return;
-    setAppPassword(pwInput.trim());
-    setAuthed(true);
-    await init();
+    if (!pwInput) {
+      setPwError(t("app.pwRequired"));
+      return;
+    }
+    setPwError(null);
+    setPwSubmitting(true);
+    setAppPassword(pwInput);
+    try {
+      await init();
+    } finally {
+      setPwSubmitting(false);
+    }
   };
 
   // 连接变更：切换供应商时调整模型勾选并重置探针；其余仅更新字段。持久化连接配置。
@@ -428,12 +441,20 @@ export function App() {
             <input
               type="password"
               value={pwInput}
-              onInput={(e) => setPwInput((e.target as HTMLInputElement).value)}
-              onKeyDown={(e) => { if (e.key === "Enter") submitPassword(); }}
+              disabled={pwSubmitting}
+              aria-invalid={Boolean(pwError)}
+              onInput={(e) => {
+                setPwInput((e.target as HTMLInputElement).value);
+                if (pwError) setPwError(null);
+              }}
+              onKeyDown={(e) => { if (e.key === "Enter" && !pwSubmitting) submitPassword(); }}
             />
+            {pwError ? <div class="hint fail" role="alert">{pwError}</div> : null}
           </div>
           <div class="actions">
-            <button class="primary" onClick={submitPassword}>{t("app.pwEnter")}</button>
+            <button class="primary" onClick={submitPassword} disabled={pwSubmitting}>
+              {pwSubmitting ? t("app.pwChecking") : t("app.pwEnter")}
+            </button>
           </div>
         </section>
       </div>

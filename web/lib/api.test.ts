@@ -71,6 +71,19 @@ afterEach(() => {
 });
 
 describe("api auth failures", () => {
+  it("sends the entered password without trimming it", async () => {
+    const fetchMock = vi.fn(() => Promise.resolve(new Response(null, { status: 204 })));
+    const api = await loadApi(fetchMock);
+
+    api.setAppPassword(" pw ");
+    await expect(api.fetchSettings()).resolves.toBeNull();
+
+    expect(fetchMock).toHaveBeenCalledWith("/api/settings", {
+      headers: { "x-app-password": " pw " },
+      cache: "no-cache",
+    });
+  });
+
   it("clears stale session password when settings fetch returns 401", async () => {
     const { api, fetchMock, storage } = await loadApiWithStalePassword();
 
