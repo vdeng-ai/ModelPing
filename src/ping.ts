@@ -1,6 +1,7 @@
 import type { PingRequest, PingResult, LookupRequest, TestRequest } from "./types.js";
 import { planFor } from "./models-fetch.js";
 import { runTest } from "./runner.js";
+import { fetchWithTimeout } from "./fetch-timeout.js";
 
 // 端点延迟测速（不消耗 token）。
 // 主路径：GET 供应商 /models（复用 models-fetch 的协议感知端点+认证），只测延迟与可达性。
@@ -36,13 +37,9 @@ export async function pingEndpoint(req: PingRequest, signal?: AbortSignal): Prom
   const plan = planFor(lookupOf(req));
 
   for (const url of plan.urls) {
-    const ctrl = new AbortController();
-    const onAbort = () => ctrl.abort();
-    if (signal) signal.addEventListener("abort", onAbort, { once: true });
-    const timer = setTimeout(() => ctrl.abort(), PING_TIMEOUT_MS);
     const start = Date.now();
     try {
-      const res = await fetch(url, { method: "GET", headers: plan.headers, signal: ctrl.signal });
+      const res = await fetchWithTimeout(url, { method: "GET", headers: plan.headers }, PING_TIMEOUT_MS, signal);
       const latencyMs = Date.now() - start;
       await res.text().catch(() => {}); // 读掉 body 释放连接，不解析。
       // 端点不存在 → 试下一候选，全不存在则回退补全。
@@ -50,13 +47,11 @@ export async function pingEndpoint(req: PingRequest, signal?: AbortSignal): Prom
       // 其余（含 2xx / 401 / 403）都视为端点可达，延迟有效。
       return { ok: res.ok, status: res.status, latencyMs, kind: "models", error: res.ok ? null : `HTTP ${res.status}` };
     } catch (e: any) {
+      if (signal?.aborted || e?.name === "AbortError") throw e;
       const latencyMs = Date.now() - start;
-      const error = e?.name === "AbortError" ? `请求超时 (${PING_TIMEOUT_MS}ms)` : (e?.message ?? String(e));
+      const error = e?.message ?? String(e);
       // 网络层失败（非 404/405）直接判失败，不再回退。
       return { ok: false, status: 0, latencyMs, kind: "models", error };
-    } finally {
-      clearTimeout(timer);
-      if (signal) signal.removeEventListener("abort", onAbort);
     }
   }
 

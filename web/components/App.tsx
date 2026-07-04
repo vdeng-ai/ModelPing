@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import type { ConfigState, Defaults, HistoryEntry, PresetsResponse, PrivateState, ProviderPreset, StatusEntry } from "../lib/types.js";
 import { emptyPrivateState, fetchHealth, fetchPresets, fetchPrivateState, fetchSettings, isAuthError, savePrivateState, saveSettings, setAppPassword } from "../lib/api.js";
+import { MAX_PRIVATE_HISTORY } from "../../src/private-state.js";
 import {
   CUSTOM_PROVIDER_ID,
   FALLBACK_DEFAULTS,
@@ -23,7 +24,6 @@ import { buildRows, freshProbes, nextModelRowKey, selectRowsForProvider, type Mo
 
 let statusSeq = 0;
 const nextStatusId = () => `s${Date.now()}-${++statusSeq}`;
-const MAX_HISTORY = 200;
 type PrivateStateScope = "full" | "config" | "none";
 
 type StatusDraft = Omit<StatusEntry, "id">;
@@ -130,7 +130,7 @@ export function App() {
     historyRef,
     addHistoryEntry: (entry) => {
       setHistory((prev) => {
-        const next = [entry, ...prev].slice(0, MAX_HISTORY);
+        const next = [entry, ...prev].slice(0, MAX_PRIVATE_HISTORY);
         historyRef.current = next;
         if (privateStateRef.current.historyPersist && privateStateScopeRef.current === "full") persistPrivateState({ history: next });
         return next;

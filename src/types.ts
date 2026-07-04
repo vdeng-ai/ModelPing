@@ -41,7 +41,7 @@ export interface TestResult {
 export interface DualTestResult {
   json: TestResult;
   stream: TestResult;
-  streamVerdict: "stream" | "single" | "none";
+  streamVerdict: Exclude<StreamVerdict, null>;
   streamTtftMs: number | null;
 }
 
@@ -52,6 +52,13 @@ export type StreamEvent =
   | { type: "ttft"; ttftMs: number }
   | { type: "done"; result: TestResult }
   | { type: "error"; error: string; status?: number };
+
+// 流式探测结论：
+//   "stream" 真增量流式（收到 ≥1 个 delta）
+//   "single" 服务端接受 stream:true 但一次性返回（无增量，非真流式）
+//   "none"   流式请求失败
+//   null     未探测
+export type StreamVerdict = "stream" | "single" | "none" | null;
 
 // ---------- 预设（供应商 / 模型 / 默认参数） ----------
 // 持久化到服务端并跨设备共享的「设置」。不含 apiKey。
@@ -170,7 +177,7 @@ export interface HistoryEntry {
   userAgent?: string;
   model: string;
   modelLabel: string;
-  streamVerdict: "stream" | "single" | "none" | null;
+  streamVerdict: StreamVerdict;
   result: TestResult;
 }
 

@@ -35,6 +35,20 @@ describe("api target safety policy", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("rejects /api/test-dual targets outside ALLOWED_HOSTS before upstream fetch", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const app = createApp();
+
+    const res = await app.fetch(jsonReq("/api/test-dual", testPayload), {
+      ALLOWED_HOSTS: "api.example.com",
+    } satisfies Env);
+
+    expect(res.status).toBe(403);
+    await expect(res.json()).resolves.toEqual({ error: "目标主机不在允许列表内" });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("rejects /api/models private targets before upstream fetch", async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
@@ -58,6 +72,23 @@ describe("api target safety policy", () => {
     const app = createApp();
 
     const res = await app.fetch(jsonReq("/api/ping", testPayload), {
+      ALLOWED_HOSTS: "api.example.com",
+    } satisfies Env);
+
+    expect(res.status).toBe(403);
+    await expect(res.json()).resolves.toEqual({ error: "目标主机不在允许列表内" });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects /api/balance targets outside ALLOWED_HOSTS before upstream fetch", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const app = createApp();
+
+    const res = await app.fetch(jsonReq("/api/balance", {
+      baseUrl: "https://openrouter.ai/api/v1",
+      apiKey: "sk",
+    }), {
       ALLOWED_HOSTS: "api.example.com",
     } satisfies Env);
 
