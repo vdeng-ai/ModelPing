@@ -1,6 +1,7 @@
 import type { LookupRequest, ModelsResult } from "./types.js";
 import { trimSlash, isOriginOnlyUrl } from "./adapters/base.js";
 import { withUserAgent } from "./user-agent.js";
+import { fetchWithTimeout } from "./fetch-timeout.js";
 
 // 拉取供应商模型列表。按 baseUrl host/形态选择候选端点与认证方式。
 // 全程经后端代理（避开浏览器 CORS），apiKey 仅用于本次转发，不存储/打印。
@@ -15,19 +16,6 @@ function stripHash(value: string): string {
 function endsWithVersionSegment(base: string): boolean {
   const seg = trimSlash(base).split("/").pop() ?? "";
   return /^v\d+[a-z0-9]*$/i.test(seg);
-}
-
-async function fetchWithTimeout(url: string, headers: Record<string, string>): Promise<Response> {
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
-  try {
-    return await fetch(url, { method: "GET", headers, signal: ctrl.signal });
-  } catch (e: any) {
-    if (e?.name === "AbortError") throw new Error(`请求超时 (${FETCH_TIMEOUT_MS}ms)`);
-    throw e;
-  } finally {
-    clearTimeout(timer);
-  }
 }
 
 const ANTHROPIC_VERSION = "2023-06-01";
@@ -104,7 +92,7 @@ export async function fetchModels(req: LookupRequest): Promise<ModelsResult> {
   for (const url of plan.urls) {
     let res: Response;
     try {
-      res = await fetchWithTimeout(url, plan.headers);
+      res = await fetchWithTimeout(url, { method: "GET", headers: plan.headers }, FETCH_TIMEOUT_MS);
     } catch (e: any) {
       lastErr = e?.message ?? String(e);
       continue;

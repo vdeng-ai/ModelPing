@@ -1,4 +1,5 @@
 import type { ConfigState, ConnState, HistoryEntry } from "./types.js";
+import { MAX_PRIVATE_HISTORY } from "../../src/private-state.js";
 
 // Legacy localStorage keys. New versions persist sensitive working state only
 // through encrypted server-side private-state; these keys are read once for
@@ -7,8 +8,6 @@ const K_HISTORY = "llm-test:history";
 const K_PERSIST = "llm-test:persist"; // 历史是否持久化（"1"/"0"）
 const K_CONN = "llm-test:conn";       // 上次连接配置（含 key，仅本机）
 const K_CONFIG = "llm-test:config";   // 上次参数配置
-
-const MAX_HISTORY = 200; // 历史上限，超出丢弃最旧。
 
 export interface LegacyPrivateState {
   historyPersist?: boolean;
@@ -34,7 +33,7 @@ function removeLegacyKeys(storage: Storage): void {
 
 export function migrateLegacyPrivateState(storage: Storage = localStorage): LegacyPrivateState {
   const rawHistory = readJson<unknown>(storage, K_HISTORY);
-  const history = Array.isArray(rawHistory) ? rawHistory.slice(0, MAX_HISTORY) as HistoryEntry[] : undefined;
+  const history = Array.isArray(rawHistory) ? rawHistory.slice(0, MAX_PRIVATE_HISTORY) as HistoryEntry[] : undefined;
   const conn = readJson<ConnState>(storage, K_CONN);
   const config = readJson<Partial<ConfigState>>(storage, K_CONFIG);
   const persistRaw = storage.getItem(K_PERSIST);

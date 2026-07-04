@@ -1,6 +1,7 @@
 import type { Balance, DualTestResult, ModelsResult, PingResult, PresetsResponse, PrivateState, StreamEvent, TestResult, Usage } from "./types.js";
 import { normalizePresets } from "./presets.js";
 import { drainSseBlocks, extractSseData } from "../../src/sse.js";
+import { emptyPrivateState as sharedEmptyPrivateState } from "../../src/private-state.js";
 
 // 空用量（探测失败/无结果时的占位）。前后端共享同一形状。
 export const EMPTY_USAGE: Usage = { inputTokens: null, outputTokens: null, totalTokens: null };
@@ -133,15 +134,7 @@ export async function saveSettings(presets: PresetsResponse): Promise<boolean> {
 }
 
 export function emptyPrivateState(): PrivateState {
-  return {
-    v: 1,
-    historyPersist: true,
-    history: [],
-    conn: null,
-    config: null,
-    statusEntries: [],
-    updatedAt: Date.now(),
-  };
+  return sharedEmptyPrivateState();
 }
 
 export async function fetchPrivateState(): Promise<PrivateState | null> {
