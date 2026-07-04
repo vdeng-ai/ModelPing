@@ -94,6 +94,7 @@ export function useDetect(deps: DetectDeps) {
 
       try {
         const dual = await runTestDual(payload, signal);
+        if (signal.aborted) return;
         const jsonResult = dual.json;
         const streamVerdict: StreamVerdict = dual.streamVerdict;
         const streamTtftMs = dual.streamTtftMs;

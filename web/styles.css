@@ -182,25 +182,32 @@ header.top .spacer { flex: 1; }
   grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
   gap: 8px;
 }
-button.provider-card {
+.provider-card {
   min-height: 36px;
   text-align: left;
   padding: 8px 10px;
   background: var(--panel-2);
   color: var(--text);
   border-color: var(--border);
+  border: 1px solid var(--border);
+  border-radius: 6px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  cursor: pointer;
 }
-button.provider-card.active {
+.provider-card.active {
   border-color: var(--accent);
   background: color-mix(in srgb, var(--accent) 18%, var(--panel-2));
   color: var(--text);
 }
-button.provider-card:focus-visible {
+.provider-card:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+.provider-card[aria-disabled="true"] {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .config-grid {
@@ -319,7 +326,7 @@ table.models tr:hover td { background: var(--row-hover); }
   grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
   gap: 8px;
 }
-button.model-card {
+.model-card {
   min-height: 104px;
   display: flex;
   flex-direction: column;
@@ -365,9 +372,15 @@ button.model-card {
   font-family: var(--mono);
   font-size: 13px;
   line-height: 1;
+  border: 0;
+  background: transparent;
   padding: 2px 4px;
 }
-.model-remove:hover { color: var(--red); }
+.model-remove:hover:not(:disabled) {
+  color: var(--red);
+  background: transparent;
+  border-color: transparent;
+}
 .model-card-actions {
   flex: 0 0 auto;
   display: inline-flex;
@@ -384,11 +397,11 @@ button.model-card {
   padding: 2px 5px;
   white-space: nowrap;
 }
-.model-status-add:hover:not(.disabled) {
+.model-status-add:hover:not(:disabled) {
   border-color: var(--accent);
   background: color-mix(in srgb, var(--accent) 10%, var(--panel));
 }
-.model-status-add.disabled {
+.model-status-add:disabled {
   color: var(--text-dim);
   opacity: 0.5;
   cursor: not-allowed;

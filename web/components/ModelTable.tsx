@@ -179,56 +179,50 @@ export function ModelTable(props: Props) {
             const fs = firstSuccess(r);
             const preview = previewText(r);
             return (
-              <button
+              <div
                 key={r.key}
-                type="button"
+                role="checkbox"
+                aria-checked={r.checked}
+                aria-disabled={busy}
+                tabIndex={busy ? -1 : 0}
                 class={"provider-card model-card " + (r.checked ? "active" : "")}
-                disabled={busy}
-                onClick={() => props.onToggle(r.key, !r.checked)}
+                onClick={() => { if (!busy) props.onToggle(r.key, !r.checked); }}
+                onKeyDown={(e) => {
+                  if (busy) return;
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    props.onToggle(r.key, !r.checked);
+                  }
+                }}
               >
                 <span class="model-card-head">
                   <span class="model-name">{r.label}</span>
                   <span class="model-card-actions">
-                    <span
+                    <button
+                      type="button"
                       class={"model-status-add " + (!canAddStatus ? "disabled" : "")}
-                      role="button"
-                      tabIndex={0}
                       title={t("models.addToStatus")}
-                      aria-disabled={!canAddStatus}
+                      disabled={busy || !canAddStatus}
                       onClick={(e) => {
                         e.stopPropagation();
                         addRowsToStatus([r]);
                       }}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          addRowsToStatus([r]);
-                        }
-                      }}
                     >
                       {t("models.addToStatus")}
-                    </span>
+                    </button>
                   {r.custom ? (
-                    <span
+                    <button
+                      type="button"
                       class="model-remove"
-                      role="button"
-                      tabIndex={0}
                       title={t("common.remove")}
+                      disabled={busy}
                       onClick={(e) => {
                         e.stopPropagation();
                         props.onRemove(r.key);
                       }}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          props.onRemove(r.key);
-                        }
-                      }}
                     >
                       x
-                    </span>
+                    </button>
                   ) : null}
                   </span>
                 </span>
@@ -246,7 +240,7 @@ export function ModelTable(props: Props) {
                 {preview ? (
                   <span class="text-preview model-preview">{preview}</span>
                 ) : null}
-              </button>
+              </div>
             );
           })}
         </div>
