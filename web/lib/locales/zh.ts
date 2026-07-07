@@ -143,6 +143,8 @@ export const zh = {
     auto30: "30 秒",
     auto60: "60 秒",
     auto300: "5 分钟",
+    autoEstimate: "当前 {count} 个条目按此间隔约消耗 {requests} 次 Worker 请求/天。",
+    autoPausedHidden: "当前标签页不可见，自动刷新已暂停。",
     empty: "还没有状态条目。可从「测试」页把模型加入状态。",
     colProvider: "供应商",
     colModel: "模型",
@@ -186,7 +188,7 @@ export const zh = {
   },
   settings: {
     title: "供应商设置",
-    toolbarHint: "修改即自动保存为默认配置，可导入导出 JSON。",
+    toolbarHint: "供应商修改会保存到预设；测试参数仅保存到私有状态。",
     exportConfig: "导出配置",
     importConfig: "导入配置",
     emptyProviders: "暂无供应商。",

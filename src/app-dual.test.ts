@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createApp } from "./app.js";
-import type { DualTestResult } from "./types.js";
+import type { DualTestResult, RowTestResult } from "./types.js";
 
 function post(path: string, body: unknown): Request {
   return new Request(`http://x.test${path}`, {
@@ -71,5 +71,69 @@ describe("api test-dual", () => {
     });
     expect(typeof result.streamTtftMs).toBe("number");
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("aggregates a row probe through one API request", async () => {
+    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body ?? "{}")) as { stream?: boolean };
+      if (body.stream) {
+        return streamResponse([
+          'data: {"choices":[{"delta":{"content":"stream ok"}}]}\n\n',
+          'data: {"choices":[{"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":2,"total_tokens":3}}\n\n',
+          "data: [DONE]\n\n",
+        ]);
+      }
+
+      return new Response(JSON.stringify({
+        choices: [{ message: { content: "json ok" } }],
+        usage: { prompt_tokens: 1, completion_tokens: 2, total_tokens: 3 },
+      }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const app = createApp();
+
+    const res = await app.fetch(post("/api/test-row", {
+      protocols: ["openai-chat"],
+      baseUrl: "https://api.example.com",
+      apiKey: "sk",
+      model: "m",
+      input: "hi",
+      timeoutMs: 1000,
+      maxRetries: 0,
+      maxTokens: 1,
+    }));
+
+    expect(res.status).toBe(200);
+    const result = await res.json() as RowTestResult;
+    expect(result.results["openai-chat"]).toMatchObject({
+      json: { ok: true, text: "json ok" },
+      stream: { ok: true, text: "stream ok" },
+      streamVerdict: "stream",
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("rejects row probes above the per-invocation protocol limit", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const app = createApp();
+
+    const res = await app.fetch(post("/api/test-row", {
+      protocols: ["openai-chat", "openai-responses", "gemini"],
+      baseUrl: "https://api.example.com",
+      apiKey: "sk",
+      model: "m",
+      input: "hi",
+      timeoutMs: 1000,
+      maxRetries: 0,
+      maxTokens: 1,
+    }));
+
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toEqual({ error: "单行聚合探测最多支持 2 个协议" });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

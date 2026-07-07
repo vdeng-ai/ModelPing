@@ -1,4 +1,4 @@
-import type { Balance, DualTestResult, ModelsResult, PingResult, PresetsResponse, PrivateState, StreamEvent, TestResult, Usage } from "./types.js";
+import type { Balance, DualTestResult, ModelsResult, PingResult, PresetsResponse, PrivateState, RowTestResult, StreamEvent, TestResult, Usage } from "./types.js";
 import { normalizePresets } from "./presets.js";
 import { drainSseBlocks, extractSseData } from "../../src/sse.js";
 import {
@@ -94,11 +94,25 @@ export interface HealthResponse {
   };
 }
 
+export interface BootstrapResponse {
+  health: HealthResponse;
+  settings: PresetsResponse | null;
+  privateState: PrivateState | null;
+}
+
 export async function fetchHealth(): Promise<HealthResponse> {
   const res = await fetch("/api/health");
   // 非 2xx（如反代 5xx / 返回 HTML 错误页）直接 res.json() 会抛解析错，
   // 这里显式判 ok 并回退，避免初始化整体崩在一个无信息的 SyntaxError。
   if (!res.ok) throw new Error(`健康检查失败: HTTP ${res.status}`);
+  return res.json();
+}
+
+export async function fetchBootstrap(): Promise<BootstrapResponse> {
+  const res = await fetch("/api/bootstrap", { headers: authHeaders(), cache: "no-cache" });
+  if (res.status === 401) throw await authErrorFromResponse(res);
+  if (res.status === 409) throw new Error(await parseErrorMessage(res, "私有工作态无法解密"));
+  if (!res.ok) throw new Error(`初始化失败: HTTP ${res.status}`);
   return res.json();
 }
 
@@ -282,6 +296,37 @@ export async function runTestDual(payload: TestPayload, signal?: AbortSignal): P
     return await res.json();
   } catch (e: any) {
     return failedDualResult(`响应解析失败: ${e?.message ?? e}`, res.status);
+  }
+}
+
+export async function runTestRow(
+  payload: Omit<TestPayload, "protocol" | "stream"> & { protocols: string[] },
+  signal?: AbortSignal,
+): Promise<RowTestResult> {
+  let res: Response;
+  try {
+    res = await fetch("/api/test-row", {
+      method: "POST",
+      headers: { "content-type": "application/json", ...authHeaders() },
+      body: JSON.stringify(payload),
+      signal,
+    });
+  } catch (e: any) {
+    const failed = failedDualResult(e?.message ?? String(e));
+    return { results: Object.fromEntries(payload.protocols.map((protocol) => [protocol, failed])) };
+  }
+
+  if (!res.ok) {
+    const msg = await parseErrorMessage(res);
+    const failed = failedDualResult(msg, res.status);
+    return { results: Object.fromEntries(payload.protocols.map((protocol) => [protocol, failed])) };
+  }
+
+  try {
+    return await res.json();
+  } catch (e: any) {
+    const failed = failedDualResult(`响应解析失败: ${e?.message ?? e}`, res.status);
+    return { results: Object.fromEntries(payload.protocols.map((protocol) => [protocol, failed])) };
   }
 }
 

@@ -143,6 +143,8 @@ export const en = {
     auto30: "30s",
     auto60: "60s",
     auto300: "5min",
+    autoEstimate: "{count} entries at this interval use about {requests} Worker requests/day.",
+    autoPausedHidden: "Auto refresh is paused while this tab is hidden.",
     empty: "No status entries yet. Add models from the Test tab.",
     colProvider: "Provider",
     colModel: "Model",
@@ -186,7 +188,7 @@ export const en = {
   },
   settings: {
     title: "Provider Settings",
-    toolbarHint: "Edits auto-save as default config; import/export JSON supported.",
+    toolbarHint: "Provider edits are saved to presets; test parameters are saved privately.",
     exportConfig: "Export config",
     importConfig: "Import config",
     emptyProviders: "No providers yet.",

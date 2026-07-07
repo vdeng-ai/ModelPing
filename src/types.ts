@@ -45,6 +45,24 @@ export interface DualTestResult {
   streamTtftMs: number | null;
 }
 
+// 单个模型行的聚合探测：一次后端请求内测试多个协议，降低 Workers 请求数。
+export interface RowTestRequest {
+  protocols: Protocol[];
+  baseUrl: string;
+  isFullUrl?: boolean;
+  apiKey: string;
+  model: string;
+  input: string;
+  timeoutMs: number;
+  maxRetries: number;
+  maxTokens: number;
+  userAgent: string;
+}
+
+export interface RowTestResult {
+  results: Partial<Record<Protocol, DualTestResult>>;
+}
+
 // 流式时后端经 SSE 吐给前端的事件。最终以 done 收尾并携带完整 TestResult。
 export type StreamEvent =
   | { type: "delta"; text: string }

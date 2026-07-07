@@ -41,7 +41,7 @@ export async function pingEndpoint(req: PingRequest, signal?: AbortSignal): Prom
     try {
       const res = await fetchWithTimeout(url, { method: "GET", headers: plan.headers }, PING_TIMEOUT_MS, signal);
       const latencyMs = Date.now() - start;
-      await res.text().catch(() => {}); // 读掉 body 释放连接，不解析。
+      await res.body?.cancel().catch(() => undefined); // 不需要 /models 正文，只释放连接。
       // 端点不存在 → 试下一候选，全不存在则回退补全。
       if (res.status === 404 || res.status === 405) continue;
       // 其余（含 2xx / 401 / 403）都视为端点可达，延迟有效。

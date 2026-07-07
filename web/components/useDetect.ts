@@ -1,7 +1,7 @@
 import { useRef, useState } from "preact/hooks";
 import type { Dispatch, StateUpdater } from "preact/hooks";
-import type { HistoryEntry, Protocol, TestResult } from "../lib/types.js";
-import { EMPTY_USAGE, runTestDual, type TestPayload } from "../lib/api.js";
+import type { DualTestResult, HistoryEntry, Protocol, TestResult } from "../lib/types.js";
+import { EMPTY_USAGE, runTestRow, type TestPayload } from "../lib/api.js";
 import { CUSTOM_PROVIDER_ID } from "../lib/presets.js";
 import { PROTOCOLS, protocolsForProvider } from "../../src/protocols.js";
 import type { ModelRow, ProtocolProbe } from "../lib/model-rows.js";
@@ -24,6 +24,18 @@ export interface DetectDeps {
   historyRef: { current: HistoryEntry[] };
   addHistoryEntry: (entry: HistoryEntry) => void;
   showToast: (msg: string) => void;
+}
+
+function failedTestResult(error: string, status = 0): TestResult {
+  return {
+    ok: false, status, latencyMs: 0, ttftMs: null, usage: EMPTY_USAGE,
+    text: "", error, attempts: 0,
+  };
+}
+
+function failedDualResult(error: string, status = 0): DualTestResult {
+  const failed = failedTestResult(error, status);
+  return { json: failed, stream: failed, streamVerdict: "none", streamTtftMs: null };
 }
 
 // 模型检测引擎：单行 4 协议探测 + 并发池批量执行。
@@ -77,24 +89,26 @@ export function useDetect(deps: DetectDeps) {
 
     let anyPass = false;
 
-    await Promise.all(toTest.map(async (proto) => {
-      const payload: TestPayload = {
-        protocol: proto,
-        baseUrl: c.baseUrl,
-        isFullUrl: Boolean(c.isFullUrl),
-        apiKey: c.apiKey,
-        model,
-        input: cfg.input,
-        stream: false,
-        timeoutMs: cfg.timeoutMs,
-        maxRetries: cfg.maxRetries,
-        maxTokens: cfg.maxTokens,
-        userAgent: cfg.userAgent,
-      };
+    const payload: Omit<TestPayload, "protocol" | "stream"> & { protocols: Protocol[] } = {
+      protocols: toTest,
+      baseUrl: c.baseUrl,
+      isFullUrl: Boolean(c.isFullUrl),
+      apiKey: c.apiKey,
+      model,
+      input: cfg.input,
+      timeoutMs: cfg.timeoutMs,
+      maxRetries: cfg.maxRetries,
+      maxTokens: cfg.maxTokens,
+      userAgent: cfg.userAgent,
+    };
 
-      try {
-        const dual = await runTestDual(payload, signal);
-        if (signal.aborted) return;
+    try {
+      const rowResult = await runTestRow(payload, signal);
+      if (signal.aborted) return false;
+
+      for (const proto of toTest) {
+        const dual = rowResult.results[proto] ?? failedDualResult("协议未返回结果");
+        if (signal.aborted) return false;
         const jsonResult = dual.json;
         const streamVerdict: StreamVerdict = dual.streamVerdict;
         const streamTtftMs = dual.streamTtftMs;
@@ -127,10 +141,12 @@ export function useDetect(deps: DetectDeps) {
           result,
         };
         addHistoryEntry(entry);
-      } catch (e: any) {
-        // 兜底：即使 runTestJson/runTestStream 已不抛异常，
-        // 仍可能因其他运行时错误导致探测失败。确保探针被更新，避免卡在 testing。
-        if (signal?.aborted) return; // 取消时不更新，由 resetTestingProbes 处理
+      }
+    } catch (e: any) {
+      // 兜底：即使 runTestRow 已不抛异常，仍可能因其他运行时错误导致探测失败。
+      // 确保探针被更新，避免卡在 testing。
+      if (signal?.aborted) return false; // 取消时不更新，由 resetTestingProbes 处理
+      for (const proto of toTest) {
         const errResult: TestResult = {
           ok: false, status: 0, latencyMs: 0, ttftMs: null, usage: EMPTY_USAGE,
           text: "", error: e?.message ?? String(e), attempts: 0,
@@ -142,7 +158,7 @@ export function useDetect(deps: DetectDeps) {
           streamTtftMs: null,
         });
       }
-    }));
+    }
 
     return anyPass;
   };

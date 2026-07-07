@@ -2,7 +2,19 @@ import { Hono } from "hono";
 import type { Context } from "hono";
 import { cors } from "hono/cors";
 import { timingSafeEqual } from "hono/utils/buffer";
-import type { DualTestResult, LookupRequest, PingRequest, StreamEvent, TestRequest, TestResult } from "./types.js";
+import type {
+  DualTestResult,
+  LookupRequest,
+  PingRequest,
+  PresetsResponse,
+  PrivateState,
+  Protocol,
+  RowTestRequest,
+  RowTestResult,
+  StreamEvent,
+  TestRequest,
+  TestResult,
+} from "./types.js";
 import { runTest, runTestStream } from "./runner.js";
 import { normalizePresets, FALLBACK_DEFAULTS } from "./presets-schema.js";
 import type { SettingsStore } from "./store/index.js";
@@ -41,6 +53,7 @@ export interface Env {
 }
 
 type AppContext = Context<{ Bindings: Env }>;
+const ROW_PROTOCOL_CONCURRENCY = 2;
 
 function privateStateSecret(env?: Env): string | null {
   const s = (env?.PRIVATE_STATE_SECRET || env?.STATUS_SECRET || env?.APP_PASSWORD || "").trim();
@@ -58,6 +71,28 @@ function privateStateScope(env?: Env): PrivateStateScope {
   if (v === "none") return "none";
   if (v === "config") return "config";
   return "full";
+}
+
+function healthPayload(env?: Env) {
+  const hasAllowedHosts = Boolean((env?.ALLOWED_HOSTS ?? "").trim());
+  const blockPrivateHosts = blockPrivate(env);
+  const scope = privateStateScope(env);
+  const privateStateEnabled = Boolean(env?.privateStore && privateStateSecret(env) && scope !== "none");
+  return {
+    ok: true,
+    needPassword: Boolean(env?.APP_PASSWORD),
+    security: {
+      hasPassword: Boolean(env?.APP_PASSWORD),
+      hasAllowedHosts,
+      blockPrivateHosts,
+      shouldWarnOpenProxy: !hasAllowedHosts && !blockPrivateHosts,
+    },
+    persistence: {
+      settings: Boolean(env?.store),
+      privateState: privateStateEnabled,
+      privateStateScope: privateStateEnabled ? scope : "none",
+    },
+  };
 }
 
 function asBodyObject(raw: unknown): Record<string, unknown> | null {
@@ -135,6 +170,22 @@ async function runDualTest(req: TestRequest, signal?: AbortSignal): Promise<Dual
   };
 }
 
+async function runRowTest(req: RowTestRequest, signal?: AbortSignal): Promise<RowTestResult> {
+  const { protocols, ...base } = req;
+  const results: Partial<Record<Protocol, DualTestResult>> = {};
+  let cursor = 0;
+  const workerCount = Math.min(ROW_PROTOCOL_CONCURRENCY, protocols.length);
+  const workers = Array.from({ length: workerCount }, async () => {
+    while (!signal?.aborted) {
+      const protocol = protocols[cursor++];
+      if (!protocol) return;
+      results[protocol] = await runDualTest({ ...base, protocol, stream: false }, signal);
+    }
+  });
+  await Promise.all(workers);
+  return { results };
+}
+
 // 把前端传入的部分字段补齐为完整 TestRequest，并做基本校验。
 function normalize(raw: any): { req?: TestRequest; error?: string } {
   const body = asBodyObject(raw);
@@ -174,6 +225,36 @@ function normalize(raw: any): { req?: TestRequest; error?: string } {
   return { req };
 }
 
+function normalizeRow(raw: any): { req?: RowTestRequest; error?: string } {
+  const body = asBodyObject(raw);
+  if (!body) return { error: "请求体非法" };
+  const protocols = [...new Set(
+    (Array.isArray(body.protocols) ? body.protocols : [])
+      .map((value) => protocolOf(value))
+      .filter((value): value is Protocol => Boolean(value)),
+  )];
+  if (!protocols.length) return { error: "缺少 protocols" };
+  if (protocols.length > 2) return { error: "单行聚合探测最多支持 2 个协议" };
+
+  const normalized = normalize({ ...body, protocol: protocols[0], stream: false });
+  if (normalized.error || !normalized.req) return { error: normalized.error };
+  const base = normalized.req;
+  return {
+    req: {
+      protocols,
+      baseUrl: base.baseUrl,
+      isFullUrl: base.isFullUrl,
+      apiKey: base.apiKey,
+      model: base.model,
+      input: base.input,
+      timeoutMs: base.timeoutMs,
+      maxRetries: base.maxRetries,
+      maxTokens: base.maxTokens,
+      userAgent: base.userAgent,
+    },
+  };
+}
+
 // 校验目标主机是否在 allowlist（若配置）。
 function hostAllowed(baseUrl: string, allowed?: string): boolean {
   if (!allowed) return true;
@@ -192,6 +273,38 @@ async function readJsonBody(c: AppContext): Promise<{ raw: unknown } | { respons
     return { raw: await c.req.json() };
   } catch {
     return { response: c.json({ error: "请求体须为 JSON" }, 400) };
+  }
+}
+
+async function loadSettings(env?: Env): Promise<PresetsResponse | null> {
+  const store = env?.store;
+  if (!store) return null;
+  const raw = await store.get();
+  if (!raw) return null;
+  try {
+    return normalizePresets(JSON.parse(raw));
+  } catch {
+    return null;
+  }
+}
+
+async function loadPrivateState(env?: Env): Promise<{ state: PrivateState | null; error?: string }> {
+  const scope = privateStateScope(env);
+  const store = env?.privateStore;
+  const secret = privateStateSecret(env);
+  if (!store || !secret || scope === "none") return { state: null };
+  const raw = await store.get();
+  if (!raw) return { state: applyPrivateStateScope(emptyPrivateState(), scope) };
+  let decrypted: string;
+  try {
+    decrypted = await decrypt(raw, secret);
+  } catch {
+    return { state: null, error: "私有工作态无法解密，请检查 PRIVATE_STATE_SECRET/STATUS_SECRET/APP_PASSWORD 或清空私有状态文件" };
+  }
+  try {
+    return { state: applyPrivateStateScope(normalizePrivateState(JSON.parse(decrypted)), scope) };
+  } catch {
+    return { state: null, error: "私有工作态格式损坏，请清空私有状态文件后重试" };
   }
 }
 
@@ -251,25 +364,7 @@ export function createApp() {
   // 健康检查 + 是否需要口令（前端据此决定要不要弹口令输入）。
   // 必须放在口令中间件之前：前端正是靠它来发现「是否需要口令」，不能被口令挡住。
   app.get("/api/health", (c) => {
-    const hasAllowedHosts = Boolean((c.env?.ALLOWED_HOSTS ?? "").trim());
-    const blockPrivateHosts = blockPrivate(c.env);
-    const scope = privateStateScope(c.env);
-    const privateStateEnabled = Boolean(c.env?.privateStore && privateStateSecret(c.env) && scope !== "none");
-    return c.json({
-      ok: true,
-      needPassword: Boolean(c.env?.APP_PASSWORD),
-      security: {
-        hasPassword: Boolean(c.env?.APP_PASSWORD),
-        hasAllowedHosts,
-        blockPrivateHosts,
-        shouldWarnOpenProxy: !hasAllowedHosts && !blockPrivateHosts,
-      },
-      persistence: {
-        settings: Boolean(c.env?.store),
-        privateState: privateStateEnabled,
-        privateStateScope: privateStateEnabled ? scope : "none",
-      },
-    });
+    return c.json(healthPayload(c.env));
   });
 
   // 可选访问口令。设置 APP_PASSWORD 后，所有 /api 请求须带 x-app-password。
@@ -281,6 +376,20 @@ export function createApp() {
       if (!(await timingSafeEqual(got, pw))) return c.json({ error: "访问口令错误" }, 401);
     }
     await next();
+  });
+
+  // 启动聚合接口：一次认证请求带回 settings + private-state，减少首屏 API 请求数。
+  app.get("/api/bootstrap", async (c) => {
+    const [settings, privateState] = await Promise.all([
+      loadSettings(c.env),
+      loadPrivateState(c.env),
+    ]);
+    if (privateState.error) return c.json({ error: privateState.error }, 409);
+    return c.json({
+      health: healthPayload(c.env),
+      settings,
+      privateState: privateState.state,
+    }, 200, { "cache-control": "no-store" });
   });
 
   // ---------- 设置持久化（presets，跨设备共享） ----------
@@ -395,6 +504,28 @@ export function createApp() {
 
     try {
       return c.json(await runDualTest(req, c.req.raw.signal));
+    } catch (error) {
+      if (c.req.raw.signal.aborted || (error as { name?: string } | null)?.name === "AbortError") {
+        return new Response(null, { status: 499 });
+      }
+      throw error;
+    }
+  });
+
+  // 单模型行聚合探测：一个 Worker 请求内测试该模型需要的协议集合。
+  // 内部协议并发上限为 2；每个协议会并行非流式+流式，避免触碰 Workers 6 个同时出站连接限制。
+  app.post("/api/test-row", async (c) => {
+    const parsed = await readJsonBody(c);
+    if ("response" in parsed) return parsed.response;
+
+    const { req, error } = normalizeRow(parsed.raw);
+    if (error || !req) return c.json({ error: error ?? "参数错误" }, 400);
+
+    const targetError = targetPolicyError([req.baseUrl], c.env);
+    if (targetError) return c.json({ error: targetError }, 403);
+
+    try {
+      return c.json(await runRowTest(req, c.req.raw.signal));
     } catch (error) {
       if (c.req.raw.signal.aborted || (error as { name?: string } | null)?.name === "AbortError") {
         return new Response(null, { status: 499 });
