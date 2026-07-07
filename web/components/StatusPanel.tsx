@@ -22,7 +22,7 @@ type PingState = {
   ts?: number;
 };
 
-const AUTO_OPTIONS = [0, 10, 30, 60, 300] as const;
+const AUTO_OPTIONS = [0, 30, 60, 300] as const;
 
 function latencyClass(result?: PingResult): string {
   if (!result) return "idle";
@@ -39,6 +39,7 @@ export function StatusPanel({ entries, persisted, onDelete, onGotoTest, onLaunch
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState({ completed: 0, total: 0 });
   const [autoSec, setAutoSec] = useState<number>(0);
+  const [visible, setVisible] = useState(() => document.visibilityState === "visible");
   const abortRef = useRef<AbortController | null>(null);
   const busyRef = useRef(false);
 
@@ -114,12 +115,18 @@ export function StatusPanel({ entries, persisted, onDelete, onGotoTest, onLaunch
   }, [entries]);
 
   useEffect(() => {
-    if (!autoSec) return;
+    const onVisibility = () => setVisible(document.visibilityState === "visible");
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, []);
+
+  useEffect(() => {
+    if (!autoSec || !visible) return;
     const timer = setInterval(() => {
       if (!busyRef.current && entries.length > 0) void refresh(entries);
     }, autoSec * 1000);
     return () => clearInterval(timer);
-  }, [autoSec, entries]);
+  }, [autoSec, entries, visible]);
 
   useEffect(() => () => abortRef.current?.abort(), []);
 
@@ -149,6 +156,13 @@ export function StatusPanel({ entries, persisted, onDelete, onGotoTest, onLaunch
           </select>
         </label>
       </div>
+      {autoSec ? (
+        <div class="hint status-auto-estimate">
+          {visible
+            ? t("status.autoEstimate", { count: entries.length, requests: Math.ceil(entries.length * 86400 / autoSec) })
+            : t("status.autoPausedHidden")}
+        </div>
+      ) : null}
 
       {busy ? (
         <div class="batch-progress" aria-live="polite">

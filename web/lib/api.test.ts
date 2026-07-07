@@ -107,6 +107,18 @@ describe("api auth failures", () => {
       cache: "no-cache",
     });
   });
+
+  it("clears stale session password when bootstrap returns 401", async () => {
+    const { api, fetchMock, storage } = await loadApiWithStalePassword();
+
+    await expect(api.fetchBootstrap()).rejects.toSatisfy((e: unknown) => api.isAuthError(e));
+
+    expect(storage.getItem("app_password")).toBeNull();
+    expect(fetchMock).toHaveBeenCalledWith("/api/bootstrap", {
+      headers: { "x-app-password": "stale" },
+      cache: "no-cache",
+    });
+  });
 });
 
 describe("api failed test results", () => {
@@ -137,6 +149,15 @@ describe("api failed test results", () => {
     expect(result.streamTtftMs).toBeNull();
     expect(result.json).toMatchObject({ ok: false, status: 0, error: "network down", attempts: 0 });
     expect(result.stream).toMatchObject({ ok: false, status: 0, error: "network down", attempts: 0 });
+  });
+
+  it("normalizes row network failures for every requested protocol", async () => {
+    const api = await loadApi(vi.fn(() => Promise.reject(new Error("network down"))));
+
+    const result = await api.runTestRow({ ...payload, protocols: ["openai-chat", "openai-responses"] });
+
+    expect(result.results["openai-chat"]?.json).toMatchObject({ ok: false, status: 0, error: "network down", attempts: 0 });
+    expect(result.results["openai-responses"]?.stream).toMatchObject({ ok: false, status: 0, error: "network down", attempts: 0 });
   });
 
   it("returns a failed stream result when SSE never sends done", async () => {

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import type { ConfigState, Defaults, HistoryEntry, PresetsResponse, PrivateState, ProviderPreset, StatusEntry } from "../lib/types.js";
-import { emptyPrivateState, fetchHealth, fetchPresets, fetchPrivateState, fetchSettings, isAuthError, savePrivateState, saveSettings, setAppPassword } from "../lib/api.js";
+import { emptyPrivateState, fetchBootstrap, fetchPresets, isAuthError, savePrivateState, saveSettings, setAppPassword } from "../lib/api.js";
 import { MAX_PRIVATE_HISTORY } from "../../src/private-state.js";
 import {
   CUSTOM_PROVIDER_ID,
@@ -65,8 +65,6 @@ export function App() {
   const privateSaveRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastPrivateSaveRef = useRef<string>("");
   const privateStateRef = useRef<PrivateState>(emptyPrivateState());
-  // ConfigPanel 参数 → defaults 同步到后端的防抖句柄。
-  const configSyncRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // 当前语言对应的默认输入文本；语言切换时若用户未自定义则跟随更新。
   const defaultInputRef = useRef(t("config.defaultInput"));
@@ -110,7 +108,7 @@ export function App() {
           }
         })
         .catch((e) => showToast(t("app.privateStateSaveFailed", { msg: e?.message ?? e })));
-    }, 2000);
+    }, 7000);
   };
 
   const persistPrivateState = (patch: Partial<PrivateState>) => {
@@ -156,33 +154,26 @@ export function App() {
     initLang();
   }, []);
 
-  // 初始化：健康检查（是否需口令）→ 验证口令/拉预设 → 恢复上次配置。
+  // 初始化：一次 bootstrap 请求完成口令验证、拉预设与恢复私有状态。
   const init = async () => {
     setLoadErr(null);
     try {
-      const health = await fetchHealth();
+      const bootstrap = await fetchBootstrap();
+      const health = bootstrap.health;
       const security = health.security;
       const scope = health.persistence?.privateState ? health.persistence.privateStateScope : "none";
       privateStateScopeRef.current = scope;
       setSecurityWarn(Boolean(security && !isLocalOrigin() && (!security.hasPassword || security.shouldWarnOpenProxy)));
       setNeedPassword(Boolean(health.needPassword));
-      if (health.needPassword) {
-        const saved = sessionStorage.getItem("app_password");
-        if (!saved) {
-          setAuthed(false);
-          return; // 等用户输入口令
-        }
-      }
-      // 预设来源优先级：服务端（跨设备共享）→ 本地缓存 → 静态默认。
-      // fetchSettings 是第一个受口令保护的请求；它成功后才认为口令已通过。
-      const serverPresets = await fetchSettings();
       setAuthed(true);
       setPwError(null);
-      serverPersistRef.current = serverPresets !== null;
+      // 预设来源优先级：服务端（跨设备共享）→ 本地缓存 → 静态默认。
+      const serverPresets = bootstrap.settings;
+      serverPersistRef.current = Boolean(health.persistence?.settings);
       // 静态默认兜底。
       const localPresets = loadLocalPresets();
       const activePresets = serverPresets ?? localPresets ?? await fetchPresets();
-      const privateState = await fetchPrivateState();
+      const privateState = bootstrap.privateState;
       const privateCanPersist = privateState !== null;
       privatePersistRef.current = privateCanPersist;
       setStatusPersisted(privateCanPersist);
@@ -229,7 +220,7 @@ export function App() {
       if (isAuthError(e)) {
         setNeedPassword(true);
         setAuthed(false);
-        setPwError(e?.message ?? t("app.pwInvalid"));
+        setPwError(pwInput ? e?.message ?? t("app.pwInvalid") : null);
         setLoadErr(null);
         return;
       }
@@ -242,7 +233,6 @@ export function App() {
     init();
     return () => {
       if (privateSaveRef.current) clearTimeout(privateSaveRef.current);
-      if (configSyncRef.current) clearTimeout(configSyncRef.current);
       if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     };
   }, []);
@@ -289,31 +279,10 @@ export function App() {
     const nextConfig = { ...v, concurrency: normalizeConcurrency(v.concurrency) };
     setConfig(nextConfig);
     persistPrivateState({ config: nextConfig });
-    // 参数当默认值同步到后端 defaults（防抖，避免逐字输入狂发请求）。
-    if (serverPersistRef.current) {
-      if (configSyncRef.current) clearTimeout(configSyncRef.current);
-      configSyncRef.current = setTimeout(() => {
-        configSyncRef.current = null;
-        const nextDefaults: Defaults = {
-          input: nextConfig.input,
-          timeoutMs: nextConfig.timeoutMs,
-          maxRetries: nextConfig.maxRetries,
-          maxTokens: nextConfig.maxTokens,
-          userAgent: nextConfig.userAgent,
-          concurrency: nextConfig.concurrency,
-        };
-        setPresetDefaults(nextDefaults);
-        const presets = { providers, defaults: nextDefaults };
-        saveLocalPresets(presets);
-        saveSettings(presets)
-          .then((ok) => { if (!ok) serverPersistRef.current = false; })
-          .catch((e) => showToast(t("app.toastConfigSyncFailed", { msg: e?.message ?? e })));
-      }, 800);
-    }
   };
 
   // 把 presets 持久化：服务端可用则写服务端（跨设备）；本地缓存始终作镜像同步。
-  // 当前配置即默认，修改自动覆盖。
+  // 仅供应商设置/导入配置等显式 presets 操作会写服务端，普通测试参数走 private-state。
   const persistPresets = (presets: PresetsResponse) => {
     saveLocalPresets(presets);
     if (serverPersistRef.current) {
