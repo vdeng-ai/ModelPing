@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 import type { ProviderPreset } from "./types.js";
-import { buildRows, freshProbes, selectRowsForProvider, upsertCustomModelRows, type ModelRow } from "./model-rows.js";
+import {
+  appendCustomModelRows,
+  buildRows,
+  customModelIds,
+  freshProbes,
+  selectRowsForProvider,
+  upsertCustomModelRows,
+  type ModelRow,
+} from "./model-rows.js";
 
 const providers: ProviderPreset[] = [
   {
@@ -84,5 +92,32 @@ describe("model rows", () => {
       checked: true,
       modelByProvider: {},
     });
+  });
+
+  it("restores custom model rows without changing preset rows", () => {
+    const rows = buildRows(providers, "custom", () => "preset");
+    const next = appendCustomModelRows(rows, [" custom-a ", "Shared", "custom-a", ""], () => "custom");
+
+    expect(next).toHaveLength(3);
+    expect(next[0]).toMatchObject({ label: "Shared", custom: false, checked: false });
+    expect(next[2]).toMatchObject({
+      key: "custom",
+      label: "custom-a",
+      custom: true,
+      checked: true,
+      modelByProvider: {},
+    });
+    expect(next[2].probes.gemini.status).toBe("idle");
+  });
+
+  it("extracts only custom model ids for persistence", () => {
+    const rows: ModelRow[] = [
+      { key: "p", label: "preset", modelByProvider: { a: "preset" }, custom: false, checked: true, probes: freshProbes() },
+      { key: "c1", label: " custom-a ", modelByProvider: {}, custom: true, checked: false, probes: freshProbes() },
+      { key: "c2", label: "custom-a", modelByProvider: {}, custom: true, checked: true, probes: freshProbes() },
+      { key: "c3", label: "", modelByProvider: {}, custom: true, checked: true, probes: freshProbes() },
+    ];
+
+    expect(customModelIds(rows)).toEqual(["custom-a"]);
   });
 });

@@ -81,6 +81,41 @@ export function selectRowsForProvider(rows: ModelRow[], providerId: string): Mod
   }));
 }
 
+export function customModelIds(rows: ModelRow[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const row of rows) {
+    const model = row.custom ? row.label.trim() : "";
+    if (!model || seen.has(model)) continue;
+    seen.add(model);
+    out.push(model);
+  }
+  return out;
+}
+
+export function appendCustomModelRows(
+  rows: ModelRow[],
+  ids: string[],
+  makeKey: () => string = nextModelRowKey,
+): ModelRow[] {
+  const next = [...rows];
+  const labels = new Set(next.map((row) => row.label));
+  for (const id of ids) {
+    const model = id.trim();
+    if (!model || labels.has(model)) continue;
+    labels.add(model);
+    next.push({
+      key: makeKey(),
+      label: model,
+      modelByProvider: {},
+      custom: true,
+      checked: true,
+      probes: freshProbes(),
+    });
+  }
+  return next;
+}
+
 export function upsertCustomModelRows(
   rows: ModelRow[],
   ids: string[],

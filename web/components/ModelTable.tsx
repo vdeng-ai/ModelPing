@@ -16,6 +16,9 @@ interface Props {
   providerName: string;
   onToggle: (key: string, checked: boolean) => void;
   onToggleAll: (checked: boolean) => void;
+  customModelsPersist: boolean;
+  customModelsPersistAvailable: boolean;
+  onToggleCustomModelsPersist: (on: boolean) => void;
   onAdd: (model: string) => void;
   onRemove: (key: string) => void;
   onTestSelected: () => void;
@@ -146,6 +149,18 @@ export function ModelTable(props: Props) {
         <button disabled={busy || !someChecked || !canAddStatus} onClick={() => addRowsToStatus(rows.filter((r) => r.checked))}>
           {t("models.addSelectedToStatus")}
         </button>
+        <label
+          class="toggle model-persist-toggle"
+          title={props.customModelsPersistAvailable ? t("models.persistCustomTitle") : t("models.persistCustomUnavailable")}
+        >
+          <input
+            type="checkbox"
+            checked={props.customModelsPersist}
+            disabled={!props.customModelsPersistAvailable}
+            onChange={(e) => props.onToggleCustomModelsPersist((e.target as HTMLInputElement).checked)}
+          />
+          {t("models.persistCustom")}
+        </label>
         <CcSwitchButton
           name={providerName}
           endpoint={conn.baseUrl}

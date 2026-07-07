@@ -46,18 +46,24 @@ describe("private state", () => {
         },
       }],
       conn: { providerId: "custom", baseUrl: "https://api.example.com", apiKey: "sk" },
+      customModelsPersist: true,
+      customModels: ["custom-a"],
     };
 
     expect(applyPrivateStateScope(state, "config")).toMatchObject({
       historyPersist: false,
       history: [],
       conn: { apiKey: "sk" },
+      customModelsPersist: true,
+      customModels: ["custom-a"],
     });
   });
 
   it("normalizes defaults and trims history", () => {
     const state = normalizePrivateState({
       historyPersist: false,
+      customModelsPersist: true,
+      customModels: [" custom-a ", "", "custom-a", "custom-b", 1],
       history: Array.from({ length: 205 }, (_, i) => ({
         id: `h${i}`,
         ts: i,
@@ -73,6 +79,8 @@ describe("private state", () => {
     });
     expect(state.historyPersist).toBe(false);
     expect(state.history).toHaveLength(200);
+    expect(state.customModelsPersist).toBe(true);
+    expect(state.customModels).toEqual(["custom-a", "custom-b"]);
     expect(state.statusEntries).toEqual([]);
   });
 
@@ -90,7 +98,14 @@ describe("private state", () => {
       privateStore: store,
     } satisfies Env);
     expect(res.status).toBe(200);
-    expect(await res.json()).toMatchObject({ v: 1, historyPersist: true, history: [], statusEntries: [] });
+    expect(await res.json()).toMatchObject({
+      v: 1,
+      historyPersist: true,
+      history: [],
+      customModelsPersist: false,
+      customModels: [],
+      statusEntries: [],
+    });
   });
 
   it("writes encrypted private state and reads it back", async () => {
@@ -100,6 +115,8 @@ describe("private state", () => {
     const state = {
       ...emptyPrivateState(),
       conn: { providerId: "custom", baseUrl: "https://api.example.com", apiKey: "sk-live" },
+      customModelsPersist: true,
+      customModels: ["custom-a"],
     };
     const put = await app.fetch(req("/api/private-state", {
       method: "PUT",
@@ -111,7 +128,11 @@ describe("private state", () => {
 
     const get = await app.fetch(req("/api/private-state", { headers: { "x-app-password": "pw" } }), env);
     expect(get.status).toBe(200);
-    expect(await get.json()).toMatchObject({ conn: { apiKey: "sk-live" } });
+    expect(await get.json()).toMatchObject({
+      conn: { apiKey: "sk-live" },
+      customModelsPersist: true,
+      customModels: ["custom-a"],
+    });
   });
 
   it("config scope persists private config but strips history", async () => {
@@ -134,6 +155,8 @@ describe("private state", () => {
         result: { ok: true, status: 200, latencyMs: 1, ttftMs: null, usage: {}, text: "ok", error: null, attempts: 1 },
       }],
       conn: { providerId: "custom", baseUrl: "https://api.example.com", apiKey: "sk-live" },
+      customModelsPersist: true,
+      customModels: ["custom-a"],
     };
 
     const put = await app.fetch(req("/api/private-state", {
@@ -149,6 +172,8 @@ describe("private state", () => {
       historyPersist: false,
       history: [],
       conn: { apiKey: "sk-live" },
+      customModelsPersist: true,
+      customModels: ["custom-a"],
     });
   });
 

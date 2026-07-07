@@ -205,6 +205,8 @@ export interface PrivateState {
   history: HistoryEntry[];
   conn: ConnState | null;
   config: Partial<ConfigState> | null;
+  customModelsPersist: boolean;
+  customModels: string[];
   statusEntries: StatusEntry[];
   updatedAt: number;
 }
