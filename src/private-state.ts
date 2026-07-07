@@ -11,6 +11,8 @@ export function emptyPrivateState(): PrivateState {
     history: [],
     conn: null,
     config: null,
+    customModelsPersist: false,
+    customModels: [],
     statusEntries: [],
     updatedAt: Date.now(),
   };
@@ -140,6 +142,20 @@ function normalizeConfig(raw: unknown): Partial<ConfigState> | null {
   return Object.keys(out).length ? out : null;
 }
 
+function normalizeCustomModels(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const value of raw) {
+    if (typeof value !== "string") continue;
+    const model = value.trim();
+    if (!model || seen.has(model)) continue;
+    seen.add(model);
+    out.push(model);
+  }
+  return out;
+}
+
 export function normalizePrivateState(raw: unknown): PrivateState {
   const defaults = emptyPrivateState();
   if (!raw || typeof raw !== "object") return defaults;
@@ -150,6 +166,8 @@ export function normalizePrivateState(raw: unknown): PrivateState {
     history: normalizeHistory(item.history),
     conn: normalizeConn(item.conn),
     config: normalizeConfig(item.config),
+    customModelsPersist: item.customModelsPersist === true,
+    customModels: normalizeCustomModels(item.customModels),
     statusEntries: normalizeStatusEntries(Array.isArray(item.statusEntries) ? item.statusEntries : []),
     updatedAt: intOrNull(item.updatedAt, 0, 99_999_999_999_999) ?? Date.now(),
   };

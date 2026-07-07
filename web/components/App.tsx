@@ -20,7 +20,7 @@ import { StatusPanel } from "./StatusPanel.js";
 import { initLang, useI18n } from "../lib/i18n.js";
 import { useDetect } from "./useDetect.js";
 import { migrateLegacyPrivateState } from "../lib/storage.js";
-import { buildRows, selectRowsForProvider, upsertCustomModelRows, type ModelRow } from "../lib/model-rows.js";
+import { appendCustomModelRows, buildRows, customModelIds, selectRowsForProvider, upsertCustomModelRows, type ModelRow } from "../lib/model-rows.js";
 import {
   hasLegacyPrivateState,
   mergePrivateState,
@@ -46,6 +46,7 @@ export function App() {
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [statusEntries, setStatusEntries] = useState<StatusEntry[]>([]);
   const [statusPersisted, setStatusPersisted] = useState(true);
+  const [customModelsPersist, setCustomModelsPersist] = useState(false);
   const [persist, setPersistState] = useState<boolean>(true);
   const [toast, setToast] = useState<string | null>(null);
   const [loadErr, setLoadErr] = useState<string | null>(null);
@@ -73,6 +74,10 @@ export function App() {
   historyRef.current = history;
   const statusEntriesRef = useRef(statusEntries);
   statusEntriesRef.current = statusEntries;
+  const rowsRef = useRef(rows);
+  rowsRef.current = rows;
+  const customModelsPersistRef = useRef(customModelsPersist);
+  customModelsPersistRef.current = customModelsPersist;
 
   // 当前连接/参数的 ref，供并发探测闭包读取最新值。
   const connRef = useRef(conn);
@@ -88,32 +93,46 @@ export function App() {
     };
   };
 
+  const savePrivateStateSnapshot = () => {
+    if (!privatePersistRef.current) return;
+    const scope = privateStateScopeRef.current;
+    const state = privateStateForScope(privateStateRef.current, scope);
+    const serialized = JSON.stringify(state);
+    if (serialized === lastPrivateSaveRef.current) return;
+    savePrivateState(state)
+      .then((ok) => {
+        if (!ok) {
+          privatePersistRef.current = false;
+          setStatusPersisted(false);
+          showToast(t("app.privateStateUnavailable"));
+        } else {
+          lastPrivateSaveRef.current = serialized;
+        }
+      })
+      .catch((e) => showToast(t("app.privateStateSaveFailed", { msg: e?.message ?? e })));
+  };
+
   const schedulePrivateSave = () => {
     if (!privatePersistRef.current) return;
     if (privateSaveRef.current) clearTimeout(privateSaveRef.current);
     privateSaveRef.current = setTimeout(() => {
       privateSaveRef.current = null;
-      const scope = privateStateScopeRef.current;
-      const state = privateStateForScope(privateStateRef.current, scope);
-      const serialized = JSON.stringify(state);
-      if (serialized === lastPrivateSaveRef.current) return;
-      savePrivateState(state)
-        .then((ok) => {
-          if (!ok) {
-            privatePersistRef.current = false;
-            setStatusPersisted(false);
-            showToast(t("app.privateStateUnavailable"));
-          } else {
-            lastPrivateSaveRef.current = serialized;
-          }
-        })
-        .catch((e) => showToast(t("app.privateStateSaveFailed", { msg: e?.message ?? e })));
+      savePrivateStateSnapshot();
     }, 7000);
   };
 
   const persistPrivateState = (patch: Partial<PrivateState>) => {
     syncPrivateRef(patch);
     schedulePrivateSave();
+  };
+
+  const persistPrivateStateNow = (patch: Partial<PrivateState>) => {
+    syncPrivateRef(patch);
+    if (privateSaveRef.current) {
+      clearTimeout(privateSaveRef.current);
+      privateSaveRef.current = null;
+    }
+    savePrivateStateSnapshot();
   };
 
   const showToast = (msg: string) => {
@@ -192,6 +211,8 @@ export function App() {
       setProviders(provs);
       setHistory(mergedPrivateState.history);
       setPersistState(mergedPrivateState.historyPersist);
+      setCustomModelsPersist(mergedPrivateState.customModelsPersist);
+      customModelsPersistRef.current = mergedPrivateState.customModelsPersist;
       setStatusEntries(mergedPrivateState.statusEntries);
 
       // 恢复参数配置
@@ -214,7 +235,11 @@ export function App() {
         isFullUrl: Boolean(savedConn?.isFullUrl),
         apiKey: savedConn?.apiKey ?? "",
       });
-      setRows(buildRows(provs, CUSTOM_PROVIDER_ID));
+      const initialRows = mergedPrivateState.customModelsPersist
+        ? appendCustomModelRows(buildRows(provs, CUSTOM_PROVIDER_ID), mergedPrivateState.customModels)
+        : buildRows(provs, CUSTOM_PROVIDER_ID);
+      rowsRef.current = initialRows;
+      setRows(initialRows);
       setAuthed(true);
     } catch (e: any) {
       if (isAuthError(e)) {
@@ -308,7 +333,11 @@ export function App() {
       persistPrivateState({ conn: { providerId: nextConn.providerId, baseUrl: nextConn.baseUrl, isFullUrl: Boolean(nextConn.isFullUrl), apiKey: nextConn.apiKey } });
     }
 
-    setRows(buildRows(presets.providers, nextConn.providerId));
+    const nextRows = privateStateRef.current.customModelsPersist
+      ? appendCustomModelRows(buildRows(presets.providers, nextConn.providerId), privateStateRef.current.customModels)
+      : buildRows(presets.providers, nextConn.providerId);
+    rowsRef.current = nextRows;
+    setRows(nextRows);
     showToast(message);
   };
 
@@ -347,10 +376,34 @@ export function App() {
   const onToggle = (key: string, checked: boolean) => setRows((rs) => rs.map((r) => (r.key === key ? { ...r, checked } : r)));
   const onToggleAll = (checked: boolean) => setRows((rs) => rs.map((r) => ({ ...r, checked })));
 
-  const onAddModel = (model: string) => {
-    setRows((rs) => upsertCustomModelRows(rs, [model]));
+  const updateRows = (updater: (current: ModelRow[]) => ModelRow[], persistCustomModels = false) => {
+    const next = updater(rowsRef.current);
+    rowsRef.current = next;
+    setRows(next);
+    if (persistCustomModels && customModelsPersistRef.current) {
+      persistPrivateStateNow({ customModels: customModelIds(next) });
+    }
   };
-  const onRemoveModel = (key: string) => setRows((rs) => rs.filter((r) => r.key !== key));
+
+  const onToggleCustomModelsPersist = (on: boolean) => {
+    if (on && !privatePersistRef.current) {
+      setCustomModelsPersist(false);
+      customModelsPersistRef.current = false;
+      showToast(t("app.privateStateUnavailable"));
+      return;
+    }
+    setCustomModelsPersist(on);
+    customModelsPersistRef.current = on;
+    persistPrivateStateNow({
+      customModelsPersist: on,
+      customModels: on ? customModelIds(rowsRef.current) : [],
+    });
+  };
+
+  const onAddModel = (model: string) => {
+    updateRows((rs) => upsertCustomModelRows(rs, [model]), true);
+  };
+  const onRemoveModel = (key: string) => updateRows((rs) => rs.filter((r) => r.key !== key), true);
 
   const onAddToStatus = (drafts: StatusDraft[]) => {
     const clean = drafts.filter((entry) => entry.baseUrl.trim() && entry.apiKey.trim() && entry.model.trim());
@@ -370,16 +423,18 @@ export function App() {
     }
     if (!changed) return;
     const next = [...byKey.values()];
+    statusEntriesRef.current = next;
     setStatusEntries(next);
-    persistPrivateState({ statusEntries: next });
+    persistPrivateStateNow({ statusEntries: next });
     showToast(t("status.added", { count: clean.length }));
   };
 
   const onDeleteStatus = (ids: string[]) => {
     const idSet = new Set(ids);
     const next = statusEntriesRef.current.filter((entry) => !idSet.has(entry.id));
+    statusEntriesRef.current = next;
     setStatusEntries(next);
-    persistPrivateState({ statusEntries: next });
+    persistPrivateStateNow({ statusEntries: next });
     showToast(t("status.deleted", { count: ids.length }));
   };
 
@@ -396,7 +451,7 @@ export function App() {
 
   // 批量加入模型（来自「拉取模型」弹层）：已存在则勾选，否则新增 custom 行。
   const onAddModels = (ids: string[]) => {
-    setRows((rs) => upsertCustomModelRows(rs, ids));
+    updateRows((rs) => upsertCustomModelRows(rs, ids), true);
   };
 
   // 口令门：未通过时只显示口令输入。
@@ -503,6 +558,9 @@ export function App() {
             }
             onToggle={onToggle}
             onToggleAll={onToggleAll}
+            customModelsPersist={customModelsPersist}
+            customModelsPersistAvailable={statusPersisted}
+            onToggleCustomModelsPersist={onToggleCustomModelsPersist}
             onAdd={onAddModel}
             onRemove={onRemoveModel}
             onTestSelected={onTestSelected}

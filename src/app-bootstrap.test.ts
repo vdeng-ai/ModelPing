@@ -48,6 +48,8 @@ describe("api bootstrap", () => {
         history: [],
         conn: null,
         config: null,
+        customModelsPersist: false,
+        customModels: [],
         statusEntries: [],
       },
     });

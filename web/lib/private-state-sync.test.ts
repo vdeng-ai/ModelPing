@@ -52,16 +52,25 @@ describe("private-state sync helpers", () => {
     expect(merged.history).toEqual([historyEntry]);
     expect(merged.conn?.baseUrl).toBe("https://api.example.com");
     expect(merged.config?.timeoutMs).toBe(1000);
+    expect(merged.customModelsPersist).toBe(false);
+    expect(merged.customModels).toEqual([]);
   });
 
-  it("keeps config/status but clears history outside full scope", () => {
-    const merged = mergePrivateState(state({ history: [historyEntry], historyPersist: true }), {
+  it("keeps config/status/custom models but clears history outside full scope", () => {
+    const merged = mergePrivateState(state({
+      history: [historyEntry],
+      historyPersist: true,
+      customModelsPersist: true,
+      customModels: ["custom-a"],
+    }), {
       historyPersist: true,
       history: [historyEntry],
     }, "config");
 
     expect(merged.historyPersist).toBe(false);
     expect(merged.history).toEqual([]);
+    expect(merged.customModelsPersist).toBe(true);
+    expect(merged.customModels).toEqual(["custom-a"]);
   });
 
   it("uses legacy history only when server history is empty", () => {

@@ -36,6 +36,8 @@ export function mergePrivateState(
       : [],
     conn: serverState?.conn ?? legacy.conn ?? null,
     config: serverState?.config ?? legacy.config ?? null,
+    customModelsPersist: serverState?.customModelsPersist ?? false,
+    customModels: serverState?.customModels ?? [],
     statusEntries: serverState?.statusEntries ?? [],
   };
 }
