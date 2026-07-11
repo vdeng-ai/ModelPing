@@ -50,7 +50,7 @@ export function App() {
   const [statusPersisted, setStatusPersisted] = useState(true);
   const [savedCustomModels, setSavedCustomModels] = useState<string[]>([]);
   const [toast, setToast] = useState<string | null>(null);
-  const [toastTone, setToastTone] = useState<"info" | "error">("info");
+  const [toastTone, setToastTone] = useState<"info" | "error" | "success">("info");
   const [loadErr, setLoadErr] = useState<string | null>(null);
   const [bootstrapped, setBootstrapped] = useState(false);
   const [securityWarn, setSecurityWarn] = useState(false);
@@ -145,7 +145,7 @@ export function App() {
     savePrivateStateSnapshot();
   };
 
-  const showToast = (msg: string, opts?: { ms?: number; tone?: "info" | "error" }) => {
+  const showToast = (msg: string, opts?: { ms?: number; tone?: "info" | "error" | "success" }) => {
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     const tone = opts?.tone ?? "info";
     setToastTone(tone);
@@ -526,6 +526,21 @@ export function App() {
   if (needPassword && !authed) {
     return (
       <div class="pw-gate">
+        <span class="pw-gate-logo" aria-hidden="true">
+          <svg width="40" height="40" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <linearGradient id="pw-ping" x1="11" y1="8" x2="53" y2="56" gradientUnits="userSpaceOnUse">
+                <stop offset="0" stop-color="var(--brand-from)" />
+                <stop offset="1" stop-color="var(--brand-to)" />
+              </linearGradient>
+            </defs>
+            <path d="M14.5 40C18 47 24.4 51.5 32 51.5S46 47 49.5 40" fill="none" stroke="url(#pw-ping)" stroke-width="6.5" stroke-linecap="round" />
+            <circle cx="32" cy="30" r="16" fill="none" stroke="url(#pw-ping)" stroke-width="3" />
+            <circle cx="32" cy="23.5" r="4" fill="var(--brand-to)" />
+            <circle cx="25.5" cy="34.5" r="4" fill="var(--brand-from)" />
+            <circle cx="39" cy="34.5" r="4" fill="var(--brand-from)" />
+          </svg>
+        </span>
         <h1>{t("app.pwTitle")}</h1>
         <section class="panel">
           <div class="field">
@@ -556,18 +571,35 @@ export function App() {
   return (
     <div class="app">
       <header class="top">
-        <h1>{t("app.title")}</h1>
-        <span class="sub legend">
+        <div class="top-row">
+          <span class="brand-logo" aria-hidden="true">
+            <svg width="22" height="22" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+              <defs>
+                <linearGradient id="brand-ping" x1="11" y1="8" x2="53" y2="56" gradientUnits="userSpaceOnUse">
+                  <stop offset="0" stop-color="var(--brand-from)" />
+                  <stop offset="1" stop-color="var(--brand-to)" />
+                </linearGradient>
+              </defs>
+              <path d="M14.5 40C18 47 24.4 51.5 32 51.5S46 47 49.5 40" fill="none" stroke="url(#brand-ping)" stroke-width="6.5" stroke-linecap="round" />
+              <circle cx="32" cy="30" r="16" fill="none" stroke="url(#brand-ping)" stroke-width="3" />
+              <circle cx="32" cy="23.5" r="4" fill="var(--brand-to)" />
+              <circle cx="25.5" cy="34.5" r="4" fill="var(--brand-from)" />
+              <circle cx="39" cy="34.5" r="4" fill="var(--brand-from)" />
+            </svg>
+          </span>
+          <h1>{t("app.title")}</h1>
+          <span class="spacer" />
+          <LangToggle />
+          <ThemeToggle />
+        </div>
+        <div class="legend sub">
           <span class="pbadge success"><span class="pbadge-label">{t("app.legendProtocol")}</span></span>
           Chat·Resp·Gem·Claude
           <span class="legend-sep">·</span>
           <span class="sw green" />{t("app.legendPass")}<span class="sw red" />{t("app.legendFail")}<span class="sw blue" />{t("app.legendTesting")}
           <span class="legend-sep">·</span>
           <span class="stream-mark on">⚡</span>{t("app.legendStream")}<span class="stream-mark single">~</span>{t("app.legendSingle")}<span class="stream-mark off">⌁</span>{t("app.legendNone")}
-        </span>
-        <span class="spacer" />
-        <LangToggle />
-        <ThemeToggle />
+        </div>
       </header>
 
       <nav class="app-tabs" aria-label={t("app.navLabel")}>
@@ -597,92 +629,94 @@ export function App() {
         </button>
       </nav>
 
-      {loadErr ? (
-        <section class="panel">
-          <div class="status-text fail">{t("app.loadFailed", { msg: loadErr })}</div>
-          <div class="actions"><button onClick={init}>{t("app.retry")}</button></div>
-        </section>
-      ) : null}
+      <main>
+        {loadErr ? (
+          <section class="panel">
+            <div class="status-text fail">{t("app.loadFailed", { msg: loadErr })}</div>
+            <div class="actions"><button onClick={init}>{t("app.retry")}</button></div>
+          </section>
+        ) : null}
 
-      {!loadErr && !bootstrapped ? (
-        <section class="panel" aria-busy="true" aria-label={t("app.loading")}>
-          <div class="skeleton-stack">
-            <div class="skeleton-bar" />
-            <div class="skeleton-bar short" />
-            <div class="skeleton-bar" />
-          </div>
-        </section>
-      ) : null}
+        {!loadErr && !bootstrapped ? (
+          <section class="panel" aria-busy="true" aria-label={t("app.loading")}>
+            <div class="skeleton-stack">
+              <div class="skeleton-bar" />
+              <div class="skeleton-bar short" />
+              <div class="skeleton-bar" />
+            </div>
+          </section>
+        ) : null}
 
-      {securityWarn ? (
-        <section class="security-warning" role="status">
-          <strong>{t("app.securityWarningTitle")}</strong>
-          <span>{t("app.securityWarningBody")}</span>
-        </section>
-      ) : null}
+        {securityWarn ? (
+          <section class="security-warning" role="status">
+            <strong>{t("app.securityWarningTitle")}</strong>
+            <span>{t("app.securityWarningBody")}</span>
+          </section>
+        ) : null}
 
-      {activeTab === "test" ? (
-        <>
-          <ConnectionPanel
-            providers={providers}
-            value={conn}
-            userAgent={config.userAgent}
-            selectedModels={selectedModelIds}
-            onChange={onConnChange}
-            onAddModels={onAddModels}
-            onAddToProvider={onAddToProvider}
-            onToast={showToast}
-          />
-          <ModelTable
-            rows={rows}
-            busy={busy}
-            progress={progress}
-            conn={conn}
-            userAgent={config.userAgent}
-            providerName={
-              providers.find((p) => p.id === conn.providerId)?.name ??
-              (conn.providerId === CUSTOM_PROVIDER_ID ? t("common.custom") : conn.providerId)
-            }
-            savedCustomModels={savedCustomModels}
-            privatePersistAvailable={statusPersisted}
-            onToggle={onToggle}
-            onToggleAll={onToggleAll}
-            onAdd={onAddModel}
-            onRemove={onRemoveModel}
-            onSaveCustomModel={onSaveCustomModel}
-            onTestSelected={onTestSelected}
-            onCancel={cancelBatch}
-            onAddToStatus={onAddToStatus}
+        {activeTab === "test" ? (
+          <>
+            <ConnectionPanel
+              providers={providers}
+              value={conn}
+              userAgent={config.userAgent}
+              selectedModels={selectedModelIds}
+              onChange={onConnChange}
+              onAddModels={onAddModels}
+              onAddToProvider={onAddToProvider}
+              onToast={showToast}
+            />
+            <ModelTable
+              rows={rows}
+              busy={busy}
+              progress={progress}
+              conn={conn}
+              userAgent={config.userAgent}
+              providerName={
+                providers.find((p) => p.id === conn.providerId)?.name ??
+                (conn.providerId === CUSTOM_PROVIDER_ID ? t("common.custom") : conn.providerId)
+              }
+              savedCustomModels={savedCustomModels}
+              privatePersistAvailable={statusPersisted}
+              onToggle={onToggle}
+              onToggleAll={onToggleAll}
+              onAdd={onAddModel}
+              onRemove={onRemoveModel}
+              onSaveCustomModel={onSaveCustomModel}
+              onTestSelected={onTestSelected}
+              onCancel={cancelBatch}
+              onAddToStatus={onAddToStatus}
+              onLaunched={showToast}
+            />
+            <HistoryPanel
+              entries={history}
+              onClear={onClearHistory}
+              onLaunched={showToast}
+            />
+          </>
+        ) : activeTab === "status" ? (
+          <StatusPanel
+            entries={statusEntries}
+            persisted={statusPersisted}
+            onDelete={onDeleteStatus}
+            onGotoTest={onGotoStatusTest}
             onLaunched={showToast}
           />
-          <HistoryPanel
-            entries={history}
-            onClear={onClearHistory}
-            onLaunched={showToast}
-          />
-        </>
-      ) : activeTab === "status" ? (
-        <StatusPanel
-          entries={statusEntries}
-          persisted={statusPersisted}
-          onDelete={onDeleteStatus}
-          onGotoTest={onGotoStatusTest}
-          onLaunched={showToast}
-        />
-      ) : (
-        <>
-          <ConfigPanel value={config} onChange={onConfigChange} />
-          <SettingsPanel
-            providers={providers}
-            defaults={presetDefaults}
-            busy={busy}
-            onChange={onPresetProvidersChange}
-            onImport={onImportPresets}
-          />
-        </>
-      )}
+        ) : (
+          <>
+            <ConfigPanel value={config} onChange={onConfigChange} />
+            <SettingsPanel
+              providers={providers}
+              defaults={presetDefaults}
+              busy={busy}
+              onChange={onPresetProvidersChange}
+              onImport={onImportPresets}
+            />
+          </>
+        )}
 
-      {toast ? <div class={"toast" + (toastTone === "error" ? " error" : "")} role="status" aria-live="polite">{toast}</div> : null}
+        {toast ? <div class={"toast" + (toastTone === "error" ? " error" : "") + (toastTone === "success" ? " success" : "")} role="status" aria-live="polite">{toast}</div> : null}
+      </main>
     </div>
   );
 }

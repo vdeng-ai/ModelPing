@@ -190,6 +190,7 @@ export function ConnectionPanel({
           <button
             type="button"
             class={"provider-card " + (value.providerId === CUSTOM_PROVIDER_ID ? "active" : "")}
+            aria-pressed={value.providerId === CUSTOM_PROVIDER_ID}
             onClick={() => onProvider(CUSTOM_PROVIDER_ID)}
           >
             {t("common.custom")}
@@ -198,6 +199,7 @@ export function ConnectionPanel({
             <button
               type="button"
               class={"provider-card " + (value.providerId === p.id ? "active" : "")}
+              aria-pressed={value.providerId === p.id}
               onClick={() => onProvider(p.id)}
             >
               {p.name}
@@ -313,7 +315,7 @@ export function ConnectionPanel({
               {t("conn.queryBalance")}
             </button>
             <button
-              class="icon"
+              class="icon secondary"
               title={t("conn.fetchModelsTitle")}
               disabled={!canLookup || modelsBusy}
               onClick={(e) => { e.stopPropagation(); onFetchModels(); }}
