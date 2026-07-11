@@ -23,6 +23,7 @@ export function ThemeToggle() {
       {SEGS.map((s) => (
         <button
           class={"seg" + (pref === s.pref ? " active" : "")}
+          aria-pressed={pref === s.pref}
           title={t("theme.titlePrefix", { name: t(s.key) })}
           onClick={() => pick(s.pref)}
         >

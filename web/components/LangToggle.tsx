@@ -14,6 +14,7 @@ export function LangToggle() {
       {SEGS.map((s) => (
         <button
           class={"seg" + (lang === s.lang ? " active" : "")}
+          aria-pressed={lang === s.lang}
           onClick={() => setLang(s.lang)}
         >
           {t(s.key)}
