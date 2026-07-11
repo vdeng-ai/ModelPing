@@ -136,6 +136,32 @@ export function ConnectionPanel({
   return (
     <section class="panel">
       <h2>{t("conn.title")}</h2>
+      <div class="field" style="margin-bottom: 16px;">
+        <input
+          class="mono"
+          type="text"
+          placeholder={t("conn.quickImportPlaceholder")}
+          onInput={(e) => {
+            const val = (e.target as HTMLInputElement).value;
+            if (!val.trim()) return;
+            try {
+              const parsed = JSON.parse(val);
+              if (parsed && typeof parsed === "object" && parsed.key && parsed.url) {
+                onChange({
+                  providerId: CUSTOM_PROVIDER_ID,
+                  baseUrl: parsed.url,
+                  apiKey: parsed.key,
+                  isFullUrl: Boolean(value.isFullUrl), // preserve existing isFullUrl or maybe false
+                });
+                (e.target as HTMLInputElement).value = "";
+                onToast(t("conn.quickImportSuccess"));
+              }
+            } catch {
+              // ignore invalid JSON
+            }
+          }}
+        />
+      </div>
       <div class="field">
         <div class="field-label-row">
           <label>{t("conn.provider")}</label>
