@@ -8,8 +8,14 @@ import {
 
 export type { PrivateStateScope };
 
+/** Prepare private-state for sync/save. History is session-only and never written. */
 export function privateStateForScope(state: PrivateState, scope: PrivateStateScope): PrivateState {
-  return applyPrivateStateScope(state, scope);
+  const scoped = applyPrivateStateScope(state, scope);
+  return {
+    ...scoped,
+    historyPersist: false,
+    history: [],
+  };
 }
 
 export function serializePrivateStateForScope(state: PrivateState, scope: PrivateStateScope): string {
@@ -23,21 +29,27 @@ export function hasLegacyPrivateState(legacy: LegacyPrivateState): boolean {
 export function mergePrivateState(
   serverState: PrivateState | null,
   legacy: LegacyPrivateState,
-  scope: PrivateStateScope,
+  _scope: PrivateStateScope,
 ): PrivateState {
   const base = serverState ?? emptyPrivateState();
-  const historyCanPersist = scope === "full";
+  const customModels = serverState?.customModels ?? [];
 
   return {
     ...base,
-    historyPersist: historyCanPersist ? (serverState?.historyPersist ?? legacy.historyPersist ?? true) : false,
-    history: historyCanPersist
-      ? (serverState?.history?.length ? serverState.history : (legacy.history ?? []))
-      : [],
+    // History is session-only; never restore from server or legacy storage.
+    historyPersist: false,
+    history: [],
     conn: serverState?.conn ?? legacy.conn ?? null,
     config: serverState?.config ?? legacy.config ?? null,
-    customModelsPersist: serverState?.customModelsPersist ?? false,
-    customModels: serverState?.customModels ?? [],
+    // Keep flag for back-compat with older clients; load list regardless of flag.
+    customModelsPersist: customModels.length > 0 || serverState?.customModelsPersist === true,
+    customModels,
     statusEntries: serverState?.statusEntries ?? [],
   };
+}
+
+/** Force history-empty snapshot used by App before any private-state write. */
+export function withoutHistory(state: PrivateState): PrivateState {
+  if (!state.historyPersist && state.history.length === 0) return state;
+  return { ...state, historyPersist: false, history: [] };
 }
