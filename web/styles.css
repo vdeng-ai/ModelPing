@@ -230,6 +230,14 @@ header.top .spacer { flex: 1; }
   font-weight: 600;
   color: var(--text-dim);
 }
+.field-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 24px;
+}
+.field-label-row label { margin: 0; }
 .field.grow { flex: 1; min-width: 200px; }
 .hint { color: var(--text-dim); font-size: 11px; }
 .hint.fail { color: var(--red); }
@@ -527,6 +535,7 @@ table.models tr:hover td { background: var(--row-hover); }
 
 .history-controls { display: flex; gap: 10px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
 .history-controls .spacer { flex: 1; }
+.history-controls .status-text { font-size: 12px; color: var(--text-dim); }
 .status-toolbar {
   display: flex;
   gap: 10px;
@@ -893,3 +902,6 @@ details.det summary { cursor: pointer; color: var(--text-dim); font-size: 11px; 
 }
 .modal-actions .spacer { flex: 1; }
 .modal-count { font-size: 12px; color: var(--text-dim); }
+.modal-prompt { max-width: 400px; max-height: none; }
+.modal-prompt-fields { display: flex; flex-direction: column; gap: 12px; margin-top: 12px; }
+.modal-prompt-fields .field { margin: 0; }

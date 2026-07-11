@@ -4,6 +4,7 @@ import { CUSTOM_PROVIDER_ID } from "../lib/presets.js";
 import { fetchBalance, fetchModels } from "../lib/api.js";
 import { CopyButton } from "./CopyButton.js";
 import { ModelPickerModal } from "./ModelPickerModal.js";
+import { PromptModal } from "./PromptModal.js";
 import { useI18n, translate, type Lang } from "../lib/i18n.js";
 
 export interface ConnValue {
@@ -13,12 +14,23 @@ export interface ConnValue {
   apiKey: string;
 }
 
+export interface AddToProviderDraft {
+  providerId?: string;
+  name: string;
+  id?: string;
+  baseUrl: string;
+  isFullUrl?: boolean;
+  models: string[];
+}
+
 interface Props {
   providers: ProviderPreset[];
   value: ConnValue;
   userAgent?: string;
+  selectedModels: string[];
   onChange: (v: ConnValue) => void;
   onAddModels: (ids: string[]) => void;
+  onAddToProvider: (draft: AddToProviderDraft) => void;
   onToast: (msg: string) => void;
 }
 
@@ -36,16 +48,29 @@ function fmtBalance(b: Balance, lang: Lang): string {
 }
 
 // 连接面板：点选供应商自动填 baseUrl；或选「自定义」自填。
-// key 掩码显示，可切换明文，带复制按钮；并支持查询余额 / 拉取模型列表。
-export function ConnectionPanel({ providers, value, userAgent, onChange, onAddModels, onToast }: Props) {
+// key 掩码显示，可切换明文，带复制按钮；并支持查询余额 / 拉取模型列表 / 添加到供应商。
+export function ConnectionPanel({
+  providers,
+  value,
+  userAgent,
+  selectedModels,
+  onChange,
+  onAddModels,
+  onAddToProvider,
+  onToast,
+}: Props) {
   const { t, lang } = useI18n();
   const [showKey, setShowKey] = useState(false);
   const [balanceBusy, setBalanceBusy] = useState(false);
   const [balanceText, setBalanceText] = useState<string | null>(null);
   const [modelsBusy, setModelsBusy] = useState(false);
   const [pickerModels, setPickerModels] = useState<string[] | null>(null);
+  const [providerPrompt, setProviderPrompt] = useState(false);
 
   const canLookup = Boolean(value.baseUrl && value.apiKey);
+  const canAddProvider = Boolean(value.baseUrl.trim());
+  const isCustom = value.providerId === CUSTOM_PROVIDER_ID;
+  const selectedProvider = !isCustom ? providers.find((p) => p.id === value.providerId) : undefined;
 
   const onQueryBalance = async () => {
     if (!canLookup || balanceBusy) return;
@@ -89,11 +114,41 @@ export function ConnectionPanel({ providers, value, userAgent, onChange, onAddMo
     onChange({ providerId: id, baseUrl: p.baseUrl, isFullUrl: Boolean(p.isFullUrl), apiKey: value.apiKey });
   };
 
+  const submitAddToProvider = () => {
+    if (!canAddProvider) {
+      onToast(t("conn.addToProviderNeedUrl"));
+      return;
+    }
+    if (isCustom) {
+      setProviderPrompt(true);
+      return;
+    }
+    // 已有供应商：直接更新 baseUrl 并合并选中模型。
+    onAddToProvider({
+      providerId: value.providerId,
+      name: selectedProvider?.name ?? value.providerId,
+      baseUrl: value.baseUrl,
+      isFullUrl: value.isFullUrl,
+      models: selectedModels,
+    });
+  };
+
   return (
     <section class="panel">
       <h2>{t("conn.title")}</h2>
       <div class="field">
-        <label>{t("conn.provider")}</label>
+        <div class="field-label-row">
+          <label>{t("conn.provider")}</label>
+          <button
+            type="button"
+            class="icon"
+            title={t("conn.addToProviderTitle")}
+            disabled={!canAddProvider}
+            onClick={submitAddToProvider}
+          >
+            {t("conn.addToProvider")}
+          </button>
+        </div>
         <div class="provider-grid">
           <button
             type="button"
@@ -235,6 +290,38 @@ export function ConnectionPanel({ providers, value, userAgent, onChange, onAddMo
           models={pickerModels}
           onConfirm={(ids) => { onAddModels(ids); onToast(t("conn.addedModels", { count: ids.length })); }}
           onClose={() => setPickerModels(null)}
+        />
+      ) : null}
+
+      {providerPrompt ? (
+        <PromptModal
+          title={t("conn.addToProvider")}
+          confirmLabel={t("conn.addToProviderConfirm")}
+          fields={[
+            {
+              key: "name",
+              label: t("conn.addToProviderName"),
+              placeholder: t("conn.addToProviderNamePlaceholder"),
+              required: true,
+            },
+            {
+              key: "id",
+              label: t("conn.addToProviderId"),
+              placeholder: t("conn.addToProviderIdPlaceholder"),
+              mono: true,
+            },
+          ]}
+          onClose={() => setProviderPrompt(false)}
+          onConfirm={({ name, id }) => {
+            onAddToProvider({
+              name,
+              id: id || undefined,
+              baseUrl: value.baseUrl,
+              isFullUrl: value.isFullUrl,
+              models: selectedModels,
+            });
+            setProviderPrompt(false);
+          }}
         />
       ) : null}
     </section>

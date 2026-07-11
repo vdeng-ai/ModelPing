@@ -8,8 +8,6 @@ import { useI18n } from "../lib/i18n.js";
 
 interface Props {
   entries: HistoryEntry[];
-  persist: boolean;
-  onTogglePersist: (on: boolean) => void;
   onClear: () => void;
   onLaunched: (msg: string) => void;
 }
@@ -25,26 +23,17 @@ function exportJson(entries: HistoryEntry[]) {
   URL.revokeObjectURL(url);
 }
 
-export function HistoryPanel({ entries, persist, onTogglePersist, onClear, onLaunched }: Props) {
+export function HistoryPanel({ entries, onClear, onLaunched }: Props) {
   const { t } = useI18n();
   return (
     <section class="panel">
       <h2>{t("history.title")}</h2>
       <div class="history-controls">
-        <label class="toggle">
-          <input type="checkbox" checked={persist} onChange={(e) => onTogglePersist((e.target as HTMLInputElement).checked)} />
-          {t("history.persist")}
-        </label>
+        <span class="status-text">{t("history.sessionOnly")}</span>
         <span class="spacer" />
         <button disabled={!entries.length} onClick={() => exportJson(entries)}>{t("history.exportJson")}</button>
         <button disabled={!entries.length} onClick={onClear}>{t("history.clear")}</button>
       </div>
-
-      {!persist ? (
-        <div class="status-text" style="margin-bottom:8px">
-          {t("history.persistOff")}
-        </div>
-      ) : null}
 
       <table class="models">
         <thead>

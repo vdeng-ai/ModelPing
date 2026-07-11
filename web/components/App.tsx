@@ -6,10 +6,11 @@ import {
   CUSTOM_PROVIDER_ID,
   FALLBACK_DEFAULTS,
   normalizeConcurrency,
+  normalizePresets,
   loadLocalPresets, saveLocalPresets,
 } from "../lib/presets.js";
 import { initTheme } from "../lib/theme.js";
-import { ConnectionPanel, type ConnValue } from "./ConnectionPanel.js";
+import { ConnectionPanel, type ConnValue, type AddToProviderDraft } from "./ConnectionPanel.js";
 import { ConfigPanel } from "./ConfigPanel.js";
 import { ModelTable } from "./ModelTable.js";
 import { HistoryPanel } from "./HistoryPanel.js";
@@ -20,7 +21,7 @@ import { StatusPanel } from "./StatusPanel.js";
 import { initLang, useI18n } from "../lib/i18n.js";
 import { useDetect } from "./useDetect.js";
 import { migrateLegacyPrivateState } from "../lib/storage.js";
-import { appendCustomModelRows, buildRows, customModelIds, selectRowsForProvider, upsertCustomModelRows, type ModelRow } from "../lib/model-rows.js";
+import { appendCustomModelRows, buildRows, selectRowsForProvider, upsertCustomModelRows, type ModelRow } from "../lib/model-rows.js";
 import {
   hasLegacyPrivateState,
   mergePrivateState,
@@ -29,6 +30,7 @@ import {
   type PrivateStateScope,
 } from "../lib/private-state-sync.js";
 import { statusEntryKey } from "../lib/status-entries.js";
+import { upsertProviderFromConn, upsertProviderModel } from "../lib/provider-upsert.js";
 
 let statusSeq = 0;
 const nextStatusId = () => `s${Date.now()}-${++statusSeq}`;
@@ -46,8 +48,7 @@ export function App() {
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [statusEntries, setStatusEntries] = useState<StatusEntry[]>([]);
   const [statusPersisted, setStatusPersisted] = useState(true);
-  const [customModelsPersist, setCustomModelsPersist] = useState(false);
-  const [persist, setPersistState] = useState<boolean>(true);
+  const [savedCustomModels, setSavedCustomModels] = useState<string[]>([]);
   const [toast, setToast] = useState<string | null>(null);
   const [loadErr, setLoadErr] = useState<string | null>(null);
   const [securityWarn, setSecurityWarn] = useState(false);
@@ -76,8 +77,12 @@ export function App() {
   statusEntriesRef.current = statusEntries;
   const rowsRef = useRef(rows);
   rowsRef.current = rows;
-  const customModelsPersistRef = useRef(customModelsPersist);
-  customModelsPersistRef.current = customModelsPersist;
+  const savedCustomModelsRef = useRef(savedCustomModels);
+  savedCustomModelsRef.current = savedCustomModels;
+  const providersRef = useRef(providers);
+  providersRef.current = providers;
+  const presetDefaultsRef = useRef(presetDefaults);
+  presetDefaultsRef.current = presetDefaults;
 
   // 当前连接/参数的 ref，供并发探测闭包读取最新值。
   const connRef = useRef(conn);
@@ -89,6 +94,9 @@ export function App() {
     privateStateRef.current = {
       ...privateStateRef.current,
       ...patch,
+      // History is session-only and never written to private-state.
+      historyPersist: false,
+      history: [],
       updatedAt: Date.now(),
     };
   };
@@ -157,10 +165,10 @@ export function App() {
     setRows,
     historyRef,
     addHistoryEntry: (entry) => {
+      // Session-only: never write history into private-state.
       setHistory((prev) => {
         const next = [entry, ...prev].slice(0, MAX_PRIVATE_HISTORY);
         historyRef.current = next;
-        if (privateStateRef.current.historyPersist && privateStateScopeRef.current === "full") persistPrivateState({ history: next });
         return next;
       });
     },
@@ -198,10 +206,11 @@ export function App() {
       setStatusPersisted(privateCanPersist);
       const legacy = migrateLegacyPrivateState();
       const mergedPrivateState = mergePrivateState(privateState, legacy, scope);
-      privateStateRef.current = mergedPrivateState;
-      lastPrivateSaveRef.current = serializePrivateStateForScope(mergedPrivateState, scope);
+      // Always keep history empty in the synced snapshot.
+      privateStateRef.current = { ...mergedPrivateState, historyPersist: false, history: [] };
+      lastPrivateSaveRef.current = serializePrivateStateForScope(privateStateRef.current, scope);
       if (privateCanPersist && hasLegacyPrivateState(legacy)) {
-        syncPrivateRef(mergedPrivateState);
+        // Migrate legacy conn/config (history intentionally dropped).
         schedulePrivateSave();
       }
       // 服务端可用时，把结果回写本地作镜像缓存（离线/失败时仍可用）。
@@ -209,10 +218,12 @@ export function App() {
       const { providers: provs, defaults: defs } = activePresets;
       setPresetDefaults(defs);
       setProviders(provs);
-      setHistory(mergedPrivateState.history);
-      setPersistState(mergedPrivateState.historyPersist);
-      setCustomModelsPersist(mergedPrivateState.customModelsPersist);
-      customModelsPersistRef.current = mergedPrivateState.customModelsPersist;
+      // History is session-only — never restore from server/legacy.
+      setHistory([]);
+      historyRef.current = [];
+      const customModels = mergedPrivateState.customModels;
+      setSavedCustomModels(customModels);
+      savedCustomModelsRef.current = customModels;
       setStatusEntries(mergedPrivateState.statusEntries);
 
       // 恢复参数配置
@@ -235,9 +246,8 @@ export function App() {
         isFullUrl: Boolean(savedConn?.isFullUrl),
         apiKey: savedConn?.apiKey ?? "",
       });
-      const initialRows = mergedPrivateState.customModelsPersist
-        ? appendCustomModelRows(buildRows(provs, CUSTOM_PROVIDER_ID), mergedPrivateState.customModels)
-        : buildRows(provs, CUSTOM_PROVIDER_ID);
+      // Always rehydrate saved custom models (no checkbox gate).
+      const initialRows = appendCustomModelRows(buildRows(provs, CUSTOM_PROVIDER_ID), customModels);
       rowsRef.current = initialRows;
       setRows(initialRows);
       setAuthed(true);
@@ -317,14 +327,28 @@ export function App() {
     }
   };
 
-  const applyPresets = (presets: PresetsResponse, message: string) => {
+  const applyPresets = (presets: PresetsResponse, message: string, options?: { switchToProviderId?: string }) => {
     setPresetDefaults(presets.defaults);
     setProviders(presets.providers);
+    providersRef.current = presets.providers;
+    presetDefaultsRef.current = presets.defaults;
     persistPresets(presets);
 
     const currentConn = connRef.current;
     let nextConn = currentConn;
-    if (currentConn.providerId !== CUSTOM_PROVIDER_ID) {
+    if (options?.switchToProviderId) {
+      const selected = presets.providers.find((p) => p.id === options.switchToProviderId);
+      if (selected) {
+        nextConn = {
+          providerId: selected.id,
+          baseUrl: selected.baseUrl,
+          isFullUrl: Boolean(selected.isFullUrl),
+          apiKey: currentConn.apiKey,
+        };
+        setConn(nextConn);
+        persistPrivateState({ conn: { providerId: nextConn.providerId, baseUrl: nextConn.baseUrl, isFullUrl: Boolean(nextConn.isFullUrl), apiKey: nextConn.apiKey } });
+      }
+    } else if (currentConn.providerId !== CUSTOM_PROVIDER_ID) {
       const selected = presets.providers.find((p) => p.id === currentConn.providerId);
       nextConn = selected
         ? { ...currentConn, baseUrl: selected.baseUrl, isFullUrl: Boolean(selected.isFullUrl) }
@@ -333,9 +357,10 @@ export function App() {
       persistPrivateState({ conn: { providerId: nextConn.providerId, baseUrl: nextConn.baseUrl, isFullUrl: Boolean(nextConn.isFullUrl), apiKey: nextConn.apiKey } });
     }
 
-    const nextRows = privateStateRef.current.customModelsPersist
-      ? appendCustomModelRows(buildRows(presets.providers, nextConn.providerId), privateStateRef.current.customModels)
-      : buildRows(presets.providers, nextConn.providerId);
+    const nextRows = appendCustomModelRows(
+      buildRows(presets.providers, nextConn.providerId),
+      savedCustomModelsRef.current,
+    );
     rowsRef.current = nextRows;
     setRows(nextRows);
     showToast(message);
@@ -349,26 +374,26 @@ export function App() {
     applyPresets(presets, t("app.toastImported"));
   };
 
-  const onTogglePersist = (on: boolean) => {
-    if (privateStateScopeRef.current !== "full") {
-      setPersistState(false);
-      showToast(t("app.privateStateUnavailable"));
-      return;
-    }
-    setPersistState(on);
-    if (!on) {
-      setHistory([]);
-      historyRef.current = [];
-      persistPrivateState({ historyPersist: false, history: [] });
-    } else {
-      persistPrivateState({ historyPersist: true, history: historyRef.current });
+  const onAddToProvider = (draft: AddToProviderDraft) => {
+    try {
+      const { providers: nextProviders, providerId } = upsertProviderFromConn(providersRef.current, draft);
+      const normalized = normalizePresets({ providers: nextProviders, defaults: presetDefaultsRef.current });
+      const created = !draft.providerId || draft.providerId === CUSTOM_PROVIDER_ID
+        || !providersRef.current.some((p) => p.id === draft.providerId);
+      const name = normalized.providers.find((p) => p.id === providerId)?.name ?? draft.name;
+      applyPresets(
+        normalized,
+        created ? t("conn.addToProviderCreated", { name }) : t("conn.addToProviderUpdated", { name }),
+        created ? { switchToProviderId: providerId } : undefined,
+      );
+    } catch (e: any) {
+      showToast(t("conn.addToProviderFailed", { msg: e?.message ?? e }));
     }
   };
 
   const onClearHistory = () => {
     setHistory([]);
     historyRef.current = [];
-    persistPrivateState({ history: [] });
   };
 
   const onTestSelected = () => runBatch(rows.filter((r) => r.checked));
@@ -376,34 +401,65 @@ export function App() {
   const onToggle = (key: string, checked: boolean) => setRows((rs) => rs.map((r) => (r.key === key ? { ...r, checked } : r)));
   const onToggleAll = (checked: boolean) => setRows((rs) => rs.map((r) => ({ ...r, checked })));
 
-  const updateRows = (updater: (current: ModelRow[]) => ModelRow[], persistCustomModels = false) => {
+  const updateRows = (updater: (current: ModelRow[]) => ModelRow[]) => {
     const next = updater(rowsRef.current);
     rowsRef.current = next;
     setRows(next);
-    if (persistCustomModels && customModelsPersistRef.current) {
-      persistPrivateStateNow({ customModels: customModelIds(next) });
-    }
   };
 
-  const onToggleCustomModelsPersist = (on: boolean) => {
-    if (on && !privatePersistRef.current) {
-      setCustomModelsPersist(false);
-      customModelsPersistRef.current = false;
+  const onSaveCustomModel = (model: string) => {
+    const id = model.trim();
+    if (!id) return;
+    if (!privatePersistRef.current) {
       showToast(t("app.privateStateUnavailable"));
       return;
     }
-    setCustomModelsPersist(on);
-    customModelsPersistRef.current = on;
+    const nextSaved = savedCustomModelsRef.current.includes(id)
+      ? savedCustomModelsRef.current
+      : [...savedCustomModelsRef.current, id];
+    savedCustomModelsRef.current = nextSaved;
+    setSavedCustomModels(nextSaved);
     persistPrivateStateNow({
-      customModelsPersist: on,
-      customModels: on ? customModelIds(rowsRef.current) : [],
+      customModels: nextSaved,
+      customModelsPersist: nextSaved.length > 0,
     });
+
+    // Also upsert into current named provider presets when not custom.
+    const providerId = connRef.current.providerId;
+    if (providerId !== CUSTOM_PROVIDER_ID) {
+      try {
+        const nextProviders = upsertProviderModel(providersRef.current, providerId, id);
+        const normalized = normalizePresets({ providers: nextProviders, defaults: presetDefaultsRef.current });
+        setProviders(normalized.providers);
+        providersRef.current = normalized.providers;
+        persistPresets(normalized);
+      } catch (e: any) {
+        showToast(t("conn.addToProviderFailed", { msg: e?.message ?? e }));
+      }
+    }
+    showToast(t("models.modelSaved", { model: id }));
   };
 
   const onAddModel = (model: string) => {
-    updateRows((rs) => upsertCustomModelRows(rs, [model]), true);
+    updateRows((rs) => upsertCustomModelRows(rs, [model]));
   };
-  const onRemoveModel = (key: string) => updateRows((rs) => rs.filter((r) => r.key !== key), true);
+
+  const onRemoveModel = (key: string) => {
+    const target = rowsRef.current.find((r) => r.key === key);
+    updateRows((rs) => rs.filter((r) => r.key !== key));
+    if (target?.custom) {
+      const id = target.label.trim();
+      if (id && savedCustomModelsRef.current.includes(id)) {
+        const nextSaved = savedCustomModelsRef.current.filter((m) => m !== id);
+        savedCustomModelsRef.current = nextSaved;
+        setSavedCustomModels(nextSaved);
+        persistPrivateStateNow({
+          customModels: nextSaved,
+          customModelsPersist: nextSaved.length > 0,
+        });
+      }
+    }
+  };
 
   const onAddToStatus = (drafts: StatusDraft[]) => {
     const clean = drafts.filter((entry) => entry.baseUrl.trim() && entry.apiKey.trim() && entry.model.trim());
@@ -451,8 +507,13 @@ export function App() {
 
   // 批量加入模型（来自「拉取模型」弹层）：已存在则勾选，否则新增 custom 行。
   const onAddModels = (ids: string[]) => {
-    updateRows((rs) => upsertCustomModelRows(rs, ids), true);
+    updateRows((rs) => upsertCustomModelRows(rs, ids));
   };
+
+  const selectedModelIds = rows
+    .filter((r) => r.checked)
+    .map((r) => (r.custom ? r.label : (r.modelByProvider[conn.providerId] ?? r.label)))
+    .filter(Boolean);
 
   // 口令门：未通过时只显示口令输入。
   if (needPassword && !authed) {
@@ -545,7 +606,16 @@ export function App() {
 
       {activeTab === "test" ? (
         <>
-          <ConnectionPanel providers={providers} value={conn} userAgent={config.userAgent} onChange={onConnChange} onAddModels={onAddModels} onToast={showToast} />
+          <ConnectionPanel
+            providers={providers}
+            value={conn}
+            userAgent={config.userAgent}
+            selectedModels={selectedModelIds}
+            onChange={onConnChange}
+            onAddModels={onAddModels}
+            onAddToProvider={onAddToProvider}
+            onToast={showToast}
+          />
           <ModelTable
             rows={rows}
             busy={busy}
@@ -556,13 +626,13 @@ export function App() {
               providers.find((p) => p.id === conn.providerId)?.name ??
               (conn.providerId === CUSTOM_PROVIDER_ID ? t("common.custom") : conn.providerId)
             }
+            savedCustomModels={savedCustomModels}
+            privatePersistAvailable={statusPersisted}
             onToggle={onToggle}
             onToggleAll={onToggleAll}
-            customModelsPersist={customModelsPersist}
-            customModelsPersistAvailable={statusPersisted}
-            onToggleCustomModelsPersist={onToggleCustomModelsPersist}
             onAdd={onAddModel}
             onRemove={onRemoveModel}
+            onSaveCustomModel={onSaveCustomModel}
             onTestSelected={onTestSelected}
             onCancel={cancelBatch}
             onAddToStatus={onAddToStatus}
@@ -570,8 +640,6 @@ export function App() {
           />
           <HistoryPanel
             entries={history}
-            persist={persist}
-            onTogglePersist={onTogglePersist}
             onClear={onClearHistory}
             onLaunched={showToast}
           />

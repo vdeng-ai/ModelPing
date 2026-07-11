@@ -2,8 +2,10 @@ import { useState } from "preact/hooks";
 import type { Protocol, StatusEntry, TestResult } from "../lib/types.js";
 import { fmtMs, fmtTok, PROTOCOL_LABEL, streamGlyph } from "../lib/format.js";
 import { CcSwitchButton } from "./CcSwitchButton.js";
+import { PromptModal } from "./PromptModal.js";
 import { useI18n, translate, type Lang } from "../lib/i18n.js";
 import { PROTOCOLS, protocolsForProvider } from "../../src/protocols.js";
+import { CUSTOM_PROVIDER_ID } from "../lib/presets.js";
 import type { ModelRow, ProtocolProbe } from "../lib/model-rows.js";
 export { protocolsForModel } from "../lib/model-rows.js";
 
@@ -14,13 +16,13 @@ interface Props {
   conn: { providerId: string; baseUrl: string; isFullUrl?: boolean; apiKey: string };
   userAgent: string;
   providerName: string;
+  savedCustomModels: string[];
+  privatePersistAvailable: boolean;
   onToggle: (key: string, checked: boolean) => void;
   onToggleAll: (checked: boolean) => void;
-  customModelsPersist: boolean;
-  customModelsPersistAvailable: boolean;
-  onToggleCustomModelsPersist: (on: boolean) => void;
   onAdd: (model: string) => void;
   onRemove: (key: string) => void;
+  onSaveCustomModel: (model: string) => void;
   onTestSelected: () => void;
   onCancel: () => void;
   onAddToStatus: (entries: Array<Omit<StatusEntry, "id">>) => void;
@@ -75,12 +77,16 @@ function shownProtocols(r: ModelRow, providerId: string): Protocol[] {
 
 export function ModelTable(props: Props) {
   const { t, lang } = useI18n();
-  const { rows, busy, conn, providerName } = props;
+  const { rows, busy, conn, providerName, savedCustomModels } = props;
   const [newModel, setNewModel] = useState("");
+  const [statusNamePrompt, setStatusNamePrompt] = useState<Array<Omit<StatusEntry, "id">> | null>(null);
+  const [lastCustomProviderName, setLastCustomProviderName] = useState("");
 
   const allChecked = rows.length > 0 && rows.every((r) => r.checked);
   const someChecked = rows.some((r) => r.checked);
   const canAddStatus = Boolean(conn.baseUrl.trim() && conn.apiKey.trim());
+  const savedSet = new Set(savedCustomModels);
+  const isCustomProvider = conn.providerId === CUSTOM_PROVIDER_ID;
 
   // 取该行第一个成功协议的输出文本作预览。
   const previewText = (r: ModelRow): string => {
@@ -114,12 +120,12 @@ export function ModelTable(props: Props) {
     setNewModel("");
   };
 
-  const statusDraft = (r: ModelRow): Omit<StatusEntry, "id"> => {
+  const statusDraft = (r: ModelRow, name = providerName): Omit<StatusEntry, "id"> => {
     const successProtocol = PROTOCOLS.find((p) => r.probes[p].status === "success");
     const model = r.modelByProvider[conn.providerId] ?? r.label;
     const protocol = successProtocol ?? protocolsForProvider(conn.providerId, `${r.label} ${model}`)[0];
     return {
-      providerName,
+      providerName: name,
       protocol,
       baseUrl: conn.baseUrl,
       isFullUrl: Boolean(conn.isFullUrl),
@@ -131,7 +137,12 @@ export function ModelTable(props: Props) {
 
   const addRowsToStatus = (items: ModelRow[]) => {
     if (!canAddStatus || items.length === 0) return;
-    props.onAddToStatus(items.map(statusDraft));
+    const drafts = items.map((r) => statusDraft(r));
+    if (isCustomProvider) {
+      setStatusNamePrompt(drafts);
+      return;
+    }
+    props.onAddToStatus(drafts);
   };
 
   return (
@@ -149,18 +160,6 @@ export function ModelTable(props: Props) {
         <button disabled={busy || !someChecked || !canAddStatus} onClick={() => addRowsToStatus(rows.filter((r) => r.checked))}>
           {t("models.addSelectedToStatus")}
         </button>
-        <label
-          class="toggle model-persist-toggle"
-          title={props.customModelsPersistAvailable ? t("models.persistCustomTitle") : t("models.persistCustomUnavailable")}
-        >
-          <input
-            type="checkbox"
-            checked={props.customModelsPersist}
-            disabled={!props.customModelsPersistAvailable}
-            onChange={(e) => props.onToggleCustomModelsPersist((e.target as HTMLInputElement).checked)}
-          />
-          {t("models.persistCustom")}
-        </label>
         <CcSwitchButton
           name={providerName}
           endpoint={conn.baseUrl}
@@ -192,6 +191,7 @@ export function ModelTable(props: Props) {
           {rows.map((r) => {
             const fs = firstSuccess(r);
             const preview = previewText(r);
+            const showSave = r.custom && !savedSet.has(r.label);
             return (
               <div
                 key={r.key}
@@ -212,6 +212,20 @@ export function ModelTable(props: Props) {
                 <span class="model-card-head">
                   <span class="model-name">{r.label}</span>
                   <span class="model-card-actions">
+                    {showSave ? (
+                      <button
+                        type="button"
+                        class={"model-status-add model-save " + (!props.privatePersistAvailable ? "disabled" : "")}
+                        title={props.privatePersistAvailable ? t("models.saveModelTitle") : t("models.saveModelUnavailable")}
+                        disabled={busy || !props.privatePersistAvailable}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          props.onSaveCustomModel(r.label);
+                        }}
+                      >
+                        {t("models.saveModel")}
+                      </button>
+                    ) : null}
                     <button
                       type="button"
                       class={"model-status-add " + (!canAddStatus ? "disabled" : "")}
@@ -272,6 +286,26 @@ export function ModelTable(props: Props) {
           {t("models.addModel")}
         </button>
       </div>
+
+      {statusNamePrompt ? (
+        <PromptModal
+          title={t("models.statusProviderNameTitle")}
+          confirmLabel={t("models.statusProviderNameConfirm")}
+          fields={[{
+            key: "name",
+            label: t("models.statusProviderName"),
+            placeholder: t("models.statusProviderNamePlaceholder"),
+            defaultValue: lastCustomProviderName,
+            required: true,
+          }]}
+          onClose={() => setStatusNamePrompt(null)}
+          onConfirm={({ name }) => {
+            setLastCustomProviderName(name);
+            props.onAddToStatus(statusNamePrompt.map((d) => ({ ...d, providerName: name })));
+            setStatusNamePrompt(null);
+          }}
+        />
+      ) : null}
     </section>
   );
 }

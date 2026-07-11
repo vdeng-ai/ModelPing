@@ -6,6 +6,7 @@ import {
   mergePrivateState,
   privateStateForScope,
   serializePrivateStateForScope,
+  withoutHistory,
 } from "./private-state-sync.js";
 
 const historyEntry: HistoryEntry = {
@@ -48,8 +49,9 @@ describe("private-state sync helpers", () => {
       config: { timeoutMs: 1000 },
     }, "full");
 
+    // History is session-only and never restored.
     expect(merged.historyPersist).toBe(false);
-    expect(merged.history).toEqual([historyEntry]);
+    expect(merged.history).toEqual([]);
     expect(merged.conn?.baseUrl).toBe("https://api.example.com");
     expect(merged.config?.timeoutMs).toBe(1000);
     expect(merged.customModelsPersist).toBe(false);
@@ -73,22 +75,39 @@ describe("private-state sync helpers", () => {
     expect(merged.customModels).toEqual(["custom-a"]);
   });
 
-  it("uses legacy history only when server history is empty", () => {
-    const serverWithHistory = state({ history: [historyEntry] });
+  it("never restores history from server or legacy", () => {
+    const serverWithHistory = state({ history: [historyEntry], historyPersist: true });
     const serverWithoutHistory = state({ history: [] });
     const legacyEntry = { ...historyEntry, id: "legacy" };
 
-    expect(mergePrivateState(serverWithHistory, { history: [legacyEntry] }, "full").history).toEqual([historyEntry]);
-    expect(mergePrivateState(serverWithoutHistory, { history: [legacyEntry] }, "full").history).toEqual([legacyEntry]);
+    expect(mergePrivateState(serverWithHistory, { history: [legacyEntry] }, "full").history).toEqual([]);
+    expect(mergePrivateState(serverWithoutHistory, { history: [legacyEntry] }, "full").history).toEqual([]);
+    expect(mergePrivateState(serverWithHistory, {}, "full").historyPersist).toBe(false);
   });
 
-  it("serializes scope-cropped state consistently", () => {
+  it("loads custom models regardless of customModelsPersist flag", () => {
+    const merged = mergePrivateState(state({
+      customModelsPersist: false,
+      customModels: ["a", "b"],
+    }), {}, "full");
+    expect(merged.customModels).toEqual(["a", "b"]);
+    expect(merged.customModelsPersist).toBe(true);
+  });
+
+  it("serializes scope-cropped state with history always empty", () => {
     const raw = state({ history: [historyEntry], historyPersist: true });
-    const scoped = privateStateForScope(raw, "config");
+    const scoped = privateStateForScope(raw, "full");
 
     expect(scoped.historyPersist).toBe(false);
     expect(scoped.history).toEqual([]);
     expect(JSON.parse(serializePrivateStateForScope(raw, "config")).history).toEqual([]);
+  });
+
+  it("withoutHistory is idempotent when already empty", () => {
+    const empty = state({ historyPersist: false, history: [] });
+    expect(withoutHistory(empty)).toBe(empty);
+    const dirty = state({ historyPersist: true, history: [historyEntry] });
+    expect(withoutHistory(dirty)).toMatchObject({ historyPersist: false, history: [] });
   });
 
   it("detects whether legacy data exists", () => {
