@@ -59,6 +59,8 @@ export const en = {
   },
   conn: {
     title: "Connection",
+    quickImportPlaceholder: "Paste JSON containing key and url to auto-import connection",
+    quickImportSuccess: "Connection configuration imported",
     provider: "Provider",
     baseUrl: "Base URL",
     fullUrl: "Full URL",

@@ -59,6 +59,8 @@ export const zh = {
   },
   conn: {
     title: "连接",
+    quickImportPlaceholder: "粘贴包含 key 和 url 的 JSON 以自动导入连接",
+    quickImportSuccess: "已导入连接配置",
     provider: "供应商",
     baseUrl: "Base URL",
     fullUrl: "完整 URL",
