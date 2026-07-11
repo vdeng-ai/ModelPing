@@ -23,7 +23,7 @@ export interface DetectDeps {
   setRows: Dispatch<StateUpdater<ModelRow[]>>;
   historyRef: { current: HistoryEntry[] };
   addHistoryEntry: (entry: HistoryEntry) => void;
-  showToast: (msg: string) => void;
+  showToast: (msg: string, opts?: { ms?: number; tone?: "info" | "error" }) => void;
 }
 
 function failedTestResult(error: string, status = 0): TestResult {
@@ -212,7 +212,7 @@ export function useDetect(deps: DetectDeps) {
     } catch (e: any) {
       // 非取消类的意外错误：重置仍处于 testing 的探针，避免卡死。
       resetTestingProbes();
-      showToast(e?.message ?? String(e));
+      showToast(e?.message ?? String(e), { tone: "error" });
     } finally {
       if (batchControllerRef.current === controller) batchControllerRef.current = null;
       setBusy(false);

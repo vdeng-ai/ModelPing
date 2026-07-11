@@ -50,7 +50,9 @@ export function App() {
   const [statusPersisted, setStatusPersisted] = useState(true);
   const [savedCustomModels, setSavedCustomModels] = useState<string[]>([]);
   const [toast, setToast] = useState<string | null>(null);
+  const [toastTone, setToastTone] = useState<"info" | "error">("info");
   const [loadErr, setLoadErr] = useState<string | null>(null);
+  const [bootstrapped, setBootstrapped] = useState(false);
   const [securityWarn, setSecurityWarn] = useState(false);
 
   // 口令门：need=后端要求口令，authed=已通过。
@@ -117,7 +119,7 @@ export function App() {
           lastPrivateSaveRef.current = serialized;
         }
       })
-      .catch((e) => showToast(t("app.privateStateSaveFailed", { msg: e?.message ?? e })));
+      .catch((e) => showToast(t("app.privateStateSaveFailed", { msg: e?.message ?? e }), { tone: "error" }));
   };
 
   const schedulePrivateSave = () => {
@@ -143,13 +145,16 @@ export function App() {
     savePrivateStateSnapshot();
   };
 
-  const showToast = (msg: string) => {
+  const showToast = (msg: string, opts?: { ms?: number; tone?: "info" | "error" }) => {
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    const tone = opts?.tone ?? "info";
+    setToastTone(tone);
     setToast(msg);
+    const ms = opts?.ms ?? (tone === "error" ? 3600 : 1800);
     toastTimerRef.current = setTimeout(() => {
       toastTimerRef.current = null;
       setToast(null);
-    }, 1800);
+    }, ms);
   };
 
   const isLocalOrigin = () => {
@@ -251,6 +256,7 @@ export function App() {
       rowsRef.current = initialRows;
       setRows(initialRows);
       setAuthed(true);
+      setBootstrapped(true);
     } catch (e: any) {
       if (isAuthError(e)) {
         setNeedPassword(true);
@@ -260,6 +266,7 @@ export function App() {
         return;
       }
       setLoadErr(e?.message ?? String(e));
+      setBootstrapped(true);
     }
   };
 
@@ -323,7 +330,7 @@ export function App() {
     if (serverPersistRef.current) {
       saveSettings(presets)
         .then((ok) => { if (!ok) serverPersistRef.current = false; })
-        .catch((e) => showToast(t("app.toastServerSaveFailed", { msg: e?.message ?? e })));
+        .catch((e) => showToast(t("app.toastServerSaveFailed", { msg: e?.message ?? e }), { tone: "error" }));
     }
   };
 
@@ -387,7 +394,7 @@ export function App() {
         created ? { switchToProviderId: providerId } : undefined,
       );
     } catch (e: any) {
-      showToast(t("conn.addToProviderFailed", { msg: e?.message ?? e }));
+      showToast(t("conn.addToProviderFailed", { msg: e?.message ?? e }), { tone: "error" });
     }
   };
 
@@ -434,7 +441,7 @@ export function App() {
         providersRef.current = normalized.providers;
         persistPresets(normalized);
       } catch (e: any) {
-        showToast(t("conn.addToProviderFailed", { msg: e?.message ?? e }));
+        showToast(t("conn.addToProviderFailed", { msg: e?.message ?? e }), { tone: "error" });
       }
     }
     showToast(t("models.modelSaved", { model: id }));
@@ -597,6 +604,16 @@ export function App() {
         </section>
       ) : null}
 
+      {!loadErr && !bootstrapped ? (
+        <section class="panel" aria-busy="true" aria-label={t("app.loading")}>
+          <div class="skeleton-stack">
+            <div class="skeleton-bar" />
+            <div class="skeleton-bar short" />
+            <div class="skeleton-bar" />
+          </div>
+        </section>
+      ) : null}
+
       {securityWarn ? (
         <section class="security-warning" role="status">
           <strong>{t("app.securityWarningTitle")}</strong>
@@ -665,7 +682,7 @@ export function App() {
         </>
       )}
 
-      {toast ? <div class="toast">{toast}</div> : null}
+      {toast ? <div class={"toast" + (toastTone === "error" ? " error" : "")} role="status" aria-live="polite">{toast}</div> : null}
     </div>
   );
 }

@@ -1,3 +1,4 @@
+import { useEffect, useState } from "preact/hooks";
 import type { HistoryEntry } from "../lib/types.js";
 import { fmtMs, fmtTok, fmtTime, PROTOCOL_LABEL, streamGlyph } from "../lib/format.js";
 import { maskKey } from "../lib/storage.js";
@@ -9,7 +10,7 @@ import { useI18n } from "../lib/i18n.js";
 interface Props {
   entries: HistoryEntry[];
   onClear: () => void;
-  onLaunched: (msg: string) => void;
+  onLaunched: (msg: string, opts?: { tone?: "info" | "error"; ms?: number }) => void;
 }
 
 function exportJson(entries: HistoryEntry[]) {
@@ -25,6 +26,17 @@ function exportJson(entries: HistoryEntry[]) {
 
 export function HistoryPanel({ entries, onClear, onLaunched }: Props) {
   const { t } = useI18n();
+  const [openId, setOpenId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!openId) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpenId(null);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [openId]);
+
   return (
     <section class="panel">
       <h2>{t("history.title")}</h2>
@@ -35,18 +47,18 @@ export function HistoryPanel({ entries, onClear, onLaunched }: Props) {
         <button disabled={!entries.length} onClick={onClear}>{t("history.clear")}</button>
       </div>
 
-      <table class="models">
+      <table class="models history-table">
         <thead>
           <tr>
             <th>{t("history.colTime")}</th>
             <th>{t("history.colProvider")}</th>
-            <th>{t("history.colUrl")}</th>
+            <th data-col="url">{t("history.colUrl")}</th>
             <th>{t("history.colKey")}</th>
             <th>{t("history.colModel")}</th>
             <th>{t("history.colStatus")}</th>
             <th class="num">{t("history.colLatency")}</th>
-            <th class="num">{t("history.colTtft")}</th>
-            <th class="num">{t("history.colTokens")}</th>
+            <th class="num" data-col="ttft">{t("history.colTtft")}</th>
+            <th class="num" data-col="tokens">{t("history.colTokens")}</th>
             <th>{t("history.colActions")}</th>
           </tr>
         </thead>
@@ -57,11 +69,14 @@ export function HistoryPanel({ entries, onClear, onLaunched }: Props) {
             entries.map((h) => {
               const requestUrl = h.result.requestUrl || h.baseUrl;
               const g = streamGlyph(h.streamVerdict);
+              const detail = !h.result.ok ? (h.result.failureLog || h.result.error) : "";
+              const hasPop = Boolean(detail);
+              const open = openId === h.id;
               return (
                 <tr key={h.id}>
                   <td class="status-text">{fmtTime(h.ts)}</td>
                   <td>{h.providerName}</td>
-                  <td>
+                  <td data-col="url">
                     <span class="copy-pair">
                       <span
                         class="url-cell"
@@ -86,19 +101,39 @@ export function HistoryPanel({ entries, onClear, onLaunched }: Props) {
                     </span>
                   </td>
                   <td>
-                    <span class={"status-cell" + (!h.result.ok && (h.result.failureLog || h.result.error) ? " has-pop" : "")}>
-                      <span class={"status-text" + (h.result.ok ? "" : " fail")}>
-                        <span class={"dot " + (h.result.ok ? "success" : "fail")} />
-                        {h.result.ok ? t("history.pass") : t("history.fail", { status: h.result.status || "—" })}
-                      </span>
-                      {!h.result.ok && (h.result.failureLog || h.result.error) ? (
-                        <div class="failure-pop"><pre>{h.result.failureLog || h.result.error}</pre></div>
+                    <span class={"status-cell" + (hasPop ? " has-pop" : "") + (open ? " open" : "")}>
+                      {hasPop ? (
+                        <button
+                          type="button"
+                          class="status-pop-trigger"
+                          aria-expanded={open}
+                          aria-label={t("history.failureDetails")}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setOpenId((prev) => (prev === h.id ? null : h.id));
+                          }}
+                        >
+                          <span class={"status-text" + (h.result.ok ? "" : " fail")}>
+                            <span class={"dot " + (h.result.ok ? "success" : "fail")} />
+                            {h.result.ok ? t("history.pass") : t("history.fail", { status: h.result.status || "—" })}
+                          </span>
+                        </button>
+                      ) : (
+                        <span class={"status-text" + (h.result.ok ? "" : " fail")}>
+                          <span class={"dot " + (h.result.ok ? "success" : "fail")} />
+                          {h.result.ok ? t("history.pass") : t("history.fail", { status: h.result.status || "—" })}
+                        </span>
+                      )}
+                      {hasPop ? (
+                        <div class="failure-pop" role="tooltip">
+                          <pre>{detail}</pre>
+                        </div>
                       ) : null}
                     </span>
                   </td>
                   <td class="num">{fmtMs(h.result.latencyMs)}</td>
-                  <td class="num">{fmtMs(h.result.ttftMs)}</td>
-                  <td class="num">
+                  <td class="num" data-col="ttft">{fmtMs(h.result.ttftMs)}</td>
+                  <td class="num" data-col="tokens">
                     {fmtTok(h.result.usage.inputTokens)}/{fmtTok(h.result.usage.outputTokens)}/{fmtTok(h.result.usage.totalTokens)}
                   </td>
                   <td>

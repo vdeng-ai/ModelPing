@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import { useI18n } from "../lib/i18n.js";
+import { useModalA11y } from "./useModalA11y.js";
 
 export interface PromptField {
   key: string;
@@ -27,6 +28,10 @@ export function PromptModal({ title, fields, confirmLabel, onConfirm, onClose }:
     return init;
   });
   const firstRef = useRef<HTMLInputElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const titleId = "prompt-modal-title";
+
+  useModalA11y(onClose, dialogRef);
 
   useEffect(() => {
     firstRef.current?.focus();
@@ -44,9 +49,17 @@ export function PromptModal({ title, fields, confirmLabel, onConfirm, onClose }:
 
   return (
     <div class="modal-overlay" onClick={onClose}>
-      <div class="modal modal-prompt" onClick={(e) => e.stopPropagation()}>
+      <div
+        ref={dialogRef}
+        class="modal modal-prompt"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
+        onClick={(e) => e.stopPropagation()}
+      >
         <div class="modal-head">
-          <h3>{title}</h3>
+          <h3 id={titleId}>{title}</h3>
           <button class="icon" title={t("common.close")} onClick={onClose}>×</button>
         </div>
         <div class="modal-prompt-fields">
@@ -58,6 +71,7 @@ export function PromptModal({ title, fields, confirmLabel, onConfirm, onClose }:
                 class={f.mono ? "mono" : undefined}
                 placeholder={f.placeholder}
                 value={values[f.key] ?? ""}
+                data-autofocus={i === 0 ? "true" : undefined}
                 onInput={(e) => setValues((prev) => ({ ...prev, [f.key]: (e.target as HTMLInputElement).value }))}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {
