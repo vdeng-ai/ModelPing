@@ -31,7 +31,7 @@ interface Props {
   onChange: (v: ConnValue) => void;
   onAddModels: (ids: string[]) => void;
   onAddToProvider: (draft: AddToProviderDraft) => void;
-  onToast: (msg: string) => void;
+  onToast: (msg: string, opts?: { tone?: "info" | "error"; ms?: number }) => void;
 }
 
 // 余额展示文案。
@@ -45,6 +45,11 @@ function fmtBalance(b: Balance, lang: Lang): string {
     return tr("conn.balanceLine", { remaining: b.remaining, unit, extra, invalid });
   }
   return tr("conn.balanceNotParsed");
+}
+
+function looksLikeJsonObject(raw: string): boolean {
+  const s = raw.trim();
+  return s.startsWith("{") && s.endsWith("}");
 }
 
 // 连接面板：点选供应商自动填 baseUrl；或选「自定义」自填。
@@ -97,7 +102,7 @@ export function ConnectionPanel({
       }
       setPickerModels(models);
     } catch (e: any) {
-      onToast(t("conn.fetchModelsFailed", { msg: e?.message ?? e }));
+      onToast(t("conn.fetchModelsFailed", { msg: e?.message ?? e }), { tone: "error" });
     } finally {
       setModelsBusy(false);
     }
@@ -116,7 +121,7 @@ export function ConnectionPanel({
 
   const submitAddToProvider = () => {
     if (!canAddProvider) {
-      onToast(t("conn.addToProviderNeedUrl"));
+      onToast(t("conn.addToProviderNeedUrl"), { tone: "error" });
       return;
     }
     if (isCustom) {
@@ -133,33 +138,39 @@ export function ConnectionPanel({
     });
   };
 
+  const tryQuickImport = (raw: string, input: HTMLInputElement) => {
+    const val = raw.trim();
+    if (!val) return;
+    // 仅在像完整 JSON 对象时反馈错误，避免边输入边刷 toast。
+    if (!looksLikeJsonObject(val)) return;
+    try {
+      const parsed = JSON.parse(val);
+      if (parsed && typeof parsed === "object" && parsed.key && parsed.url) {
+        onChange({
+          providerId: CUSTOM_PROVIDER_ID,
+          baseUrl: String(parsed.url),
+          apiKey: String(parsed.key),
+          isFullUrl: Boolean(value.isFullUrl),
+        });
+        input.value = "";
+        onToast(t("conn.quickImportSuccess"));
+        return;
+      }
+      onToast(t("conn.quickImportInvalid"), { tone: "error" });
+    } catch {
+      onToast(t("conn.quickImportInvalid"), { tone: "error" });
+    }
+  };
+
   return (
     <section class="panel">
       <h2>{t("conn.title")}</h2>
-      <div class="field" style="margin-bottom: 16px;">
+      <div class="field mb-16">
         <input
           class="mono"
           type="text"
           placeholder={t("conn.quickImportPlaceholder")}
-          onInput={(e) => {
-            const val = (e.target as HTMLInputElement).value;
-            if (!val.trim()) return;
-            try {
-              const parsed = JSON.parse(val);
-              if (parsed && typeof parsed === "object" && parsed.key && parsed.url) {
-                onChange({
-                  providerId: CUSTOM_PROVIDER_ID,
-                  baseUrl: parsed.url,
-                  apiKey: parsed.key,
-                  isFullUrl: Boolean(value.isFullUrl), // preserve existing isFullUrl or maybe false
-                });
-                (e.target as HTMLInputElement).value = "";
-                onToast(t("conn.quickImportSuccess"));
-              }
-            } catch {
-              // ignore invalid JSON
-            }
-          }}
+          onInput={(e) => tryQuickImport((e.target as HTMLInputElement).value, e.target as HTMLInputElement)}
         />
       </div>
       <div class="field">
@@ -195,7 +206,7 @@ export function ConnectionPanel({
         </div>
       </div>
 
-      <div class="row" style="margin-top:12px">
+      <div class="row mt-12">
         <div class="field grow">
           <label>{t("conn.baseUrl")}</label>
           <div class="key-wrap">
@@ -220,7 +231,7 @@ export function ConnectionPanel({
         </div>
       </div>
 
-      <div class="row" style="margin-top:12px">
+      <div class="row mt-12">
         <div class="field grow">
           <label>API Key</label>
           <div class="key-wrap">
@@ -249,7 +260,7 @@ export function ConnectionPanel({
                   );
                   onChange({ ...value, apiKey: decoded });
                 } catch {
-                  // 非法 base64 或空值:静默不改
+                  onToast(t("conn.decodeFailed"), { tone: "error" });
                 }
               }}
             >
@@ -269,11 +280,14 @@ export function ConnectionPanel({
                       if (!/^[0-9a-fA-F]{1,2}$/.test(h)) throw new Error("bad hex");
                       return parseInt(h, 16);
                     });
-                  if (bytes.length === 0) return;
+                  if (bytes.length === 0) {
+                    onToast(t("conn.decodeFailed"), { tone: "error" });
+                    return;
+                  }
                   const decoded = new TextDecoder().decode(Uint8Array.from(bytes));
                   onChange({ ...value, apiKey: decoded });
                 } catch {
-                  // 非法 hex:静默不改
+                  onToast(t("conn.decodeFailed"), { tone: "error" });
                 }
               }}
             >

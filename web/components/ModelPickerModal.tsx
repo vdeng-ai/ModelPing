@@ -1,5 +1,6 @@
-import { useMemo, useState } from "preact/hooks";
+import { useMemo, useRef, useState } from "preact/hooks";
 import { useI18n } from "../lib/i18n.js";
+import { useModalA11y } from "./useModalA11y.js";
 
 interface Props {
   models: string[];          // 拉取到的模型 id 列表
@@ -12,6 +13,10 @@ export function ModelPickerModal({ models, onConfirm, onClose }: Props) {
   const { t } = useI18n();
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const titleId = "model-picker-title";
+
+  useModalA11y(onClose, dialogRef);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -45,9 +50,17 @@ export function ModelPickerModal({ models, onConfirm, onClose }: Props) {
 
   return (
     <div class="modal-overlay" onClick={onClose}>
-      <div class="modal" onClick={(e) => e.stopPropagation()}>
+      <div
+        ref={dialogRef}
+        class="modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
+        onClick={(e) => e.stopPropagation()}
+      >
         <div class="modal-head">
-          <h3>{t("picker.title", { count: models.length })}</h3>
+          <h3 id={titleId}>{t("picker.title", { count: models.length })}</h3>
           <button class="icon" title={t("common.close")} onClick={onClose}>×</button>
         </div>
 
@@ -55,8 +68,8 @@ export function ModelPickerModal({ models, onConfirm, onClose }: Props) {
           class="mono modal-search"
           placeholder={t("picker.searchPlaceholder")}
           value={query}
+          data-autofocus="true"
           onInput={(e) => setQuery((e.target as HTMLInputElement).value)}
-          autofocus
         />
 
         <div class="modal-list">

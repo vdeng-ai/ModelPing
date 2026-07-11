@@ -7,13 +7,19 @@ import { maskKey } from "../lib/storage.js";
 import { PROTOCOL_TO_APP } from "../lib/ccswitch.js";
 import { useI18n } from "../lib/i18n.js";
 import { CcSwitchButton } from "./CcSwitchButton.js";
+import {
+  FREE_WORKER_SOFT_CAP,
+  dailyPingRequests,
+  isOverFreeCap,
+  safestInterval,
+} from "../lib/status-budget.js";
 
 interface Props {
   entries: StatusEntry[];
   persisted: boolean;
   onDelete: (ids: string[]) => void;
   onGotoTest: (entry: StatusEntry) => void;
-  onLaunched: (msg: string) => void;
+  onLaunched: (msg: string, opts?: { tone?: "info" | "error"; ms?: number }) => void;
 }
 
 type PingState = {
@@ -32,6 +38,10 @@ function latencyClass(result?: PingResult): string {
   return "slow";
 }
 
+function intervalLabelKey(sec: number): string {
+  return `status.auto${sec}`;
+}
+
 export function StatusPanel({ entries, persisted, onDelete, onGotoTest, onLaunched }: Props) {
   const { t } = useI18n();
   const [checked, setChecked] = useState<Set<string>>(new Set());
@@ -42,9 +52,13 @@ export function StatusPanel({ entries, persisted, onDelete, onGotoTest, onLaunch
   const [visible, setVisible] = useState(() => document.visibilityState === "visible");
   const abortRef = useRef<AbortController | null>(null);
   const busyRef = useRef(false);
+  const autoSecRef = useRef(autoSec);
+  autoSecRef.current = autoSec;
 
   const allChecked = entries.length > 0 && entries.every((entry) => checked.has(entry.id));
   const someChecked = checked.size > 0;
+  const estimated = dailyPingRequests(entries.length, autoSec);
+  const overCap = autoSec > 0 && isOverFreeCap(entries.length, autoSec);
 
   const refresh = async (targets: StatusEntry[]) => {
     if (busyRef.current || targets.length === 0) return;
@@ -85,7 +99,7 @@ export function StatusPanel({ entries, persisted, onDelete, onGotoTest, onLaunch
       );
     } catch (e: any) {
       if (!controller.signal.aborted) {
-        onLaunched(t("status.refreshFailed", { msg: e?.message ?? e }));
+        onLaunched(t("status.refreshFailed", { msg: e?.message ?? e }), { tone: "error" });
       }
     } finally {
       if (abortRef.current === controller) abortRef.current = null;
@@ -98,6 +112,36 @@ export function StatusPanel({ entries, persisted, onDelete, onGotoTest, onLaunch
   const toggleAll = () => {
     setChecked(allChecked ? new Set() : new Set(entries.map((entry) => entry.id)));
   };
+
+  const trySetAutoSec = (sec: number) => {
+    if (sec > 0 && isOverFreeCap(entries.length, sec)) {
+      const safe = safestInterval(entries.length, AUTO_OPTIONS);
+      const requests = dailyPingRequests(entries.length, sec);
+      setAutoSec(safe);
+      onLaunched(
+        safe > 0
+          ? t("status.autoOverCap", { cap: FREE_WORKER_SOFT_CAP, requests }) + " " + t("status.autoDowngraded", { interval: t(intervalLabelKey(safe)) })
+          : t("status.autoOverCap", { cap: FREE_WORKER_SOFT_CAP, requests }),
+        { tone: "error" },
+      );
+      return;
+    }
+    setAutoSec(sec);
+  };
+
+  // 条目变多后若当前间隔超 cap，自动降到安全间隔。
+  useEffect(() => {
+    const current = autoSecRef.current;
+    if (!current || !isOverFreeCap(entries.length, current)) return;
+    const safe = safestInterval(entries.length, AUTO_OPTIONS);
+    setAutoSec(safe);
+    onLaunched(
+      t("status.autoDowngraded", {
+        interval: safe > 0 ? t(intervalLabelKey(safe)) : t("status.auto0"),
+      }),
+      { tone: "info" },
+    );
+  }, [entries.length]);
 
   useEffect(() => {
     const ids = new Set(entries.map((entry) => entry.id));
@@ -122,6 +166,7 @@ export function StatusPanel({ entries, persisted, onDelete, onGotoTest, onLaunch
 
   useEffect(() => {
     if (!autoSec || !visible) return;
+    if (isOverFreeCap(entries.length, autoSec)) return;
     const timer = setInterval(() => {
       if (!busyRef.current && entries.length > 0) void refresh(entries);
     }, autoSec * 1000);
@@ -129,6 +174,14 @@ export function StatusPanel({ entries, persisted, onDelete, onGotoTest, onLaunch
   }, [autoSec, entries, visible]);
 
   useEffect(() => () => abortRef.current?.abort(), []);
+
+  const onDeleteSelected = () => {
+    const ids = [...checked];
+    if (!ids.length) return;
+    if (!confirm(t("status.confirmDelete", { count: ids.length }))) return;
+    onDelete(ids);
+    setChecked(new Set());
+  };
 
   return (
     <section class="panel">
@@ -146,20 +199,24 @@ export function StatusPanel({ entries, persisted, onDelete, onGotoTest, onLaunch
         <button disabled={busy || entries.length === 0} onClick={toggleAll}>
           {allChecked ? t("common.deselectAll") : t("common.selectAll")}
         </button>
-        <button class="danger" disabled={busy || !someChecked} onClick={() => onDelete([...checked])}>
+        <button class="danger" disabled={busy || !someChecked} onClick={onDeleteSelected}>
           {t("status.deleteSelected")}
         </button>
         <label class="status-auto">
           <span>{t("status.autoRefresh")}</span>
-          <select value={String(autoSec)} disabled={busy} onChange={(e) => setAutoSec(Number((e.target as HTMLSelectElement).value))}>
-            {AUTO_OPTIONS.map((sec) => <option value={String(sec)}>{t(`status.auto${sec}`)}</option>)}
+          <select
+            value={String(autoSec)}
+            disabled={busy}
+            onChange={(e) => trySetAutoSec(Number((e.target as HTMLSelectElement).value))}
+          >
+            {AUTO_OPTIONS.map((sec) => <option value={String(sec)}>{t(intervalLabelKey(sec))}</option>)}
           </select>
         </label>
       </div>
       {autoSec ? (
-        <div class="hint status-auto-estimate">
+        <div class={"hint status-auto-estimate" + (overCap ? " fail status-auto-warn" : "")}>
           {visible
-            ? t("status.autoEstimate", { count: entries.length, requests: Math.ceil(entries.length * 86400 / autoSec) })
+            ? t("status.autoEstimate", { count: entries.length, requests: estimated })
             : t("status.autoPausedHidden")}
         </div>
       ) : null}

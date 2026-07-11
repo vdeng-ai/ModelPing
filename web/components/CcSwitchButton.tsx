@@ -9,7 +9,7 @@ interface Props {
   model?: string;
   defaultApp: CcApp;
   disabled?: boolean;
-  onLaunched?: (msg: string) => void;
+  onLaunched?: (msg: string, opts?: { tone?: "info" | "error"; ms?: number }) => void;
 }
 
 // 紧凑控件：[app 下拉][→ cc-switch]。下拉默认按协议推导，可改目标 app。
