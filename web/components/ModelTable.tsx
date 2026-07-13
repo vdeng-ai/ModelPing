@@ -1,4 +1,4 @@
-import { useState } from "preact/hooks";
+import { useMemo, useState } from "preact/hooks";
 import type { Protocol, StatusEntry, TestResult } from "../lib/types.js";
 import { fmtMs, fmtTok, PROTOCOL_LABEL, streamGlyph } from "../lib/format.js";
 import { CcSwitchButton } from "./CcSwitchButton.js";
@@ -6,6 +6,7 @@ import { PromptModal } from "./PromptModal.js";
 import { useI18n, translate, type Lang } from "../lib/i18n.js";
 import { PROTOCOLS, protocolsForProvider } from "../../src/protocols.js";
 import { CUSTOM_PROVIDER_ID } from "../lib/presets.js";
+import { sortByDisplayText } from "../lib/alphabetical-sort.js";
 import type { ModelRow, ProtocolProbe } from "../lib/model-rows.js";
 export { protocolsForModel } from "../lib/model-rows.js";
 
@@ -87,6 +88,10 @@ export function ModelTable(props: Props) {
   const canAddStatus = Boolean(conn.baseUrl.trim() && conn.apiKey.trim());
   const savedSet = new Set(savedCustomModels);
   const isCustomProvider = conn.providerId === CUSTOM_PROVIDER_ID;
+  const sortedRows = useMemo(
+    () => sortByDisplayText(rows, (row) => row.label),
+    [rows],
+  );
 
   // 取该行第一个成功协议的输出文本作预览。
   const previewText = (r: ModelRow): string => {
@@ -188,7 +193,7 @@ export function ModelTable(props: Props) {
         <div class="empty">{t("models.empty")}</div>
       ) : (
         <div class="model-card-grid">
-          {rows.map((r) => {
+          {sortedRows.map((r) => {
             const fs = firstSuccess(r);
             const preview = previewText(r);
             const showSave = r.custom && !savedSet.has(r.label);

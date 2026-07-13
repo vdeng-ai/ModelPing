@@ -1,7 +1,8 @@
-import { useState } from "preact/hooks";
+import { useMemo, useState } from "preact/hooks";
 import type { Balance, ProviderPreset } from "../lib/types.js";
 import { CUSTOM_PROVIDER_ID } from "../lib/presets.js";
 import { fetchBalance, fetchModels } from "../lib/api.js";
+import { sortByDisplayText } from "../lib/alphabetical-sort.js";
 import { CopyButton } from "./CopyButton.js";
 import { ModelPickerModal } from "./ModelPickerModal.js";
 import { PromptModal } from "./PromptModal.js";
@@ -76,6 +77,10 @@ export function ConnectionPanel({
   const canAddProvider = Boolean(value.baseUrl.trim());
   const isCustom = value.providerId === CUSTOM_PROVIDER_ID;
   const selectedProvider = !isCustom ? providers.find((p) => p.id === value.providerId) : undefined;
+  const sortedProviders = useMemo(
+    () => sortByDisplayText(providers, (provider) => provider.name),
+    [providers],
+  );
 
   const onQueryBalance = async () => {
     if (!canLookup || balanceBusy) return;
@@ -195,7 +200,7 @@ export function ConnectionPanel({
           >
             {t("common.custom")}
           </button>
-          {providers.map((p) => (
+          {sortedProviders.map((p) => (
             <button
               type="button"
               class={"provider-card " + (value.providerId === p.id ? "active" : "")}
