@@ -1,4 +1,5 @@
 import { useEffect, useState } from "preact/hooks";
+import { Download, Plus, Save, ServerCog, Trash2, Upload, X } from "lucide-preact";
 import type { Defaults, PresetsResponse, ProviderPreset } from "../lib/types.js";
 import { normalizePresets } from "../lib/presets.js";
 import { useI18n } from "../lib/i18n.js";
@@ -115,12 +116,19 @@ export function SettingsPanel({ providers, defaults, busy, onChange, onImport }:
 
   return (
     <section class="panel settings-panel">
-      <h2>{t("settings.title")}</h2>
+      <div class="page-section-head">
+        <div>
+          <span class="section-index">PRESETS</span>
+          <h2>{t("settings.title")}</h2>
+        </div>
+        <ServerCog size={20} aria-hidden="true" />
+      </div>
       <div class="settings-toolbar">
         <span class="status-text">{t("settings.toolbarHint")}</span>
         <span class="spacer" />
-        <button disabled={busy || providers.length === 0} onClick={() => downloadJson({ providers, defaults })}>{t("settings.exportConfig")}</button>
+        <button disabled={busy || providers.length === 0} onClick={() => downloadJson({ providers, defaults })}><Download size={16} aria-hidden="true" />{t("settings.exportConfig")}</button>
         <label class={"button-like" + (busy ? " disabled" : "")}>
+          <Upload size={16} aria-hidden="true" />
           {t("settings.importConfig")}
           <input
             type="file"
@@ -151,7 +159,7 @@ export function SettingsPanel({ providers, defaults, busy, onChange, onImport }:
               {p.name}
             </button>
           ))}
-          <button type="button" disabled={busy} onClick={addProvider}>{t("settings.addProvider")}</button>
+          <button type="button" disabled={busy} onClick={addProvider}><Plus size={16} aria-hidden="true" />{t("settings.addProvider")}</button>
         </div>
 
         <div class="settings-form">
@@ -193,7 +201,7 @@ export function SettingsPanel({ providers, defaults, busy, onChange, onImport }:
               <div class="models-editor">
                 <div class="models-editor-head">
                   <label>{t("settings.models")}</label>
-                  <button type="button" disabled={busy} onClick={() => updateDraft({ models: [...draft.models, { id: "" }] })}>{t("settings.addModel")}</button>
+                  <button type="button" disabled={busy} onClick={() => updateDraft({ models: [...draft.models, { id: "" }] })}><Plus size={16} aria-hidden="true" />{t("settings.addModel")}</button>
                 </div>
                 {draft.models.length === 0 ? (
                   <div class="empty">{t("settings.emptyModels")}</div>
@@ -210,14 +218,14 @@ export function SettingsPanel({ providers, defaults, busy, onChange, onImport }:
                       value={m.label ?? ""}
                       onInput={(e) => updateModel(idx, { label: (e.target as HTMLInputElement).value })}
                     />
-                    <button class="icon" type="button" title={t("settings.removeModel")} disabled={busy} onClick={() => removeModel(idx)}>✕</button>
+                    <button class="icon-button subtle" type="button" aria-label={t("settings.removeModel")} title={t("settings.removeModel")} disabled={busy} onClick={() => removeModel(idx)}><X size={16} aria-hidden="true" /></button>
                   </div>
                 ))}
               </div>
 
               <div class="actions">
-                <button class="primary" disabled={busy} onClick={saveProvider}>{t("settings.saveProvider")}</button>
-                <button disabled={busy} onClick={deleteProvider}>{t("settings.deleteProvider")}</button>
+                <button class="primary" disabled={busy} onClick={saveProvider}><Save size={16} aria-hidden="true" />{t("settings.saveProvider")}</button>
+                <button class="danger-quiet" disabled={busy} onClick={deleteProvider}><Trash2 size={16} aria-hidden="true" />{t("settings.deleteProvider")}</button>
               </div>
             </>
           ) : (

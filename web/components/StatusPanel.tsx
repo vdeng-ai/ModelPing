@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "preact/hooks";
+import { CheckSquare, Gauge, RefreshCw, Square, Trash2, X } from "lucide-preact";
 import type { PingResult, StatusEntry } from "../lib/types.js";
 import { pingEndpoint } from "../lib/api.js";
 import { runConcurrent } from "../lib/concurrency.js";
@@ -184,22 +185,32 @@ export function StatusPanel({ entries, persisted, onDelete, onGotoTest, onLaunch
   };
 
   return (
-    <section class="panel">
-      <h2>{t("status.title")}</h2>
+    <section class="panel status-panel">
+      <div class="page-section-head">
+        <div>
+          <span class="section-index">LIVE</span>
+          <h2>{t("status.title")}</h2>
+        </div>
+        <span class="quota-badge"><Gauge size={15} aria-hidden="true" />{t("status.quotaProtected")}</span>
+      </div>
       {!persisted ? <div class="hint fail status-memory">{t("status.memoryOnly")}</div> : null}
 
       <div class="status-toolbar">
         <button class="primary" disabled={busy || !someChecked} onClick={() => refresh(selectedEntries())}>
+          <RefreshCw size={16} aria-hidden="true" />
           {t("status.refreshSelected")}
         </button>
-        {busy ? <button class="danger" onClick={() => abortRef.current?.abort()}>{t("common.cancel")}</button> : null}
+        {busy ? <button class="danger" onClick={() => abortRef.current?.abort()}><X size={16} aria-hidden="true" />{t("common.cancel")}</button> : null}
         <button disabled={busy || entries.length === 0} onClick={() => refresh(entries)}>
+          <RefreshCw size={16} aria-hidden="true" />
           {t("status.refreshAll")}
         </button>
         <button disabled={busy || entries.length === 0} onClick={toggleAll}>
+          {allChecked ? <CheckSquare size={16} aria-hidden="true" /> : <Square size={16} aria-hidden="true" />}
           {allChecked ? t("common.deselectAll") : t("common.selectAll")}
         </button>
         <button class="danger" disabled={busy || !someChecked} onClick={onDeleteSelected}>
+          <Trash2 size={16} aria-hidden="true" />
           {t("status.deleteSelected")}
         </button>
         <label class="status-auto">
@@ -234,6 +245,7 @@ export function StatusPanel({ entries, persisted, onDelete, onGotoTest, onLaunch
       {entries.length === 0 ? (
         <div class="empty">{t("status.empty")}</div>
       ) : (
+        <div class="table-frame">
         <table class="models status-table">
           <thead>
             <tr>
@@ -310,6 +322,7 @@ export function StatusPanel({ entries, persisted, onDelete, onGotoTest, onLaunch
             })}
           </tbody>
         </table>
+        </div>
       )}
     </section>
   );

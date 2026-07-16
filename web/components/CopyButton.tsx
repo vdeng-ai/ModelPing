@@ -1,4 +1,5 @@
 import { useState } from "preact/hooks";
+import { Check, CircleAlert, Copy } from "lucide-preact";
 import { copy } from "../lib/format.js";
 import { useI18n } from "../lib/i18n.js";
 
@@ -7,10 +8,14 @@ export function CopyButton({ value, title }: { value: string; title?: string }) 
   const { t } = useI18n();
   const [state, setState] = useState<"idle" | "ok" | "fail">("idle");
   if (!value) return null;
+  const label = state === "fail" ? t("common.copyFailed") : title ?? t("common.copy");
   return (
     <button
-      class="icon"
-      title={title ?? t("common.copy")}
+      type="button"
+      class={"icon-button subtle copy-button " + state}
+      title={label}
+      aria-label={label}
+      aria-live="polite"
       onClick={async (e) => {
         e.stopPropagation();
         const ok = await copy(value);
@@ -18,7 +23,7 @@ export function CopyButton({ value, title }: { value: string; title?: string }) 
         setTimeout(() => setState("idle"), 1100);
       }}
     >
-      {state === "ok" ? "✓" : state === "fail" ? t("common.copyFailed") : t("common.copy")}
+      {state === "ok" ? <Check size={15} aria-hidden="true" /> : state === "fail" ? <CircleAlert size={15} aria-hidden="true" /> : <Copy size={15} aria-hidden="true" />}
     </button>
   );
 }
