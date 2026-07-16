@@ -7,6 +7,8 @@ const FOCUSABLE =
 /** Lightweight modal a11y: Escape, restore focus, Tab cycle inside dialog. */
 export function useModalA11y(onClose: () => void, dialogRef: RefObject<HTMLElement | null>) {
   const previousFocusRef = useRef<HTMLElement | null>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   useEffect(() => {
     previousFocusRef.current = document.activeElement instanceof HTMLElement
@@ -15,7 +17,8 @@ export function useModalA11y(onClose: () => void, dialogRef: RefObject<HTMLEleme
 
     const dialog = dialogRef.current;
     if (dialog) {
-      const preferred = dialog.querySelector<HTMLElement>("[data-autofocus], input, button, [href], select, textarea");
+      const preferred = dialog.querySelector<HTMLElement>("[data-autofocus]")
+        ?? dialog.querySelector<HTMLElement>("input, button, [href], select, textarea");
       (preferred ?? dialog).focus?.();
     }
 
@@ -23,7 +26,7 @@ export function useModalA11y(onClose: () => void, dialogRef: RefObject<HTMLEleme
       if (e.key === "Escape") {
         e.preventDefault();
         e.stopPropagation();
-        onClose();
+        onCloseRef.current();
         return;
       }
       if (e.key !== "Tab" || !dialogRef.current) return;
@@ -53,5 +56,5 @@ export function useModalA11y(onClose: () => void, dialogRef: RefObject<HTMLEleme
       document.removeEventListener("keydown", onKeyDown);
       previousFocusRef.current?.focus?.();
     };
-  }, [onClose, dialogRef]);
+  }, [dialogRef]);
 }

@@ -1,4 +1,5 @@
-import { useMemo, useState } from "preact/hooks";
+import { useMemo, useRef, useState } from "preact/hooks";
+import { Eye, EyeOff, ListPlus, Save, WalletCards } from "lucide-preact";
 import type { Balance, ProviderPreset } from "../lib/types.js";
 import { CUSTOM_PROVIDER_ID } from "../lib/presets.js";
 import { fetchBalance, fetchModels } from "../lib/api.js";
@@ -72,6 +73,7 @@ export function ConnectionPanel({
   const [modelsBusy, setModelsBusy] = useState(false);
   const [pickerModels, setPickerModels] = useState<string[] | null>(null);
   const [providerPrompt, setProviderPrompt] = useState(false);
+  const fetchModelsButtonRef = useRef<HTMLButtonElement>(null);
 
   const canLookup = Boolean(value.baseUrl && value.apiKey);
   const canAddProvider = Boolean(value.baseUrl.trim());
@@ -111,6 +113,11 @@ export function ConnectionPanel({
     } finally {
       setModelsBusy(false);
     }
+  };
+
+  const closeModelPicker = () => {
+    setPickerModels(null);
+    requestAnimationFrame(() => fetchModelsButtonRef.current?.focus({ preventScroll: true }));
   };
 
   const onProvider = (id: string) => {
@@ -168,56 +175,52 @@ export function ConnectionPanel({
   };
 
   return (
-    <section class="panel">
-      <h2>{t("conn.title")}</h2>
-      <div class="field mb-16">
-        <input
-          class="mono"
-          type="text"
-          placeholder={t("conn.quickImportPlaceholder")}
-          onInput={(e) => tryQuickImport((e.target as HTMLInputElement).value, e.target as HTMLInputElement)}
-        />
+    <section class="panel connection-panel">
+      <div class="panel-title-row">
+        <div>
+          <span class="section-index">01</span>
+          <h2>{t("conn.title")}</h2>
+        </div>
+        <button
+          type="button"
+          class="icon-button"
+          title={t("conn.addToProviderTitle")}
+          aria-label={t("conn.addToProvider")}
+          disabled={!canAddProvider}
+          onClick={submitAddToProvider}
+        >
+          <Save size={16} aria-hidden="true" />
+        </button>
       </div>
+
       <div class="field">
-        <div class="field-label-row">
-          <label>{t("conn.provider")}</label>
-          <button
-            type="button"
-            class="icon"
-            title={t("conn.addToProviderTitle")}
-            disabled={!canAddProvider}
-            onClick={submitAddToProvider}
-          >
-            {t("conn.addToProvider")}
-          </button>
-        </div>
-        <div class="provider-grid">
-          <button
-            type="button"
-            class={"provider-card " + (value.providerId === CUSTOM_PROVIDER_ID ? "active" : "")}
-            aria-pressed={value.providerId === CUSTOM_PROVIDER_ID}
-            onClick={() => onProvider(CUSTOM_PROVIDER_ID)}
-          >
-            {t("common.custom")}
-          </button>
-          {sortedProviders.map((p) => (
-            <button
-              type="button"
-              class={"provider-card " + (value.providerId === p.id ? "active" : "")}
-              aria-pressed={value.providerId === p.id}
-              onClick={() => onProvider(p.id)}
-            >
-              {p.name}
-            </button>
-          ))}
-        </div>
+        <label for="connection-provider">{t("conn.provider")}</label>
+        <select id="connection-provider" value={value.providerId} onChange={(e) => onProvider((e.target as HTMLSelectElement).value)}>
+          <option value={CUSTOM_PROVIDER_ID}>{t("common.custom")}</option>
+          {sortedProviders.map((p) => <option value={p.id}>{p.name}</option>)}
+        </select>
       </div>
+
+      <details class="disclosure quick-import">
+        <summary>{t("conn.quickImport")}</summary>
+        <div class="disclosure-body">
+          <label class="sr-only" for="connection-quick-import">{t("conn.quickImport")}</label>
+          <input
+            id="connection-quick-import"
+            class="mono"
+            type="text"
+            placeholder={t("conn.quickImportPlaceholder")}
+            onInput={(e) => tryQuickImport((e.target as HTMLInputElement).value, e.target as HTMLInputElement)}
+          />
+        </div>
+      </details>
 
       <div class="row mt-12">
         <div class="field grow">
-          <label>{t("conn.baseUrl")}</label>
+          <label for="connection-base-url">{t("conn.baseUrl")}</label>
           <div class="key-wrap">
             <input
+              id="connection-base-url"
               class="mono"
               value={value.baseUrl}
               placeholder="https://api.example.com/v1"
@@ -240,9 +243,10 @@ export function ConnectionPanel({
 
       <div class="row mt-12">
         <div class="field grow">
-          <label>API Key</label>
+          <label for="connection-api-key">API Key</label>
           <div class="key-wrap">
             <input
+              id="connection-api-key"
               class="mono"
               type={showKey ? "text" : "password"}
               value={value.apiKey}
@@ -250,14 +254,14 @@ export function ConnectionPanel({
               autocomplete="off"
               onInput={(e) => onChange({ ...value, apiKey: (e.target as HTMLInputElement).value })}
             />
-            <button class="icon" title={showKey ? t("conn.hide") : t("conn.show")} onClick={() => setShowKey((s) => !s)}>
-              {showKey ? t("conn.hide") : t("conn.show")}
+            <button class="icon-button" aria-label={showKey ? t("conn.hide") : t("conn.show")} title={showKey ? t("conn.hide") : t("conn.show")} onClick={() => setShowKey((s) => !s)}>
+              {showKey ? <EyeOff size={16} aria-hidden="true" /> : <Eye size={16} aria-hidden="true" />}
             </button>
             <CopyButton value={value.apiKey} title={t("conn.copyKey")} />
           </div>
           <div class="field-tools">
             <button
-              class="icon"
+              class="compact-button"
               title={t("conn.b64Title")}
               onClick={(e) => {
                 e.stopPropagation();
@@ -274,7 +278,7 @@ export function ConnectionPanel({
               B64
             </button>
             <button
-              class="icon"
+              class="compact-button"
               title={t("conn.hexTitle")}
               onClick={(e) => {
                 e.stopPropagation();
@@ -301,7 +305,7 @@ export function ConnectionPanel({
               Hex
             </button>
             <button
-              class="icon"
+              class="compact-button"
               title={t("conn.reverseTitle")}
               onClick={(e) => {
                 e.stopPropagation();
@@ -312,19 +316,22 @@ export function ConnectionPanel({
             </button>
             <span class="field-tools-sep" />
             <button
-              class="icon"
+              class="compact-button"
               title={t("conn.queryBalanceTitle")}
               disabled={!canLookup || balanceBusy}
               onClick={(e) => { e.stopPropagation(); onQueryBalance(); }}
             >
+              <WalletCards size={15} aria-hidden="true" />
               {t("conn.queryBalance")}
             </button>
             <button
-              class="icon secondary"
+              ref={fetchModelsButtonRef}
+              class="compact-button secondary"
               title={t("conn.fetchModelsTitle")}
               disabled={!canLookup || modelsBusy}
               onClick={(e) => { e.stopPropagation(); onFetchModels(); }}
             >
+              <ListPlus size={15} aria-hidden="true" />
               {modelsBusy ? t("conn.fetchingModels") : t("conn.fetchModels")}
             </button>
           </div>
@@ -336,7 +343,7 @@ export function ConnectionPanel({
         <ModelPickerModal
           models={pickerModels}
           onConfirm={(ids) => { onAddModels(ids); onToast(t("conn.addedModels", { count: ids.length })); }}
-          onClose={() => setPickerModels(null)}
+          onClose={closeModelPicker}
         />
       ) : null}
 

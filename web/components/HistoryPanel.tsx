@@ -1,6 +1,7 @@
 import { useEffect, useState } from "preact/hooks";
+import { Ban, Download, Equal, RadioTower, Trash2 } from "lucide-preact";
 import type { HistoryEntry } from "../lib/types.js";
-import { fmtMs, fmtTok, fmtTime, PROTOCOL_LABEL, streamGlyph } from "../lib/format.js";
+import { fmtMs, fmtTok, fmtTime, PROTOCOL_LABEL } from "../lib/format.js";
 import { maskKey } from "../lib/storage.js";
 import { PROTOCOL_TO_APP } from "../lib/ccswitch.js";
 import { CopyButton } from "./CopyButton.js";
@@ -38,15 +39,16 @@ export function HistoryPanel({ entries, onClear, onLaunched }: Props) {
   }, [openId]);
 
   return (
-    <section class="panel">
-      <h2>{t("history.title")}</h2>
+    <section class="panel history-panel" aria-labelledby="history-heading">
+      <h2 id="history-heading" class="sr-only">{t("history.title")}</h2>
       <div class="history-controls">
         <span class="status-text">{t("history.sessionOnly")}</span>
         <span class="spacer" />
-        <button disabled={!entries.length} onClick={() => exportJson(entries)}>{t("history.exportJson")}</button>
-        <button disabled={!entries.length} onClick={onClear}>{t("history.clear")}</button>
+        <button disabled={!entries.length} onClick={() => exportJson(entries)}><Download size={16} aria-hidden="true" />{t("history.exportJson")}</button>
+        <button class="danger-quiet" disabled={!entries.length} onClick={onClear}><Trash2 size={16} aria-hidden="true" />{t("history.clear")}</button>
       </div>
 
+      <div class="table-frame">
       <table class="models history-table">
         <thead>
           <tr>
@@ -68,7 +70,7 @@ export function HistoryPanel({ entries, onClear, onLaunched }: Props) {
           ) : (
             entries.map((h) => {
               const requestUrl = h.result.requestUrl || h.baseUrl;
-              const g = streamGlyph(h.streamVerdict);
+              const StreamIcon = h.streamVerdict === "stream" ? RadioTower : h.streamVerdict === "single" ? Equal : h.streamVerdict === "none" ? Ban : null;
               const detail = !h.result.ok ? (h.result.failureLog || h.result.error) : "";
               const hasPop = Boolean(detail);
               const open = openId === h.id;
@@ -97,7 +99,7 @@ export function HistoryPanel({ entries, onClear, onLaunched }: Props) {
                     <span class="model-name" title={h.protocol}>{h.modelLabel}</span>{" "}
                     <span class={"pbadge " + (h.result.ok ? "success" : "fail")} title={h.protocol}>
                       <span class="pbadge-label">{PROTOCOL_LABEL[h.protocol]}</span>
-                      {g ? <span class={"stream-mark " + g.cls}>{g.char}</span> : null}
+                      {StreamIcon ? <StreamIcon class={"stream-icon " + h.streamVerdict} size={12} aria-hidden="true" /> : null}
                     </span>
                   </td>
                   <td>
@@ -154,6 +156,7 @@ export function HistoryPanel({ entries, onClear, onLaunched }: Props) {
           )}
         </tbody>
       </table>
+      </div>
     </section>
   );
 }

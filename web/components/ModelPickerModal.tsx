@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState } from "preact/hooks";
+import { Plus, X } from "lucide-preact";
 import { useI18n } from "../lib/i18n.js";
 import { useModalA11y } from "./useModalA11y.js";
 
@@ -61,7 +62,7 @@ export function ModelPickerModal({ models, onConfirm, onClose }: Props) {
       >
         <div class="modal-head">
           <h3 id={titleId}>{t("picker.title", { count: models.length })}</h3>
-          <button class="icon" title={t("common.close")} onClick={onClose}>×</button>
+          <button type="button" class="icon-button subtle" aria-label={t("common.close")} title={t("common.close")} onClick={onClose}><X size={17} aria-hidden="true" /></button>
         </div>
 
         <input
@@ -92,7 +93,7 @@ export function ModelPickerModal({ models, onConfirm, onClose }: Props) {
           <span class="spacer" />
           <span class="modal-count">{t("picker.selectedCount", { count: selected.size })}</span>
           <button onClick={onClose}>{t("common.cancel")}</button>
-          <button class="primary" disabled={selected.size === 0} onClick={confirm}>{t("common.add")}</button>
+          <button class="primary" disabled={selected.size === 0} onClick={confirm}><Plus size={16} aria-hidden="true" />{t("common.add")}</button>
         </div>
       </div>
     </div>

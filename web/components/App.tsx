@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "preact/hooks";
+import { Activity, FlaskConical, History, ServerCog } from "lucide-preact";
 import type { ConfigState, Defaults, HistoryEntry, PresetsResponse, PrivateState, ProviderPreset, StatusEntry } from "../lib/types.js";
 import { emptyPrivateState, fetchBootstrap, fetchPresets, isAuthError, savePrivateState, saveSettings, setAppPassword } from "../lib/api.js";
 import { MAX_PRIVATE_HISTORY } from "../../src/private-state.js";
@@ -31,6 +32,7 @@ import {
 } from "../lib/private-state-sync.js";
 import { statusEntryKey } from "../lib/status-entries.js";
 import { upsertProviderFromConn, upsertProviderModel } from "../lib/provider-upsert.js";
+import { appRouteFromHash, hashForAppRoute, type AppRoute } from "../lib/navigation.js";
 
 let statusSeq = 0;
 const nextStatusId = () => `s${Date.now()}-${++statusSeq}`;
@@ -41,7 +43,7 @@ export function App() {
   const { t, lang } = useI18n();
   const [providers, setProviders] = useState<ProviderPreset[]>([]);
   const [presetDefaults, setPresetDefaults] = useState<Defaults>(FALLBACK_DEFAULTS);
-  const [activeTab, setActiveTab] = useState<"test" | "status" | "settings">("test");
+  const [route, setRoute] = useState<AppRoute>(() => appRouteFromHash(window.location.hash));
   const [conn, setConn] = useState<ConnValue>({ providerId: CUSTOM_PROVIDER_ID, baseUrl: "", isFullUrl: false, apiKey: "" });
   const [config, setConfig] = useState<ConfigState>({ input: "", timeoutMs: 30000, maxRetries: 1, maxTokens: 512, userAgent: "", concurrency: 2 });
   const [rows, setRows] = useState<ModelRow[]>([]);
@@ -70,8 +72,18 @@ export function App() {
   const lastPrivateSaveRef = useRef<string>("");
   const privateStateRef = useRef<PrivateState>(emptyPrivateState());
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mainRef = useRef<HTMLElement | null>(null);
   // 当前语言对应的默认输入文本；语言切换时若用户未自定义则跟随更新。
   const defaultInputRef = useRef(t("config.defaultInput"));
+
+  const navigateTo = (next: AppRoute) => {
+    const hash = hashForAppRoute(next);
+    if (window.location.hash === hash) {
+      setRoute(next);
+      return;
+    }
+    window.location.hash = hash;
+  };
 
   const historyRef = useRef(history);
   historyRef.current = history;
@@ -185,6 +197,26 @@ export function App() {
     initTheme();
     initLang();
   }, []);
+
+  // Top-level views use hash navigation so browser back/forward and deep links
+  // remain local to the SPA and never add Worker requests.
+  useEffect(() => {
+    const syncRoute = () => {
+      const next = appRouteFromHash(window.location.hash);
+      setRoute(next);
+      const canonical = hashForAppRoute(next);
+      if (window.location.hash !== canonical) {
+        window.history.replaceState(null, "", canonical);
+      }
+    };
+    syncRoute();
+    window.addEventListener("hashchange", syncRoute);
+    return () => window.removeEventListener("hashchange", syncRoute);
+  }, []);
+
+  useEffect(() => {
+    window.requestAnimationFrame(() => mainRef.current?.focus({ preventScroll: true }));
+  }, [route]);
 
   // 初始化：一次 bootstrap 请求完成口令验证、拉预设与恢复私有状态。
   const init = async () => {
@@ -502,7 +534,7 @@ export function App() {
   };
 
   const onGotoStatusTest = (entry: StatusEntry) => {
-    setActiveTab("test");
+    navigateTo("test-models");
     onConnChange({
       providerId: CUSTOM_PROVIDER_ID,
       baseUrl: entry.baseUrl,
@@ -568,68 +600,74 @@ export function App() {
     );
   }
 
+  const testRoute = route === "test-models" || route === "test-history";
+
   return (
-    <div class="app">
-      <header class="top">
-        <div class="top-row">
-          <span class="brand-logo" aria-hidden="true">
-            <svg width="22" height="22" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
-              <defs>
-                <linearGradient id="brand-ping" x1="11" y1="8" x2="53" y2="56" gradientUnits="userSpaceOnUse">
-                  <stop offset="0" stop-color="var(--brand-from)" />
-                  <stop offset="1" stop-color="var(--brand-to)" />
-                </linearGradient>
-              </defs>
-              <path d="M14.5 40C18 47 24.4 51.5 32 51.5S46 47 49.5 40" fill="none" stroke="url(#brand-ping)" stroke-width="6.5" stroke-linecap="round" />
-              <circle cx="32" cy="30" r="16" fill="none" stroke="url(#brand-ping)" stroke-width="3" />
-              <circle cx="32" cy="23.5" r="4" fill="var(--brand-to)" />
-              <circle cx="25.5" cy="34.5" r="4" fill="var(--brand-from)" />
-              <circle cx="39" cy="34.5" r="4" fill="var(--brand-from)" />
-            </svg>
-          </span>
-          <h1>{t("app.title")}</h1>
-          <span class="spacer" />
-          <LangToggle />
-          <ThemeToggle />
-        </div>
-        <div class="legend sub">
-          <span class="pbadge success"><span class="pbadge-label">{t("app.legendProtocol")}</span></span>
-          Chat·Resp·Gem·Claude
-          <span class="legend-sep">·</span>
-          <span class="sw green" />{t("app.legendPass")}<span class="sw red" />{t("app.legendFail")}<span class="sw blue" />{t("app.legendTesting")}
-          <span class="legend-sep">·</span>
-          <span class="stream-mark on">⚡</span>{t("app.legendStream")}<span class="stream-mark single">~</span>{t("app.legendSingle")}<span class="stream-mark off">⌁</span>{t("app.legendNone")}
+    <div class="app-shell">
+      <a class="skip-link" href="#main-content">{t("app.skipToContent")}</a>
+      <header class="app-header">
+        <div class="app-header-inner">
+          <div class="brand-lockup">
+            <span class="brand-logo" aria-hidden="true">
+              <svg width="34" height="34" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                  <linearGradient id="brand-ping" x1="11" y1="8" x2="53" y2="56" gradientUnits="userSpaceOnUse">
+                    <stop offset="0" stop-color="var(--brand-from)" />
+                    <stop offset="1" stop-color="var(--brand-to)" />
+                  </linearGradient>
+                </defs>
+                <path d="M14.5 40C18 47 24.4 51.5 32 51.5S46 47 49.5 40" fill="none" stroke="url(#brand-ping)" stroke-width="6.5" stroke-linecap="round" />
+                <circle cx="32" cy="30" r="16" fill="none" stroke="url(#brand-ping)" stroke-width="3" />
+                <circle cx="32" cy="23.5" r="4" fill="var(--brand-to)" />
+                <circle cx="25.5" cy="34.5" r="4" fill="var(--brand-from)" />
+                <circle cx="39" cy="34.5" r="4" fill="var(--brand-from)" />
+              </svg>
+            </span>
+            <span class="brand-copy">
+              <strong>ModelPing</strong>
+              <span>{t("app.title")}</span>
+            </span>
+          </div>
+
+          <nav class="primary-nav" aria-label={t("app.navLabel")}>
+            <button
+              type="button"
+              class={"nav-item " + (testRoute ? "active" : "")}
+              aria-current={testRoute ? "page" : undefined}
+              onClick={() => navigateTo("test-models")}
+            >
+              <FlaskConical size={17} aria-hidden="true" />
+              {t("app.tabTest")}
+            </button>
+            <button
+              type="button"
+              class={"nav-item " + (route === "status" ? "active" : "")}
+              aria-current={route === "status" ? "page" : undefined}
+              onClick={() => navigateTo("status")}
+            >
+              <Activity size={17} aria-hidden="true" />
+              {t("app.tabStatus")}
+              {statusEntries.length ? <span class="nav-count">{statusEntries.length}</span> : null}
+            </button>
+            <button
+              type="button"
+              class={"nav-item " + (route === "providers" ? "active" : "")}
+              aria-current={route === "providers" ? "page" : undefined}
+              onClick={() => navigateTo("providers")}
+            >
+              <ServerCog size={17} aria-hidden="true" />
+              {t("app.tabProviders")}
+            </button>
+          </nav>
+
+          <div class="app-utilities">
+            <LangToggle />
+            <ThemeToggle />
+          </div>
         </div>
       </header>
 
-      <nav class="app-tabs" aria-label={t("app.navLabel")}>
-        <button
-          type="button"
-          class={"app-tab " + (activeTab === "test" ? "active" : "")}
-          aria-current={activeTab === "test" ? "page" : undefined}
-          onClick={() => setActiveTab("test")}
-        >
-          {t("app.tabTest")}
-        </button>
-        <button
-          type="button"
-          class={"app-tab " + (activeTab === "settings" ? "active" : "")}
-          aria-current={activeTab === "settings" ? "page" : undefined}
-          onClick={() => setActiveTab("settings")}
-        >
-          {t("app.tabSettings")}
-        </button>
-        <button
-          type="button"
-          class={"app-tab " + (activeTab === "status" ? "active" : "")}
-          aria-current={activeTab === "status" ? "page" : undefined}
-          onClick={() => setActiveTab("status")}
-        >
-          {t("app.tabStatus")}
-        </button>
-      </nav>
-
-      <main>
+      <main id="main-content" class="app-main" ref={mainRef} tabIndex={-1}>
         {loadErr ? (
           <section class="panel">
             <div class="status-text fail">{t("app.loadFailed", { msg: loadErr })}</div>
@@ -654,47 +692,75 @@ export function App() {
           </section>
         ) : null}
 
-        {activeTab === "test" ? (
-          <>
-            <ConnectionPanel
-              providers={providers}
-              value={conn}
-              userAgent={config.userAgent}
-              selectedModels={selectedModelIds}
-              onChange={onConnChange}
-              onAddModels={onAddModels}
-              onAddToProvider={onAddToProvider}
-              onToast={showToast}
-            />
-            <ModelTable
-              rows={rows}
-              busy={busy}
-              progress={progress}
-              conn={conn}
-              userAgent={config.userAgent}
-              providerName={
-                providers.find((p) => p.id === conn.providerId)?.name ??
-                (conn.providerId === CUSTOM_PROVIDER_ID ? t("common.custom") : conn.providerId)
-              }
-              savedCustomModels={savedCustomModels}
-              privatePersistAvailable={statusPersisted}
-              onToggle={onToggle}
-              onToggleAll={onToggleAll}
-              onAdd={onAddModel}
-              onRemove={onRemoveModel}
-              onSaveCustomModel={onSaveCustomModel}
-              onTestSelected={onTestSelected}
-              onCancel={cancelBatch}
-              onAddToStatus={onAddToStatus}
-              onLaunched={showToast}
-            />
-            <HistoryPanel
-              entries={history}
-              onClear={onClearHistory}
-              onLaunched={showToast}
-            />
-          </>
-        ) : activeTab === "status" ? (
+        {!loadErr && bootstrapped && testRoute ? (
+          <div class="test-workspace">
+            <aside class="workspace-sidebar" aria-label={t("app.setupLabel")}>
+              <ConnectionPanel
+                providers={providers}
+                value={conn}
+                userAgent={config.userAgent}
+                selectedModels={selectedModelIds}
+                onChange={onConnChange}
+                onAddModels={onAddModels}
+                onAddToProvider={onAddToProvider}
+                onToast={showToast}
+              />
+              <ConfigPanel value={config} onChange={onConfigChange} />
+            </aside>
+            <section class="workspace-content" aria-label={t("app.workspaceLabel")}>
+              <div class="workspace-tabs" role="tablist" aria-label={t("app.workspaceLabel")}>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={route === "test-models"}
+                  class={route === "test-models" ? "active" : ""}
+                  onClick={() => navigateTo("test-models")}
+                >
+                  <FlaskConical size={16} aria-hidden="true" />
+                  {t("app.workspaceModels")}
+                  <span class="tab-count">{rows.length}</span>
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={route === "test-history"}
+                  class={route === "test-history" ? "active" : ""}
+                  onClick={() => navigateTo("test-history")}
+                >
+                  <History size={16} aria-hidden="true" />
+                  {t("app.workspaceHistory")}
+                  <span class="tab-count">{history.length}</span>
+                </button>
+              </div>
+              {route === "test-models" ? (
+                <ModelTable
+                  rows={rows}
+                  busy={busy}
+                  progress={progress}
+                  conn={conn}
+                  userAgent={config.userAgent}
+                  providerName={
+                    providers.find((p) => p.id === conn.providerId)?.name ??
+                    (conn.providerId === CUSTOM_PROVIDER_ID ? t("common.custom") : conn.providerId)
+                  }
+                  savedCustomModels={savedCustomModels}
+                  privatePersistAvailable={statusPersisted}
+                  onToggle={onToggle}
+                  onToggleAll={onToggleAll}
+                  onAdd={onAddModel}
+                  onRemove={onRemoveModel}
+                  onSaveCustomModel={onSaveCustomModel}
+                  onTestSelected={onTestSelected}
+                  onCancel={cancelBatch}
+                  onAddToStatus={onAddToStatus}
+                  onLaunched={showToast}
+                />
+              ) : (
+                <HistoryPanel entries={history} onClear={onClearHistory} onLaunched={showToast} />
+              )}
+            </section>
+          </div>
+        ) : !loadErr && bootstrapped && route === "status" ? (
           <StatusPanel
             entries={statusEntries}
             persisted={statusPersisted}
@@ -702,18 +768,15 @@ export function App() {
             onGotoTest={onGotoStatusTest}
             onLaunched={showToast}
           />
-        ) : (
-          <>
-            <ConfigPanel value={config} onChange={onConfigChange} />
-            <SettingsPanel
-              providers={providers}
-              defaults={presetDefaults}
-              busy={busy}
-              onChange={onPresetProvidersChange}
-              onImport={onImportPresets}
-            />
-          </>
-        )}
+        ) : !loadErr && bootstrapped ? (
+          <SettingsPanel
+            providers={providers}
+            defaults={presetDefaults}
+            busy={busy}
+            onChange={onPresetProvidersChange}
+            onImport={onImportPresets}
+          />
+        ) : null}
 
         {toast ? <div class={"toast" + (toastTone === "error" ? " error" : "") + (toastTone === "success" ? " success" : "")} role="status" aria-live="polite">{toast}</div> : null}
       </main>

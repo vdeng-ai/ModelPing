@@ -1,4 +1,5 @@
 import { useState } from "preact/hooks";
+import { ArrowUpRight } from "lucide-preact";
 import { APP_LABELS, CC_APPS, buildDeepLink, launchCcSwitch, type CcApp } from "../lib/ccswitch.js";
 import { useI18n } from "../lib/i18n.js";
 
@@ -35,8 +36,9 @@ export function CcSwitchButton({ name, endpoint, apiKey, model, defaultApp, disa
       >
         {CC_APPS.map((a) => <option value={a}>{APP_LABELS[a]}</option>)}
       </select>
-      <button type="button" class="icon" title={t("ccswitch.importTitle")} disabled={disabled} onClick={launch}>
-        → cc-switch
+      <button type="button" class="compact-button" title={t("ccswitch.importTitle")} disabled={disabled} onClick={launch}>
+        <ArrowUpRight size={15} aria-hidden="true" />
+        cc-switch
       </button>
     </span>
   );

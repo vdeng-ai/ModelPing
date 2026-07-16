@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "preact/hooks";
+import { X } from "lucide-preact";
 import { useI18n } from "../lib/i18n.js";
 import { useModalA11y } from "./useModalA11y.js";
 
@@ -60,13 +61,14 @@ export function PromptModal({ title, fields, confirmLabel, onConfirm, onClose }:
       >
         <div class="modal-head">
           <h3 id={titleId}>{title}</h3>
-          <button class="icon" title={t("common.close")} onClick={onClose}>×</button>
+          <button type="button" class="icon-button subtle" aria-label={t("common.close")} title={t("common.close")} onClick={onClose}><X size={17} aria-hidden="true" /></button>
         </div>
         <div class="modal-prompt-fields">
           {fields.map((f, i) => (
             <div key={f.key} class="field">
-              <label>{f.label}</label>
+              <label for={`${titleId}-${f.key}`}>{f.label}</label>
               <input
+                id={`${titleId}-${f.key}`}
                 ref={i === 0 ? firstRef : undefined}
                 class={f.mono ? "mono" : undefined}
                 placeholder={f.placeholder}

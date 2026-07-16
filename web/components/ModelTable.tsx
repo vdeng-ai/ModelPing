@@ -1,6 +1,7 @@
 import { useMemo, useState } from "preact/hooks";
+import { Ban, BookmarkPlus, CheckSquare, Equal, Play, Plus, RadioTower, Save, Square, Trash2, X } from "lucide-preact";
 import type { Protocol, StatusEntry, TestResult } from "../lib/types.js";
-import { fmtMs, fmtTok, PROTOCOL_LABEL, streamGlyph } from "../lib/format.js";
+import { fmtMs, fmtTok, PROTOCOL_LABEL } from "../lib/format.js";
 import { CcSwitchButton } from "./CcSwitchButton.js";
 import { PromptModal } from "./PromptModal.js";
 import { useI18n, translate, type Lang } from "../lib/i18n.js";
@@ -55,11 +56,11 @@ function Badge({ probe, lang }: { probe: ProtocolProbe; lang: Lang }) {
     : status === "testing" ? tr("models.badgeTesting", { protocol })
     : status === "skipped" ? tr("models.badgeSkipped", { protocol })
     : tr("models.badgePending", { protocol });
-  const g = streamGlyph(streamVerdict);
+  const StreamIcon = streamVerdict === "stream" ? RadioTower : streamVerdict === "single" ? Equal : streamVerdict === "none" ? Ban : null;
   return (
     <span class={"pbadge " + status} title={title} aria-label={title}>
       <span class="pbadge-label">{PROTOCOL_LABEL[protocol]}</span>
-      {g ? <span class={"stream-mark " + g.cls}>{g.char}</span> : null}
+      {StreamIcon ? <StreamIcon class={"stream-icon " + streamVerdict} size={12} aria-hidden="true" /> : null}
     </span>
   );
 }
@@ -85,6 +86,7 @@ export function ModelTable(props: Props) {
 
   const allChecked = rows.length > 0 && rows.every((r) => r.checked);
   const someChecked = rows.some((r) => r.checked);
+  const selectedCount = rows.filter((r) => r.checked).length;
   const canAddStatus = Boolean(conn.baseUrl.trim() && conn.apiKey.trim());
   const savedSet = new Set(savedCustomModels);
   const isCustomProvider = conn.providerId === CUSTOM_PROVIDER_ID;
@@ -117,6 +119,12 @@ export function ModelTable(props: Props) {
     const fail = PROTOCOLS.filter((p) => r.probes[p].status === "fail").length;
     if (fail) return t("models.statusFailed");
     return t("models.statusPending");
+  };
+  const statusClass = (r: ModelRow): string => {
+    if (PROTOCOLS.some((p) => r.probes[p].status === "testing")) return "testing";
+    if (PROTOCOLS.some((p) => r.probes[p].status === "success")) return "success";
+    if (PROTOCOLS.some((p) => r.probes[p].status === "fail")) return "fail";
+    return "idle";
   };
 
   const add = () => {
@@ -151,20 +159,31 @@ export function ModelTable(props: Props) {
   };
 
   return (
-    <section class="panel">
-      <h2>{t("models.title")}</h2>
+    <section class="panel model-panel" aria-labelledby="models-heading">
+      <h2 id="models-heading" class="sr-only">{t("models.title")}</h2>
 
-      <div class="actions" style="margin-bottom:12px">
-        <button class="primary" disabled={busy || !someChecked} onClick={props.onTestSelected}>
-          {t("models.testSelected")}
-        </button>
-        {busy ? <button class="danger" onClick={props.onCancel}>{t("models.cancelTests")}</button> : null}
-        <button disabled={busy || rows.length === 0} onClick={() => props.onToggleAll(!allChecked)}>
-          {allChecked ? t("common.deselectAll") : t("common.selectAll")}
-        </button>
-        <button disabled={busy || !someChecked || !canAddStatus} onClick={() => addRowsToStatus(rows.filter((r) => r.checked))}>
-          {t("models.addSelectedToStatus")}
-        </button>
+      <div class="model-toolbar">
+        <div class="model-primary-actions">
+          <button class="primary" disabled={busy || !someChecked} onClick={props.onTestSelected}>
+            <Play size={16} fill="currentColor" aria-hidden="true" />
+            {selectedCount ? t("models.testSelectedCount", { count: selectedCount }) : t("models.testSelected")}
+          </button>
+          {busy ? (
+            <button class="danger" onClick={props.onCancel}>
+              <X size={16} aria-hidden="true" />
+              {t("models.cancelTests")}
+            </button>
+          ) : null}
+        </div>
+        <div class="model-secondary-actions">
+          <button disabled={busy || rows.length === 0} onClick={() => props.onToggleAll(!allChecked)}>
+            {allChecked ? <CheckSquare size={16} aria-hidden="true" /> : <Square size={16} aria-hidden="true" />}
+            {allChecked ? t("common.deselectAll") : t("common.selectAll")}
+          </button>
+          <button disabled={busy || !someChecked || !canAddStatus} onClick={() => addRowsToStatus(rows.filter((r) => r.checked))}>
+            <BookmarkPlus size={16} aria-hidden="true" />
+            {t("models.addSelectedToStatus")}
+          </button>
         <CcSwitchButton
           name={providerName}
           endpoint={conn.baseUrl}
@@ -173,6 +192,7 @@ export function ModelTable(props: Props) {
           disabled={busy || !conn.baseUrl || !conn.apiKey}
           onLaunched={props.onLaunched}
         />
+        </div>
       </div>
 
       {busy ? (
@@ -192,7 +212,14 @@ export function ModelTable(props: Props) {
       {rows.length === 0 ? (
         <div class="empty">{t("models.empty")}</div>
       ) : (
-        <div class="model-card-grid">
+        <div class="model-result-list">
+          <div class="model-list-head" aria-hidden="true">
+            <span />
+            <span>{t("models.colModel")}</span>
+            <span>{t("models.colProtocol")}</span>
+            <span>{t("models.colResult")}</span>
+            <span>{t("models.colActions")}</span>
+          </div>
           {sortedRows.map((r) => {
             const fs = firstSuccess(r);
             const preview = previewText(r);
@@ -200,78 +227,68 @@ export function ModelTable(props: Props) {
             return (
               <div
                 key={r.key}
-                role="checkbox"
-                aria-checked={r.checked}
-                aria-disabled={busy}
-                tabIndex={busy ? -1 : 0}
-                class={"provider-card model-card " + (r.checked ? "active" : "")}
-                onClick={() => { if (!busy) props.onToggle(r.key, !r.checked); }}
-                onKeyDown={(e) => {
-                  if (busy) return;
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    props.onToggle(r.key, !r.checked);
-                  }
-                }}
+                class={"model-result-row " + (r.checked ? "selected " : "") + statusClass(r)}
               >
-                <span class="model-card-head">
-                  <span class="model-name">{r.label}</span>
-                  <span class="model-card-actions">
+                <div class="model-row-main">
+                  <label class="row-check" title={r.label}>
+                    <input
+                      type="checkbox"
+                      checked={r.checked}
+                      disabled={busy}
+                      aria-label={r.label}
+                      onChange={(e) => props.onToggle(r.key, (e.target as HTMLInputElement).checked)}
+                    />
+                  </label>
+                  <div class="model-identity">
+                    <span class="model-name" title={r.label}>{r.label}</span>
+                    <span class={"model-verdict " + statusClass(r)}>
+                      <span class="status-dot" aria-hidden="true" />
+                      {statusText(r)}
+                    </span>
+                  </div>
+                  <div class="proto-badges">
+                    {shownProtocols(r, conn.providerId).map((p) => <Badge probe={r.probes[p]} lang={lang} />)}
+                  </div>
+                  <div class="model-metrics">
+                    <span><small>{t("models.latency")}</small><strong>{fs ? fmtMs(fs.latencyMs) : t("common.dash")}</strong></span>
+                    <span><small>{t("models.ttft")}</small><strong>{fs ? fmtMs(fs.ttftMs) : t("common.dash")}</strong></span>
+                    <span><small>{t("models.tokens")}</small><strong>{fs ? fmtTok(fs.usage.totalTokens) : t("common.dash")}</strong></span>
+                  </div>
+                  <div class="model-row-actions">
                     {showSave ? (
                       <button
                         type="button"
-                        class={"model-status-add model-save " + (!props.privatePersistAvailable ? "disabled" : "")}
+                        class="icon-button subtle"
                         title={props.privatePersistAvailable ? t("models.saveModelTitle") : t("models.saveModelUnavailable")}
+                        aria-label={props.privatePersistAvailable ? t("models.saveModelTitle") : t("models.saveModelUnavailable")}
                         disabled={busy || !props.privatePersistAvailable}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          props.onSaveCustomModel(r.label);
-                        }}
+                        onClick={() => props.onSaveCustomModel(r.label)}
                       >
-                        {t("models.saveModel")}
+                        <Save size={15} aria-hidden="true" />
                       </button>
                     ) : null}
                     <button
                       type="button"
-                      class={"model-status-add " + (!canAddStatus ? "disabled" : "")}
+                      class="icon-button subtle"
                       title={t("models.addToStatus")}
+                      aria-label={t("models.addToStatus")}
                       disabled={busy || !canAddStatus}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        addRowsToStatus([r]);
-                      }}
+                      onClick={() => addRowsToStatus([r])}
                     >
-                      {t("models.addToStatus")}
+                      <BookmarkPlus size={15} aria-hidden="true" />
                     </button>
-                  {r.custom ? (
-                    <button
-                      type="button"
-                      class="model-remove"
-                      title={t("common.remove")}
-                      disabled={busy}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        props.onRemove(r.key);
-                      }}
-                    >
-                      x
-                    </button>
-                  ) : null}
-                  </span>
-                </span>
-                <span class="model-card-status">
-                  <span class="proto-badges">
-                    {shownProtocols(r, conn.providerId).map((p) => <Badge probe={r.probes[p]} lang={lang} />)}
-                  </span>
-                  <span class="status-text">{statusText(r)}</span>
-                </span>
-                <span class="model-card-usage">
-                  {fs
-                    ? `${fmtTok(fs.usage.inputTokens)} / ${fmtTok(fs.usage.outputTokens)} / ${fmtTok(fs.usage.totalTokens)}`
-                    : t("models.inOutTotal")}
-                </span>
+                    {r.custom ? (
+                      <button type="button" class="icon-button subtle danger-quiet" title={t("common.remove")} aria-label={t("common.remove")} disabled={busy} onClick={() => props.onRemove(r.key)}>
+                        <Trash2 size={15} aria-hidden="true" />
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
                 {preview ? (
-                  <span class="text-preview model-preview">{preview}</span>
+                  <details class="model-response">
+                    <summary>{t("models.responsePreview")}</summary>
+                    <pre>{preview}</pre>
+                  </details>
                 ) : null}
               </div>
             );
@@ -288,6 +305,7 @@ export function ModelTable(props: Props) {
           onKeyDown={(e) => { if (e.key === "Enter") add(); }}
         />
         <button disabled={!newModel.trim()} onClick={add}>
+          <Plus size={16} aria-hidden="true" />
           {t("models.addModel")}
         </button>
       </div>
