@@ -259,81 +259,84 @@ export function ConnectionPanel({
             </button>
             <CopyButton value={value.apiKey} title={t("conn.copyKey")} />
           </div>
-          <div class="field-tools">
-            <button
-              class="compact-button"
-              title={t("conn.b64Title")}
-              onClick={(e) => {
-                e.stopPropagation();
-                try {
-                  const decoded = new TextDecoder().decode(
-                    Uint8Array.from(atob(value.apiKey), (c) => c.charCodeAt(0)),
-                  );
-                  onChange({ ...value, apiKey: decoded });
-                } catch {
-                  onToast(t("conn.decodeFailed"), { tone: "error" });
-                }
-              }}
-            >
-              B64
-            </button>
-            <button
-              class="compact-button"
-              title={t("conn.hexTitle")}
-              onClick={(e) => {
-                e.stopPropagation();
-                try {
-                  const bytes = value.apiKey
-                    .trim()
-                    .split(/\s+/)
-                    .filter(Boolean)
-                    .map((h) => {
-                      if (!/^[0-9a-fA-F]{1,2}$/.test(h)) throw new Error("bad hex");
-                      return parseInt(h, 16);
-                    });
-                  if (bytes.length === 0) {
+          <div class="field-tools key-field-tools">
+            <div class="field-tools-row">
+              <button
+                class="compact-button"
+                title={t("conn.b64Title")}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  try {
+                    const decoded = new TextDecoder().decode(
+                      Uint8Array.from(atob(value.apiKey), (c) => c.charCodeAt(0)),
+                    );
+                    onChange({ ...value, apiKey: decoded });
+                  } catch {
                     onToast(t("conn.decodeFailed"), { tone: "error" });
-                    return;
                   }
-                  const decoded = new TextDecoder().decode(Uint8Array.from(bytes));
-                  onChange({ ...value, apiKey: decoded });
-                } catch {
-                  onToast(t("conn.decodeFailed"), { tone: "error" });
-                }
-              }}
-            >
-              Hex
-            </button>
-            <button
-              class="compact-button"
-              title={t("conn.reverseTitle")}
-              onClick={(e) => {
-                e.stopPropagation();
-                onChange({ ...value, apiKey: Array.from(value.apiKey).reverse().join("") });
-              }}
-            >
-              {t("conn.reverse")}
-            </button>
-            <span class="field-tools-sep" />
-            <button
-              class="compact-button"
-              title={t("conn.queryBalanceTitle")}
-              disabled={!canLookup || balanceBusy}
-              onClick={(e) => { e.stopPropagation(); onQueryBalance(); }}
-            >
-              <WalletCards size={15} aria-hidden="true" />
-              {t("conn.queryBalance")}
-            </button>
-            <button
-              ref={fetchModelsButtonRef}
-              class="compact-button secondary"
-              title={t("conn.fetchModelsTitle")}
-              disabled={!canLookup || modelsBusy}
-              onClick={(e) => { e.stopPropagation(); onFetchModels(); }}
-            >
-              <ListPlus size={15} aria-hidden="true" />
-              {modelsBusy ? t("conn.fetchingModels") : t("conn.fetchModels")}
-            </button>
+                }}
+              >
+                B64
+              </button>
+              <button
+                class="compact-button"
+                title={t("conn.hexTitle")}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  try {
+                    const bytes = value.apiKey
+                      .trim()
+                      .split(/\s+/)
+                      .filter(Boolean)
+                      .map((h) => {
+                        if (!/^[0-9a-fA-F]{1,2}$/.test(h)) throw new Error("bad hex");
+                        return parseInt(h, 16);
+                      });
+                    if (bytes.length === 0) {
+                      onToast(t("conn.decodeFailed"), { tone: "error" });
+                      return;
+                    }
+                    const decoded = new TextDecoder().decode(Uint8Array.from(bytes));
+                    onChange({ ...value, apiKey: decoded });
+                  } catch {
+                    onToast(t("conn.decodeFailed"), { tone: "error" });
+                  }
+                }}
+              >
+                Hex
+              </button>
+              <button
+                class="compact-button"
+                title={t("conn.reverseTitle")}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onChange({ ...value, apiKey: Array.from(value.apiKey).reverse().join("") });
+                }}
+              >
+                {t("conn.reverse")}
+              </button>
+            </div>
+            <div class="field-tools-row lookup-tools-row">
+              <button
+                class="compact-button"
+                title={t("conn.queryBalanceTitle")}
+                disabled={!canLookup || balanceBusy}
+                onClick={(e) => { e.stopPropagation(); onQueryBalance(); }}
+              >
+                <WalletCards size={15} aria-hidden="true" />
+                {t("conn.queryBalance")}
+              </button>
+              <button
+                ref={fetchModelsButtonRef}
+                class="compact-button secondary"
+                title={t("conn.fetchModelsTitle")}
+                disabled={!canLookup || modelsBusy}
+                onClick={(e) => { e.stopPropagation(); onFetchModels(); }}
+              >
+                <ListPlus size={15} aria-hidden="true" />
+                {modelsBusy ? t("conn.fetchingModels") : t("conn.fetchModels")}
+              </button>
+            </div>
           </div>
           {balanceText ? <div class="balance-line">{balanceText}</div> : null}
         </div>

@@ -277,11 +277,9 @@ export function ModelTable(props: Props) {
                     >
                       <BookmarkPlus size={15} aria-hidden="true" />
                     </button>
-                    {r.custom ? (
-                      <button type="button" class="icon-button subtle danger-quiet" title={t("common.remove")} aria-label={t("common.remove")} disabled={busy} onClick={() => props.onRemove(r.key)}>
-                        <Trash2 size={15} aria-hidden="true" />
-                      </button>
-                    ) : null}
+                    <button type="button" class="icon-button subtle danger-quiet" title={t("common.remove")} aria-label={t("common.remove")} disabled={busy} onClick={() => props.onRemove(r.key)}>
+                      <Trash2 size={15} aria-hidden="true" />
+                    </button>
                   </div>
                 </div>
                 {preview ? (

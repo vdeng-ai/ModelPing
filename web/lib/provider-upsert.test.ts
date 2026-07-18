@@ -3,6 +3,7 @@ import type { ProviderPreset } from "./types.js";
 import {
   mergeProviderModels,
   nextProviderId,
+  removeProviderModelsByLabel,
   upsertProviderFromConn,
   upsertProviderModel,
 } from "./provider-upsert.js";
@@ -26,6 +27,43 @@ describe("provider-upsert", () => {
     expect(next.find((p) => p.id === "acme")?.models.map((m) => m.id)).toEqual(["m1", "new-m"]);
     expect(next.find((p) => p.id === "other")?.models).toEqual([]);
     expect(upsertProviderModel(providers, "custom", "x")).toBe(providers);
+  });
+
+  it("removes every provider mapping for the same display label", () => {
+    const providers: ProviderPreset[] = [
+      {
+        ...base,
+        models: [
+          { id: "shared-direct" },
+          { id: "vendor/shared", label: "shared-direct" },
+          { id: "keep" },
+        ],
+      },
+      {
+        id: "other",
+        name: "Other",
+        baseUrl: "https://o.test",
+        models: [{ id: "another/shared", label: "shared-direct" }],
+      },
+    ];
+
+    const result = removeProviderModelsByLabel(providers, " shared-direct ");
+
+    expect(result.affectedProviders).toEqual([
+      { id: "acme", name: "Acme" },
+      { id: "other", name: "Other" },
+    ]);
+    expect(result.providers[0].models).toEqual([{ id: "keep" }]);
+    expect(result.providers[1].models).toEqual([]);
+    expect(providers[0].models).toHaveLength(3);
+  });
+
+  it("returns the original provider array when no display label matches", () => {
+    const providers = [base];
+    const result = removeProviderModelsByLabel(providers, "missing");
+
+    expect(result.providers).toBe(providers);
+    expect(result.affectedProviders).toEqual([]);
   });
 
   it("allocates unique provider ids", () => {
