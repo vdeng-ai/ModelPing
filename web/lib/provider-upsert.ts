@@ -30,6 +30,35 @@ export function upsertProviderModel(
   return providers.map((p) => (p.id === providerId ? mergeProviderModels(p, [id]) : p));
 }
 
+export interface RemoveProviderModelsResult {
+  providers: ProviderPreset[];
+  affectedProviders: Array<Pick<ProviderPreset, "id" | "name">>;
+}
+
+/** Remove every provider model that contributes to the same display row. */
+export function removeProviderModelsByLabel(
+  providers: ProviderPreset[],
+  rawLabel: string,
+): RemoveProviderModelsResult {
+  const label = rawLabel.trim();
+  if (!label) return { providers, affectedProviders: [] };
+
+  const affectedProviders: Array<Pick<ProviderPreset, "id" | "name">> = [];
+  let changed = false;
+  const nextProviders = providers.map((provider) => {
+    const models = provider.models.filter((model) => (model.label ?? model.id).trim() !== label);
+    if (models.length === provider.models.length) return provider;
+    changed = true;
+    affectedProviders.push({ id: provider.id, name: provider.name });
+    return { ...provider, models };
+  });
+
+  return {
+    providers: changed ? nextProviders : providers,
+    affectedProviders,
+  };
+}
+
 /** Allocate provider-N style id not already used. */
 export function nextProviderId(used: Iterable<string>, preferred?: string): string {
   const set = new Set(used);

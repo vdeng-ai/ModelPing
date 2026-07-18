@@ -15,6 +15,7 @@ import { ConnectionPanel, type ConnValue, type AddToProviderDraft } from "./Conn
 import { ConfigPanel } from "./ConfigPanel.js";
 import { ModelTable } from "./ModelTable.js";
 import { HistoryPanel } from "./HistoryPanel.js";
+import { ConfirmModal } from "./ConfirmModal.js";
 import { ThemeToggle } from "./ThemeToggle.js";
 import { LangToggle } from "./LangToggle.js";
 import { SettingsPanel } from "./SettingsPanel.js";
@@ -31,7 +32,7 @@ import {
   type PrivateStateScope,
 } from "../lib/private-state-sync.js";
 import { statusEntryKey } from "../lib/status-entries.js";
-import { upsertProviderFromConn, upsertProviderModel } from "../lib/provider-upsert.js";
+import { removeProviderModelsByLabel, upsertProviderFromConn, upsertProviderModel } from "../lib/provider-upsert.js";
 import { appRouteFromHash, hashForAppRoute, type AppRoute } from "../lib/navigation.js";
 
 let statusSeq = 0;
@@ -51,6 +52,10 @@ export function App() {
   const [statusEntries, setStatusEntries] = useState<StatusEntry[]>([]);
   const [statusPersisted, setStatusPersisted] = useState(true);
   const [savedCustomModels, setSavedCustomModels] = useState<string[]>([]);
+  const [pendingPresetModelDelete, setPendingPresetModelDelete] = useState<{
+    label: string;
+    providerNames: string[];
+  } | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [toastTone, setToastTone] = useState<"info" | "error" | "success">("info");
   const [loadErr, setLoadErr] = useState<string | null>(null);
@@ -485,19 +490,64 @@ export function App() {
 
   const onRemoveModel = (key: string) => {
     const target = rowsRef.current.find((r) => r.key === key);
-    updateRows((rs) => rs.filter((r) => r.key !== key));
-    if (target?.custom) {
-      const id = target.label.trim();
-      if (id && savedCustomModelsRef.current.includes(id)) {
-        const nextSaved = savedCustomModelsRef.current.filter((m) => m !== id);
-        savedCustomModelsRef.current = nextSaved;
-        setSavedCustomModels(nextSaved);
-        persistPrivateStateNow({
-          customModels: nextSaved,
-          customModelsPersist: nextSaved.length > 0,
-        });
+    if (!target) return;
+    if (!target.custom) {
+      const { affectedProviders } = removeProviderModelsByLabel(providersRef.current, target.label);
+      if (affectedProviders.length === 0) {
+        updateRows((rs) => rs.filter((r) => r.key !== key));
+        return;
       }
+      setPendingPresetModelDelete({
+        label: target.label,
+        providerNames: affectedProviders.map((provider) => provider.name),
+      });
+      return;
     }
+
+    updateRows((rs) => rs.filter((r) => r.key !== key));
+    const id = target.label.trim();
+    if (id && savedCustomModelsRef.current.includes(id)) {
+      const nextSaved = savedCustomModelsRef.current.filter((m) => m !== id);
+      savedCustomModelsRef.current = nextSaved;
+      setSavedCustomModels(nextSaved);
+      persistPrivateStateNow({
+        customModels: nextSaved,
+        customModelsPersist: nextSaved.length > 0,
+      });
+    }
+  };
+
+  const confirmPresetModelDelete = () => {
+    const pending = pendingPresetModelDelete;
+    if (!pending) return;
+    const removal = removeProviderModelsByLabel(providersRef.current, pending.label);
+    setPendingPresetModelDelete(null);
+    if (removal.affectedProviders.length === 0) {
+      updateRows((rs) => rs.filter((row) => row.label !== pending.label));
+      return;
+    }
+
+    const nextSaved = savedCustomModelsRef.current.filter((model) => model.trim() !== pending.label);
+    if (nextSaved.length !== savedCustomModelsRef.current.length) {
+      savedCustomModelsRef.current = nextSaved;
+      setSavedCustomModels(nextSaved);
+      persistPrivateStateNow({
+        customModels: nextSaved,
+        customModelsPersist: nextSaved.length > 0,
+      });
+    }
+
+    const normalized = normalizePresets({
+      providers: removal.providers,
+      defaults: presetDefaultsRef.current,
+    });
+    applyPresets(
+      normalized,
+      t("models.presetModelDeleted", {
+        model: pending.label,
+        count: removal.affectedProviders.length,
+      }),
+    );
   };
 
   const onAddToStatus = (drafts: StatusDraft[]) => {
@@ -780,6 +830,17 @@ export function App() {
 
         {toast ? <div class={"toast" + (toastTone === "error" ? " error" : "") + (toastTone === "success" ? " success" : "")} role="status" aria-live="polite">{toast}</div> : null}
       </main>
+      {pendingPresetModelDelete ? (
+        <ConfirmModal
+          title={t("models.deletePresetTitle", { model: pendingPresetModelDelete.label })}
+          description={t("models.deletePresetDescription", { count: pendingPresetModelDelete.providerNames.length })}
+          itemsLabel={t("models.deletePresetProviders")}
+          items={pendingPresetModelDelete.providerNames}
+          confirmLabel={t("models.deletePresetConfirm")}
+          onClose={() => setPendingPresetModelDelete(null)}
+          onConfirm={confirmPresetModelDelete}
+        />
+      ) : null}
     </div>
   );
 }
