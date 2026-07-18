@@ -1,5 +1,5 @@
 import { useMemo, useState } from "preact/hooks";
-import { Ban, BookmarkPlus, CheckSquare, Equal, Play, Plus, RadioTower, Save, Square, Trash2, X } from "lucide-preact";
+import { Ban, BookmarkPlus, CheckSquare, ChevronRight, Equal, Play, Plus, RadioTower, Save, Square, Trash2, X } from "lucide-preact";
 import type { Protocol, StatusEntry, TestResult } from "../lib/types.js";
 import { fmtMs, fmtTok, PROTOCOL_LABEL } from "../lib/format.js";
 import { CcSwitchButton } from "./CcSwitchButton.js";
@@ -7,7 +7,7 @@ import { PromptModal } from "./PromptModal.js";
 import { useI18n, translate, type Lang } from "../lib/i18n.js";
 import { PROTOCOLS, protocolsForProvider } from "../../src/protocols.js";
 import { CUSTOM_PROVIDER_ID } from "../lib/presets.js";
-import { sortByDisplayText } from "../lib/alphabetical-sort.js";
+import { groupModelsByFamily } from "../lib/model-groups.js";
 import type { ModelRow, ProtocolProbe } from "../lib/model-rows.js";
 export { protocolsForModel } from "../lib/model-rows.js";
 
@@ -22,6 +22,7 @@ interface Props {
   privatePersistAvailable: boolean;
   onToggle: (key: string, checked: boolean) => void;
   onToggleAll: (checked: boolean) => void;
+  onToggleGroup: (keys: string[], checked: boolean) => void;
   onAdd: (model: string) => void;
   onRemove: (key: string) => void;
   onSaveCustomModel: (model: string) => void;
@@ -83,17 +84,27 @@ export function ModelTable(props: Props) {
   const [newModel, setNewModel] = useState("");
   const [statusNamePrompt, setStatusNamePrompt] = useState<Array<Omit<StatusEntry, "id">> | null>(null);
   const [lastCustomProviderName, setLastCustomProviderName] = useState("");
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(() => new Set());
 
   const allChecked = rows.length > 0 && rows.every((r) => r.checked);
   const someChecked = rows.some((r) => r.checked);
   const selectedCount = rows.filter((r) => r.checked).length;
   const canAddStatus = Boolean(conn.baseUrl.trim() && conn.apiKey.trim());
-  const savedSet = new Set(savedCustomModels);
+  const savedSet = useMemo(() => new Set(savedCustomModels), [savedCustomModels]);
   const isCustomProvider = conn.providerId === CUSTOM_PROVIDER_ID;
-  const sortedRows = useMemo(
-    () => sortByDisplayText(rows, (row) => row.label),
+  const listEntries = useMemo(
+    () => groupModelsByFamily(rows, (row) => row.label),
     [rows],
   );
+
+  const toggleGroup = (key: string) => {
+    setExpandedGroups((current) => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
 
   // 取该行第一个成功协议的输出文本作预览。
   const previewText = (r: ModelRow): string => {
@@ -158,6 +169,78 @@ export function ModelTable(props: Props) {
     props.onAddToStatus(drafts);
   };
 
+  const renderRow = (r: ModelRow) => {
+    const fs = firstSuccess(r);
+    const preview = previewText(r);
+    const showSave = r.custom && !savedSet.has(r.label);
+    return (
+      <div
+        key={r.key}
+        class={"model-result-row " + (r.checked ? "selected " : "") + statusClass(r)}
+      >
+        <div class="model-row-main">
+          <label class="row-check" title={r.label}>
+            <input
+              type="checkbox"
+              checked={r.checked}
+              disabled={busy}
+              aria-label={r.label}
+              onChange={(e) => props.onToggle(r.key, (e.target as HTMLInputElement).checked)}
+            />
+          </label>
+          <div class="model-identity">
+            <span class="model-name" title={r.label}>{r.label}</span>
+            <span class={"model-verdict " + statusClass(r)}>
+              <span class="status-dot" aria-hidden="true" />
+              {statusText(r)}
+            </span>
+          </div>
+          <div class="proto-badges">
+            {shownProtocols(r, conn.providerId).map((p) => <Badge key={p} probe={r.probes[p]} lang={lang} />)}
+          </div>
+          <div class="model-metrics">
+            <span><small>{t("models.latency")}</small><strong>{fs ? fmtMs(fs.latencyMs) : t("common.dash")}</strong></span>
+            <span><small>{t("models.ttft")}</small><strong>{fs ? fmtMs(fs.ttftMs) : t("common.dash")}</strong></span>
+            <span><small>{t("models.tokens")}</small><strong>{fs ? fmtTok(fs.usage.totalTokens) : t("common.dash")}</strong></span>
+          </div>
+          <div class="model-row-actions">
+            {showSave ? (
+              <button
+                type="button"
+                class="icon-button subtle"
+                title={props.privatePersistAvailable ? t("models.saveModelTitle") : t("models.saveModelUnavailable")}
+                aria-label={props.privatePersistAvailable ? t("models.saveModelTitle") : t("models.saveModelUnavailable")}
+                disabled={busy || !props.privatePersistAvailable}
+                onClick={() => props.onSaveCustomModel(r.label)}
+              >
+                <Save size={15} aria-hidden="true" />
+              </button>
+            ) : null}
+            <button
+              type="button"
+              class="icon-button subtle"
+              title={t("models.addToStatus")}
+              aria-label={t("models.addToStatus")}
+              disabled={busy || !canAddStatus}
+              onClick={() => addRowsToStatus([r])}
+            >
+              <BookmarkPlus size={15} aria-hidden="true" />
+            </button>
+            <button type="button" class="icon-button subtle danger-quiet" title={t("common.remove")} aria-label={t("common.remove")} disabled={busy} onClick={() => props.onRemove(r.key)}>
+              <Trash2 size={15} aria-hidden="true" />
+            </button>
+          </div>
+        </div>
+        {preview ? (
+          <details class="model-response">
+            <summary>{t("models.responsePreview")}</summary>
+            <pre>{preview}</pre>
+          </details>
+        ) : null}
+      </div>
+    );
+  };
+
   return (
     <section class="panel model-panel" aria-labelledby="models-heading">
       <h2 id="models-heading" class="sr-only">{t("models.title")}</h2>
@@ -220,75 +303,64 @@ export function ModelTable(props: Props) {
             <span>{t("models.colResult")}</span>
             <span>{t("models.colActions")}</span>
           </div>
-          {sortedRows.map((r) => {
-            const fs = firstSuccess(r);
-            const preview = previewText(r);
-            const showSave = r.custom && !savedSet.has(r.label);
+          {listEntries.map((entry) => {
+            if (entry.kind === "model") return renderRow(entry.model);
+
+            const selectedInGroup = entry.models.filter((model) => model.checked).length;
+            const allInGroupChecked = selectedInGroup === entry.models.length;
+            const someInGroupChecked = selectedInGroup > 0 && !allInGroupChecked;
+            const expanded = expandedGroups.has(entry.key);
+            const contentId = `model-group-${encodeURIComponent(entry.key)}`;
+            const toggleLabel = expanded
+              ? t("models.collapseGroup", { group: entry.label })
+              : t("models.expandGroup", { group: entry.label });
+            const selectionLabel = allInGroupChecked
+              ? t("models.deselectGroup", { group: entry.label })
+              : t("models.selectGroup", { group: entry.label });
+
             return (
-              <div
-                key={r.key}
-                class={"model-result-row " + (r.checked ? "selected " : "") + statusClass(r)}
-              >
-                <div class="model-row-main">
-                  <label class="row-check" title={r.label}>
+              <section key={`group:${entry.key}`} class="model-group" aria-label={entry.label}>
+                <div class={"model-group-head " + (expanded ? "expanded" : "collapsed")}>
+                  <label class="model-group-check" title={selectionLabel}>
                     <input
+                      ref={(element) => {
+                        if (element) element.indeterminate = someInGroupChecked;
+                      }}
                       type="checkbox"
-                      checked={r.checked}
+                      checked={allInGroupChecked}
                       disabled={busy}
-                      aria-label={r.label}
-                      onChange={(e) => props.onToggle(r.key, (e.target as HTMLInputElement).checked)}
+                      aria-label={selectionLabel}
+                      onChange={(event) => props.onToggleGroup(
+                        entry.models.map((model) => model.key),
+                        (event.target as HTMLInputElement).checked,
+                      )}
                     />
                   </label>
-                  <div class="model-identity">
-                    <span class="model-name" title={r.label}>{r.label}</span>
-                    <span class={"model-verdict " + statusClass(r)}>
-                      <span class="status-dot" aria-hidden="true" />
-                      {statusText(r)}
+                  <button
+                    type="button"
+                    class="model-group-toggle"
+                    aria-expanded={expanded}
+                    aria-controls={contentId}
+                    aria-label={toggleLabel}
+                    title={toggleLabel}
+                    onClick={() => toggleGroup(entry.key)}
+                  >
+                    <ChevronRight class="model-group-chevron" size={17} aria-hidden="true" />
+                    <span class="model-group-name" title={entry.label}>{entry.label}</span>
+                    <span class="model-group-meta">
+                      <span>{t("models.groupModelCount", { count: entry.models.length })}</span>
+                      <span aria-hidden="true">/</span>
+                      <span>{t("models.groupSelectedCount", {
+                        selected: selectedInGroup,
+                        count: entry.models.length,
+                      })}</span>
                     </span>
-                  </div>
-                  <div class="proto-badges">
-                    {shownProtocols(r, conn.providerId).map((p) => <Badge probe={r.probes[p]} lang={lang} />)}
-                  </div>
-                  <div class="model-metrics">
-                    <span><small>{t("models.latency")}</small><strong>{fs ? fmtMs(fs.latencyMs) : t("common.dash")}</strong></span>
-                    <span><small>{t("models.ttft")}</small><strong>{fs ? fmtMs(fs.ttftMs) : t("common.dash")}</strong></span>
-                    <span><small>{t("models.tokens")}</small><strong>{fs ? fmtTok(fs.usage.totalTokens) : t("common.dash")}</strong></span>
-                  </div>
-                  <div class="model-row-actions">
-                    {showSave ? (
-                      <button
-                        type="button"
-                        class="icon-button subtle"
-                        title={props.privatePersistAvailable ? t("models.saveModelTitle") : t("models.saveModelUnavailable")}
-                        aria-label={props.privatePersistAvailable ? t("models.saveModelTitle") : t("models.saveModelUnavailable")}
-                        disabled={busy || !props.privatePersistAvailable}
-                        onClick={() => props.onSaveCustomModel(r.label)}
-                      >
-                        <Save size={15} aria-hidden="true" />
-                      </button>
-                    ) : null}
-                    <button
-                      type="button"
-                      class="icon-button subtle"
-                      title={t("models.addToStatus")}
-                      aria-label={t("models.addToStatus")}
-                      disabled={busy || !canAddStatus}
-                      onClick={() => addRowsToStatus([r])}
-                    >
-                      <BookmarkPlus size={15} aria-hidden="true" />
-                    </button>
-                    <button type="button" class="icon-button subtle danger-quiet" title={t("common.remove")} aria-label={t("common.remove")} disabled={busy} onClick={() => props.onRemove(r.key)}>
-                      <Trash2 size={15} aria-hidden="true" />
-                    </button>
-                  </div>
+                  </button>
                 </div>
-                {preview ? (
-                  <details class="model-response">
-                    <summary>{t("models.responsePreview")}</summary>
-                    <pre>{preview}</pre>
-                  </details>
-                ) : null}
-              </div>
+                <div id={contentId} class="model-group-rows" hidden={!expanded}>
+                  {expanded ? entry.models.map(renderRow) : null}
+                </div>
+              </section>
             );
           })}
         </div>

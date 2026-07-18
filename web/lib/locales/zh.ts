@@ -180,6 +180,12 @@ export const zh = {
     ttft: "TTFT",
     tokens: "Token",
     responsePreview: "响应预览",
+    groupModelCount: "{count} 个模型",
+    groupSelectedCount: "已选 {selected}/{count}",
+    expandGroup: "展开模型组 {group}",
+    collapseGroup: "折叠模型组 {group}",
+    selectGroup: "选择 {group} 组内全部模型",
+    deselectGroup: "取消选择 {group} 组内全部模型",
   },
   status: {
     title: "状态",
