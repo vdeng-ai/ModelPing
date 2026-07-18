@@ -444,6 +444,10 @@ export function App() {
 
   const onToggle = (key: string, checked: boolean) => setRows((rs) => rs.map((r) => (r.key === key ? { ...r, checked } : r)));
   const onToggleAll = (checked: boolean) => setRows((rs) => rs.map((r) => ({ ...r, checked })));
+  const onToggleGroup = (keys: string[], checked: boolean) => {
+    const groupKeys = new Set(keys);
+    setRows((rs) => rs.map((r) => (groupKeys.has(r.key) ? { ...r, checked } : r)));
+  };
 
   const updateRows = (updater: (current: ModelRow[]) => ModelRow[]) => {
     const next = updater(rowsRef.current);
@@ -797,6 +801,7 @@ export function App() {
                   privatePersistAvailable={statusPersisted}
                   onToggle={onToggle}
                   onToggleAll={onToggleAll}
+                  onToggleGroup={onToggleGroup}
                   onAdd={onAddModel}
                   onRemove={onRemoveModel}
                   onSaveCustomModel={onSaveCustomModel}

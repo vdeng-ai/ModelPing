@@ -180,6 +180,12 @@ export const en = {
     ttft: "TTFT",
     tokens: "Tokens",
     responsePreview: "Response preview",
+    groupModelCount: "{count} models",
+    groupSelectedCount: "{selected}/{count} selected",
+    expandGroup: "Expand model group {group}",
+    collapseGroup: "Collapse model group {group}",
+    selectGroup: "Select all models in {group}",
+    deselectGroup: "Deselect all models in {group}",
   },
   status: {
     title: "Status",
