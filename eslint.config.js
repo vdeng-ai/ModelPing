@@ -4,7 +4,7 @@ import tseslint from "typescript-eslint";
 // 之前散落的 `// eslint-disable-next-line no-control-regex` 注释在此配置下才名副其实。
 export default tseslint.config(
   {
-    ignores: ["dist/**", "node_modules/**", ".wrangler/**", ".vercel/**"],
+    ignores: ["dist/**", "node_modules/**", ".wrangler/**", ".vercel/**", ".codex/**"],
   },
   ...tseslint.configs.recommended,
   {
