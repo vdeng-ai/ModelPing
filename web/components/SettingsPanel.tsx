@@ -1,5 +1,5 @@
 import { useEffect, useState } from "preact/hooks";
-import { Download, Plus, Save, ServerCog, Trash2, Upload, X } from "lucide-preact";
+import { Check, Download, Plus, Save, ServerCog, Trash2, Upload, X } from "lucide-preact";
 import type { Defaults, PresetsResponse, ProviderPreset } from "../lib/types.js";
 import { normalizePresets } from "../lib/presets.js";
 import { useI18n } from "../lib/i18n.js";
@@ -149,16 +149,22 @@ export function SettingsPanel({ providers, defaults, busy, onChange, onImport }:
         <div class="provider-list">
           {providers.length === 0 ? (
             <div class="empty">{t("settings.emptyProviders")}</div>
-          ) : providers.map((p) => (
-            <button
-              type="button"
-              class={"provider-card " + (p.id === selectedId ? "active" : "")}
-              disabled={busy}
-              onClick={() => setSelectedId(p.id)}
-            >
-              {p.name}
-            </button>
-          ))}
+          ) : providers.map((p) => {
+            const active = p.id === selectedId;
+            return (
+              <button
+                key={p.id}
+                type="button"
+                class={"provider-card " + (active ? "active" : "")}
+                aria-pressed={active}
+                disabled={busy}
+                onClick={() => setSelectedId(p.id)}
+              >
+                <span class="provider-card-label">{p.name}</span>
+                {active ? <Check class="provider-card-check" size={14} strokeWidth={2.25} aria-hidden="true" /> : null}
+              </button>
+            );
+          })}
           <button type="button" disabled={busy} onClick={addProvider}><Plus size={16} aria-hidden="true" />{t("settings.addProvider")}</button>
         </div>
 
