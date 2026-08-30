@@ -44,7 +44,7 @@ function intervalLabelKey(sec: number): string {
 }
 
 export function StatusPanel({ entries, persisted, onDelete, onGotoTest, onLaunched }: Props) {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const [pings, setPings] = useState<Record<string, PingState>>({});
   const [busy, setBusy] = useState(false);
@@ -75,6 +75,27 @@ export function StatusPanel({ entries, persisted, onDelete, onGotoTest, onLaunch
   const budgetRequests = autoSec > 0 ? estimated : 0;
   const budgetPct = Math.min(100, Math.round((budgetRequests / FREE_WORKER_SOFT_CAP) * 100));
   const budgetRemaining = Math.max(0, FREE_WORKER_SOFT_CAP - budgetRequests);
+  const isZh = lang === "zh";
+  const summaryCopy = {
+    label: isZh ? "状态概览" : "Status overview",
+    tracked: isZh ? "跟踪端点" : "Tracked Endpoints",
+    providers: isZh ? `${providerCount} 个供应商` : `${providerCount} providers`,
+    healthy: isZh ? "健康" : "Healthy",
+    checked: isZh ? `已检测 ${checkedCount}` : `${checkedCount} checked`,
+    warnings: isZh ? "异常" : "Warnings",
+    unchecked: isZh ? `${uncheckedCount} 个未检测` : `${uncheckedCount} unchecked`,
+    projected: isZh ? "预计每日请求" : "Projected Daily Requests",
+    interval: autoSec ? (isZh ? `${t(intervalLabelKey(autoSec))} 自动刷新` : `${t(intervalLabelKey(autoSec))} auto refresh`) : t("status.auto0"),
+    budget: isZh ? "免费层预算" : "Free-Tier Budget",
+    safe: isZh ? "安全" : "Safe",
+    over: isZh ? "超出预算" : "Over limit",
+    percent: isZh ? `每日额度 ${budgetPct}%` : `${budgetPct}% of daily limit`,
+    budgetTitle: isZh ? "Cloudflare 免费层预算助手" : "Cloudflare Free-Tier Budget Helper",
+    budgetBody: isZh
+      ? `Cloudflare Worker 免费层按每日约 ${FREE_WORKER_SOFT_CAP.toLocaleString()} 次请求控制；ModelPing 的自动状态轮询会计入该预算。`
+      : `Cloudflare Workers free tier is guarded at about ${FREE_WORKER_SOFT_CAP.toLocaleString()} requests/day; ModelPing auto-refresh checks count toward that budget.`,
+    remaining: isZh ? `今日预计剩余 ${budgetRemaining.toLocaleString()} 次请求` : `About ${budgetRemaining.toLocaleString()} requests remaining today`,
+  };
 
   const refresh = async (targets: StatusEntry[]) => {
     if (busyRef.current || targets.length === 0) return;
@@ -210,56 +231,56 @@ export function StatusPanel({ entries, persisted, onDelete, onGotoTest, onLaunch
       </div>
       {!persisted ? <div class="hint fail status-memory">{t("status.memoryOnly")}</div> : null}
 
-      <div class="status-summary-grid" aria-label={t("status.summaryLabel")}>
+      <div class="status-summary-grid" aria-label={summaryCopy.label}>
         <div class="status-summary-card">
           <span class="status-summary-icon"><Server size={17} aria-hidden="true" /></span>
-          <span class="status-summary-label">{t("status.summaryTracked")}</span>
+          <span class="status-summary-label">{summaryCopy.tracked}</span>
           <strong>{entries.length}</strong>
-          <small>{t("status.summaryProviders", { count: providerCount })}</small>
+          <small>{summaryCopy.providers}</small>
         </div>
         <div class="status-summary-card healthy">
           <span class="status-summary-icon"><CheckCircle2 size={17} aria-hidden="true" /></span>
-          <span class="status-summary-label">{t("status.summaryHealthy")}</span>
+          <span class="status-summary-label">{summaryCopy.healthy}</span>
           <strong>{healthyCount}</strong>
-          <small>{t("status.summaryChecked", { count: checkedCount })}</small>
+          <small>{summaryCopy.checked}</small>
         </div>
         <div class="status-summary-card warning">
           <span class="status-summary-icon"><CircleAlert size={17} aria-hidden="true" /></span>
-          <span class="status-summary-label">{t("status.summaryWarnings")}</span>
+          <span class="status-summary-label">{summaryCopy.warnings}</span>
           <strong>{warningCount}</strong>
-          <small>{t("status.summaryUnchecked", { count: uncheckedCount })}</small>
+          <small>{summaryCopy.unchecked}</small>
         </div>
         <div class="status-summary-card projected">
           <span class="status-summary-icon"><RefreshCw size={17} aria-hidden="true" /></span>
-          <span class="status-summary-label">{t("status.summaryProjected")}</span>
+          <span class="status-summary-label">{summaryCopy.projected}</span>
           <strong>{budgetRequests.toLocaleString()}</strong>
-          <small>{autoSec ? t("status.autoEstimateShort", { interval: t(intervalLabelKey(autoSec)) }) : t("status.auto0")}</small>
+          <small>{summaryCopy.interval}</small>
         </div>
         <div class={"status-summary-card budget " + (overCap ? "danger" : "safe")}>
           <span class="status-summary-icon"><ShieldCheck size={17} aria-hidden="true" /></span>
-          <span class="status-summary-label">{t("status.summaryBudget")}</span>
-          <strong>{overCap ? t("status.budgetOver") : t("status.budgetSafe")}</strong>
-          <small>{t("status.budgetPercent", { percent: budgetPct })}</small>
+          <span class="status-summary-label">{summaryCopy.budget}</span>
+          <strong>{overCap ? summaryCopy.over : summaryCopy.safe}</strong>
+          <small>{summaryCopy.percent}</small>
         </div>
       </div>
 
       <div class={"status-budget-card" + (overCap ? " danger" : "")}>
         <div class="status-budget-copy">
-          <h3>{t("status.budgetTitle")}</h3>
-          <p>{t("status.budgetBody", { cap: FREE_WORKER_SOFT_CAP.toLocaleString() })}</p>
+          <h3>{summaryCopy.budgetTitle}</h3>
+          <p>{summaryCopy.budgetBody}</p>
         </div>
         <div class="status-budget-meter">
           <div class="status-budget-meter-row">
             <span>{budgetRequests.toLocaleString()} / {FREE_WORKER_SOFT_CAP.toLocaleString()}</span>
             <strong>{budgetPct}%</strong>
           </div>
-          <progress max={FREE_WORKER_SOFT_CAP} value={budgetRequests} aria-label={t("status.budgetTitle")} />
+          <progress max={FREE_WORKER_SOFT_CAP} value={budgetRequests} aria-label={summaryCopy.budgetTitle} />
         </div>
         <div class="status-budget-state">
           <ShieldCheck size={18} aria-hidden="true" />
           <div>
-            <strong>{overCap ? t("status.budgetOver") : t("status.budgetSafe")}</strong>
-            <span>{t("status.budgetRemaining", { count: budgetRemaining.toLocaleString() })}</span>
+            <strong>{overCap ? summaryCopy.over : summaryCopy.safe}</strong>
+            <span>{summaryCopy.remaining}</span>
           </div>
         </div>
       </div>
