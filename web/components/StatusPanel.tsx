@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "preact/hooks";
-import { CheckSquare, Gauge, RefreshCw, Square, Trash2, X } from "lucide-preact";
+import { CheckCircle2, CheckSquare, CircleAlert, Gauge, RefreshCw, Server, ShieldCheck, Square, Trash2, X } from "lucide-preact";
 import type { PingResult, StatusEntry } from "../lib/types.js";
 import { pingEndpoint } from "../lib/api.js";
 import { runConcurrent } from "../lib/concurrency.js";
@@ -60,6 +60,21 @@ export function StatusPanel({ entries, persisted, onDelete, onGotoTest, onLaunch
   const someChecked = checked.size > 0;
   const estimated = dailyPingRequests(entries.length, autoSec);
   const overCap = autoSec > 0 && isOverFreeCap(entries.length, autoSec);
+
+  const providerCount = new Set(entries.map((entry) => entry.providerName || entry.baseUrl)).size;
+  const checkedCount = entries.reduce((count, entry) => {
+    const ping = pings[entry.id];
+    return count + (ping?.status === "done" && ping.result ? 1 : 0);
+  }, 0);
+  const healthyCount = entries.reduce((count, entry) => count + (pings[entry.id]?.result?.ok ? 1 : 0), 0);
+  const warningCount = entries.reduce((count, entry) => {
+    const result = pings[entry.id]?.result;
+    return count + (result && !result.ok ? 1 : 0);
+  }, 0);
+  const uncheckedCount = Math.max(0, entries.length - checkedCount);
+  const budgetRequests = autoSec > 0 ? estimated : 0;
+  const budgetPct = Math.min(100, Math.round((budgetRequests / FREE_WORKER_SOFT_CAP) * 100));
+  const budgetRemaining = Math.max(0, FREE_WORKER_SOFT_CAP - budgetRequests);
 
   const refresh = async (targets: StatusEntry[]) => {
     if (busyRef.current || targets.length === 0) return;
@@ -194,6 +209,60 @@ export function StatusPanel({ entries, persisted, onDelete, onGotoTest, onLaunch
         <span class="quota-badge"><Gauge size={15} aria-hidden="true" />{t("status.quotaProtected")}</span>
       </div>
       {!persisted ? <div class="hint fail status-memory">{t("status.memoryOnly")}</div> : null}
+
+      <div class="status-summary-grid" aria-label={t("status.summaryLabel")}>
+        <div class="status-summary-card">
+          <span class="status-summary-icon"><Server size={17} aria-hidden="true" /></span>
+          <span class="status-summary-label">{t("status.summaryTracked")}</span>
+          <strong>{entries.length}</strong>
+          <small>{t("status.summaryProviders", { count: providerCount })}</small>
+        </div>
+        <div class="status-summary-card healthy">
+          <span class="status-summary-icon"><CheckCircle2 size={17} aria-hidden="true" /></span>
+          <span class="status-summary-label">{t("status.summaryHealthy")}</span>
+          <strong>{healthyCount}</strong>
+          <small>{t("status.summaryChecked", { count: checkedCount })}</small>
+        </div>
+        <div class="status-summary-card warning">
+          <span class="status-summary-icon"><CircleAlert size={17} aria-hidden="true" /></span>
+          <span class="status-summary-label">{t("status.summaryWarnings")}</span>
+          <strong>{warningCount}</strong>
+          <small>{t("status.summaryUnchecked", { count: uncheckedCount })}</small>
+        </div>
+        <div class="status-summary-card projected">
+          <span class="status-summary-icon"><RefreshCw size={17} aria-hidden="true" /></span>
+          <span class="status-summary-label">{t("status.summaryProjected")}</span>
+          <strong>{budgetRequests.toLocaleString()}</strong>
+          <small>{autoSec ? t("status.autoEstimateShort", { interval: t(intervalLabelKey(autoSec)) }) : t("status.auto0")}</small>
+        </div>
+        <div class={"status-summary-card budget " + (overCap ? "danger" : "safe")}>
+          <span class="status-summary-icon"><ShieldCheck size={17} aria-hidden="true" /></span>
+          <span class="status-summary-label">{t("status.summaryBudget")}</span>
+          <strong>{overCap ? t("status.budgetOver") : t("status.budgetSafe")}</strong>
+          <small>{t("status.budgetPercent", { percent: budgetPct })}</small>
+        </div>
+      </div>
+
+      <div class={"status-budget-card" + (overCap ? " danger" : "")}>
+        <div class="status-budget-copy">
+          <h3>{t("status.budgetTitle")}</h3>
+          <p>{t("status.budgetBody", { cap: FREE_WORKER_SOFT_CAP.toLocaleString() })}</p>
+        </div>
+        <div class="status-budget-meter">
+          <div class="status-budget-meter-row">
+            <span>{budgetRequests.toLocaleString()} / {FREE_WORKER_SOFT_CAP.toLocaleString()}</span>
+            <strong>{budgetPct}%</strong>
+          </div>
+          <progress max={FREE_WORKER_SOFT_CAP} value={budgetRequests} aria-label={t("status.budgetTitle")} />
+        </div>
+        <div class="status-budget-state">
+          <ShieldCheck size={18} aria-hidden="true" />
+          <div>
+            <strong>{overCap ? t("status.budgetOver") : t("status.budgetSafe")}</strong>
+            <span>{t("status.budgetRemaining", { count: budgetRemaining.toLocaleString() })}</span>
+          </div>
+        </div>
+      </div>
 
       <div class="status-toolbar">
         <button class="primary" disabled={busy || !someChecked} onClick={() => refresh(selectedEntries())}>
