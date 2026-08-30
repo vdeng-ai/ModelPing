@@ -39,7 +39,7 @@ function downloadJson(presets: PresetsResponse) {
 }
 
 export function SettingsPanel({ providers, defaults, busy, onChange, onImport }: Props) {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const [selectedId, setSelectedId] = useState(providers[0]?.id ?? "");
   const [draft, setDraft] = useState<ProviderPreset | null>(providers[0] ? cloneProvider(providers[0]) : null);
   const [error, setError] = useState<string | null>(null);
@@ -151,6 +151,7 @@ export function SettingsPanel({ providers, defaults, busy, onChange, onImport }:
             <div class="empty">{t("settings.emptyProviders")}</div>
           ) : providers.map((p) => {
             const active = p.id === selectedId;
+            const modelLabel = lang === "zh" ? `${p.models.length} 个模型` : `${p.models.length} model${p.models.length === 1 ? "" : "s"}`;
             return (
               <button
                 key={p.id}
@@ -160,7 +161,11 @@ export function SettingsPanel({ providers, defaults, busy, onChange, onImport }:
                 disabled={busy}
                 onClick={() => setSelectedId(p.id)}
               >
-                <span class="provider-card-label">{p.name}</span>
+                <span class="provider-card-main">
+                  <span class="provider-card-label">{p.name}</span>
+                  <span class="provider-card-id">{p.id}</span>
+                </span>
+                <span class="provider-card-meta">{modelLabel}</span>
                 {active ? <Check class="provider-card-check" size={14} strokeWidth={2.25} aria-hidden="true" /> : null}
               </button>
             );
