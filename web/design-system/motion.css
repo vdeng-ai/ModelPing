@@ -1,0 +1,121 @@
+/* Motion policy: high-frequency dashboard interactions stay crisp and cheap. */
+:where(button, .button-like, [role="tab"], [role="button"]) {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Frequent controls only animate compositor-friendly press feedback. */
+button:not(:disabled),
+.button-like:not(.disabled),
+.provider-card:not(:disabled) {
+  transition: transform var(--ds-duration-instant) var(--ds-ease-out) !important;
+}
+
+button:not(:disabled):active,
+.button-like:not(.disabled):active,
+.provider-card:not(:disabled):active {
+  transform: scale(.97) !important;
+}
+
+input,
+select,
+textarea,
+.model-result-row,
+table.models tbody tr {
+  transition: none !important;
+}
+
+/* Preserve only motion that explains state/spatial relationship. */
+.skip-link,
+.model-group-chevron {
+  transition: transform var(--ds-duration-fast) var(--ds-ease-out) !important;
+}
+
+/* Hover movement only exists for precise pointers. */
+@media (hover: hover) and (pointer: fine) {
+  .ds-hover-lift:hover:not(:disabled) {
+    transform: translateY(-1px);
+  }
+}
+
+/* Occasional floating UI: short, origin-correct, interruptible transitions. */
+.modal,
+.toast,
+.failure-pop {
+  animation: none !important;
+  transition:
+    opacity var(--ds-duration-base) var(--ds-ease-out),
+    transform var(--ds-duration-base) var(--ds-ease-out) !important;
+}
+
+@starting-style {
+  .modal {
+    opacity: 0;
+    transform: scale(.975) translateY(4px);
+  }
+
+  .toast {
+    opacity: 0;
+    transform: translate(-50%, 10px) scale(.98);
+  }
+
+  .failure-pop {
+    opacity: 0;
+    transform: scale(.97);
+  }
+}
+
+.modal { transform-origin: center; }
+.failure-pop { transform-origin: var(--popover-origin, top left); }
+
+/* Cancel legacy whole-badge pulse. Only the small status indicator breathes. */
+.pbadge.testing { animation: none !important; }
+
+@keyframes ds-status-pulse {
+  0%, 100% { opacity: .58; }
+  50% { opacity: 1; }
+}
+
+/* Loading skeletons stay static: no repaint-heavy background-position loop. */
+.skeleton-bar { animation: none !important; }
+.dot.testing,
+.pbadge.testing .status-dot,
+.model-verdict.testing .status-dot {
+  animation: ds-status-pulse 1.15s linear infinite !important;
+}
+
+@media (max-width: 45rem) {
+  @starting-style {
+    .toast {
+      opacity: 0;
+      transform: translateY(10px) scale(.98);
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+  }
+
+  button:not(:disabled):active,
+  .button-like:not(.disabled):active,
+  .provider-card:not(:disabled):active {
+    transform: none !important;
+    filter: brightness(.94);
+  }
+
+  .modal,
+  .toast,
+  .failure-pop {
+    transform: none !important;
+    transition: opacity 90ms linear !important;
+  }
+
+  .dot.testing,
+  .pbadge.testing .status-dot,
+  .model-verdict.testing .status-dot {
+    animation: none !important;
+  }
+}

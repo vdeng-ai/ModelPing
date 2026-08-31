@@ -1,29 +1,50 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="ModelPing favicon">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="ModelPing">
   <defs>
-    <linearGradient id="ping" x1="11" y1="8" x2="53" y2="56" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#67E8F9"/>
-      <stop offset="1" stop-color="#34D399"/>
+    <linearGradient id="tileLight" x1="10" y1="8" x2="54" y2="56" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#EAFBFF"/>
+      <stop offset="0.68" stop-color="#E5EEFB"/>
+      <stop offset="1" stop-color="#E5EAF7"/>
     </linearGradient>
-    <linearGradient id="node" x1="22" y1="17" x2="43" y2="42" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#ECFEFF"/>
-      <stop offset="1" stop-color="#A7F3D0"/>
+    <linearGradient id="tileDark" x1="10" y1="8" x2="54" y2="56" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#172839"/>
+      <stop offset="0.68" stop-color="#172538"/>
+      <stop offset="1" stop-color="#182335"/>
     </linearGradient>
+    <linearGradient id="mark" x1="11" y1="8" x2="53" y2="56" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#B7A3FF"/>
+      <stop offset="1" stop-color="#7457DF"/>
+    </linearGradient>
+    <radialGradient id="specular" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(18 13) rotate(46) scale(27)">
+      <stop stop-color="#FFFFFF" stop-opacity=".56"/>
+      <stop offset=".42" stop-color="#FFFFFF" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="shadowLight" x="-24%" y="-24%" width="148%" height="148%">
+      <feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#315A91" flood-opacity=".18"/>
+    </filter>
+    <filter id="shadowDark" x="-24%" y="-24%" width="148%" height="148%">
+      <feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#000000" flood-opacity=".34"/>
+    </filter>
+    <style>
+      .tile-dark { display: none; }
+      @media (prefers-color-scheme: dark) {
+        .tile-light { display: none; }
+        .tile-dark { display: inline; }
+      }
+    </style>
   </defs>
 
-  <path d="M14.5 40C18 47 24.4 51.5 32 51.5S46 47 49.5 40" fill="none" stroke="url(#ping)" stroke-width="6.5" stroke-linecap="round"/>
-  <path d="M7.5 30C12.2 42.8 21 58 32 58s19.8-15.2 24.5-28" fill="none" stroke="#22D3EE" stroke-opacity=".58" stroke-width="5.25" stroke-linecap="round"/>
+  <g class="tile-light" filter="url(#shadowLight)">
+    <rect x="4" y="4" width="56" height="56" rx="16" fill="url(#tileLight)" stroke="#FFFFFF" stroke-opacity=".8"/>
+    <rect x="4.5" y="4.5" width="55" height="55" rx="15.5" fill="url(#specular)"/>
+  </g>
+  <g class="tile-dark" filter="url(#shadowDark)">
+    <rect x="4" y="4" width="56" height="56" rx="16" fill="url(#tileDark)" stroke="#FFFFFF" stroke-opacity=".13"/>
+    <rect x="4.5" y="4.5" width="55" height="55" rx="15.5" fill="url(#specular)" opacity=".3"/>
+  </g>
 
-  <circle cx="32" cy="30" r="16" fill="#0F172A" fill-opacity=".92"/>
-  <path d="M25.5 34.5 32 23.5l7 11" fill="none" stroke="#67E8F9" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
-
-  <circle cx="32" cy="23.5" r="5.2" fill="url(#node)"/>
-  <circle cx="25.5" cy="34.5" r="5.2" fill="url(#node)"/>
-  <circle cx="39" cy="34.5" r="5.2" fill="url(#node)"/>
-
-  <circle cx="32" cy="23.5" r="2" fill="#0F172A" fill-opacity=".72"/>
-  <circle cx="25.5" cy="34.5" r="2" fill="#0F172A" fill-opacity=".72"/>
-  <circle cx="39" cy="34.5" r="2" fill="#0F172A" fill-opacity=".72"/>
-
-  <path d="M32 6v8M32 46v10M56 30h-9M17 30H8" stroke="#0F172A" stroke-opacity=".72" stroke-width="5.5" stroke-linecap="round"/>
-  <path d="M32 7v7M32 46v9M55 30h-8M17 30H9" stroke="#A7F3D0" stroke-opacity=".95" stroke-width="3.25" stroke-linecap="round"/>
+  <path d="M14.5 40C18 47 24.4 51.5 32 51.5S46 47 49.5 40" fill="none" stroke="url(#mark)" stroke-width="6.5" stroke-linecap="round"/>
+  <circle cx="32" cy="30" r="16" fill="none" stroke="url(#mark)" stroke-width="3"/>
+  <circle cx="32" cy="23.5" r="4" fill="#7457DF"/>
+  <circle cx="25.5" cy="34.5" r="4" fill="#B7A3FF"/>
+  <circle cx="39" cy="34.5" r="4" fill="#B7A3FF"/>
 </svg>

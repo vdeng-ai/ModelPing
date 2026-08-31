@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from "preact/hooks";
 import { Plus, X } from "lucide-preact";
 import { useI18n } from "../lib/i18n.js";
 import { useModalA11y } from "./useModalA11y.js";
+import { GlassDialog } from "./design-system/GlassSurfaces.js";
 
 interface Props {
   models: string[];          // 拉取到的模型 id 列表
@@ -51,8 +52,8 @@ export function ModelPickerModal({ models, onConfirm, onClose }: Props) {
 
   return (
     <div class="modal-overlay" onClick={onClose}>
-      <div
-        ref={dialogRef}
+      <GlassDialog
+        elementRef={dialogRef}
         class="modal"
         role="dialog"
         aria-modal="true"
@@ -95,7 +96,7 @@ export function ModelPickerModal({ models, onConfirm, onClose }: Props) {
           <button onClick={onClose}>{t("common.cancel")}</button>
           <button class="primary" disabled={selected.size === 0} onClick={confirm}><Plus size={16} aria-hidden="true" />{t("common.add")}</button>
         </div>
-      </div>
+      </GlassDialog>
     </div>
   );
 }
