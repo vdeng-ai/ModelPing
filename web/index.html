@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=amethyst-2" />
     <title>ModelPing · LLM API Tester</title>
     <script>
       // 防闪烁：渲染前先按存储偏好（或系统）设定 data-theme。
@@ -19,6 +19,14 @@
     </script>
   </head>
   <body>
+    <!-- Progressive enhancement only: unsupported backdrop-filter URL inputs simply fall back to Standard Glass. -->
+    <svg width="0" height="0" aria-hidden="true" focusable="false" style="position:absolute;pointer-events:none">
+      <filter id="modelping-optical-glass" x="-18%" y="-18%" width="136%" height="136%">
+        <feTurbulence type="fractalNoise" baseFrequency="0.008 0.012" numOctaves="2" seed="7" result="noise" />
+        <feGaussianBlur in="noise" stdDeviation="2" result="soft-noise" />
+        <feDisplacementMap in="SourceGraphic" in2="soft-noise" scale="14" xChannelSelector="R" yChannelSelector="G" />
+      </filter>
+    </svg>
     <div id="app"></div>
     <script type="module" src="/main.tsx"></script>
   </body>

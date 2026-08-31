@@ -1,0 +1,35 @@
+/* ModelPing brand layer — crisp amethyst mark on restrained quartz material. */
+:root,
+:root[data-theme="light"],
+:root[data-theme="dark"] {
+  /* The glyph is amethyst; the quartz tile/background remains unchanged below. */
+  --brand-from: color-mix(in srgb, var(--ds-amethyst) 74%, white);
+  --brand-to: color-mix(in srgb, var(--ds-amethyst) 72%, var(--ds-accent-strong));
+  --brand-amethyst-edge: color-mix(in srgb, var(--ds-amethyst) 8%, var(--ds-blue));
+}
+
+.brand-logo,
+.pw-gate-logo {
+  background:
+    radial-gradient(circle at 26% 14%, rgba(255,255,255,.56), transparent 24%),
+    linear-gradient(
+      145deg,
+      color-mix(in srgb, var(--ds-cyan) 12%, var(--ds-glass-regular-tint)),
+      color-mix(in srgb, var(--ds-blue) 17%, var(--ds-glass-regular-tint)) 68%,
+      color-mix(in srgb, var(--brand-amethyst-edge) 7%, var(--ds-glass-regular-tint))
+    );
+  -webkit-backdrop-filter: blur(var(--ds-glass-thin-blur)) saturate(168%);
+  backdrop-filter: blur(var(--ds-glass-thin-blur)) saturate(168%);
+  box-shadow:
+    inset 0 1px 1px rgba(255,255,255,.44),
+    inset 0 0 0 .5px var(--ds-inner-rim),
+    inset 0 -1px 0 color-mix(in srgb, var(--ds-blue) 16%, transparent),
+    0 0 0 .5px var(--ds-outer-rim),
+    var(--ds-shadow-1);
+}
+
+/* Glyph stays crisp amethyst; the quartz background keeps its existing cyan/blue transmission. */
+.brand-logo svg,
+.pw-gate-logo svg {
+  filter: none !important;
+}
