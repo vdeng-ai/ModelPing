@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "preact/hooks";
 import { X } from "lucide-preact";
 import { useI18n } from "../lib/i18n.js";
 import { useModalA11y } from "./useModalA11y.js";
+import { GlassDialog } from "./design-system/GlassSurfaces.js";
 
 export interface PromptField {
   key: string;
@@ -50,8 +51,8 @@ export function PromptModal({ title, fields, confirmLabel, onConfirm, onClose }:
 
   return (
     <div class="modal-overlay" onClick={onClose}>
-      <div
-        ref={dialogRef}
+      <GlassDialog
+        elementRef={dialogRef}
         class="modal modal-prompt"
         role="dialog"
         aria-modal="true"
@@ -92,7 +93,7 @@ export function PromptModal({ title, fields, confirmLabel, onConfirm, onClose }:
             {confirmLabel ?? t("common.confirm")}
           </button>
         </div>
-      </div>
+      </GlassDialog>
     </div>
   );
 }
