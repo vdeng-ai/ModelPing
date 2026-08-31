@@ -1,0 +1,95 @@
+/* Motion policy: high-frequency dashboard interactions stay crisp and cheap. */
+:where(button, .button-like, [role="tab"], [role="button"]) {
+  -webkit-tap-highlight-color: transparent;
+}
+
+:where(button, .button-like):not(:disabled) {
+  transition:
+    transform var(--ds-duration-instant) var(--ds-ease-out),
+    background-color var(--ds-duration-fast) var(--ds-ease-out),
+    border-color var(--ds-duration-fast) var(--ds-ease-out),
+    color var(--ds-duration-fast) var(--ds-ease-out),
+    box-shadow var(--ds-duration-fast) var(--ds-ease-out),
+    filter var(--ds-duration-instant) var(--ds-ease-out);
+}
+
+:where(button, .button-like):not(:disabled):active {
+  transform: scale(.97);
+}
+
+/* Hover motion only exists for precise pointers. */
+@media (hover: hover) and (pointer: fine) {
+  .ds-hover-lift:hover:not(:disabled) {
+    transform: translateY(-1px);
+  }
+}
+
+/* Occasional floating UI: short, origin-correct transitions. */
+.modal,
+.toast,
+.failure-pop {
+  transition:
+    opacity var(--ds-duration-base) var(--ds-ease-out),
+    transform var(--ds-duration-base) var(--ds-ease-out);
+}
+
+@starting-style {
+  .modal {
+    opacity: 0;
+    transform: scale(.975) translateY(4px);
+  }
+
+  .toast {
+    opacity: 0;
+    transform: translate(-50%, 10px) scale(.98);
+  }
+
+  .failure-pop {
+    opacity: 0;
+    transform: scale(.97);
+  }
+}
+
+.modal { transform-origin: center; }
+.failure-pop { transform-origin: var(--popover-origin, top left); }
+
+/* Progress shimmer is the only repeating decorative motion; testing pulse stays restrained. */
+@keyframes ds-skeleton-shimmer {
+  from { background-position: 100% 0; }
+  to { background-position: -100% 0; }
+}
+
+@keyframes ds-status-pulse {
+  0%, 100% { opacity: .58; }
+  50% { opacity: 1; }
+}
+
+.skeleton-bar { animation: ds-skeleton-shimmer 1.35s linear infinite; }
+.pbadge.testing .status-dot,
+.model-verdict.testing .status-dot { animation: ds-status-pulse 1.15s linear infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+  }
+
+  :where(button, .button-like):not(:disabled):active {
+    transform: none;
+    filter: brightness(.94);
+  }
+
+  .modal,
+  .toast,
+  .failure-pop {
+    transform: none !important;
+    transition: opacity 90ms linear !important;
+  }
+
+  .skeleton-bar,
+  .pbadge.testing .status-dot,
+  .model-verdict.testing .status-dot {
+    animation: none !important;
+  }
+}
