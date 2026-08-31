@@ -3,28 +3,29 @@
   -webkit-tap-highlight-color: transparent;
 }
 
+/* Frequent controls only animate compositor-friendly press feedback. */
 :where(button, .button-like):not(:disabled) {
-  transition:
-    transform var(--ds-duration-instant) var(--ds-ease-out),
-    background-color var(--ds-duration-fast) var(--ds-ease-out),
-    border-color var(--ds-duration-fast) var(--ds-ease-out),
-    color var(--ds-duration-fast) var(--ds-ease-out),
-    box-shadow var(--ds-duration-fast) var(--ds-ease-out),
-    filter var(--ds-duration-instant) var(--ds-ease-out);
+  transition: transform var(--ds-duration-instant) var(--ds-ease-out);
 }
 
 :where(button, .button-like):not(:disabled):active {
   transform: scale(.97);
 }
 
-/* Hover motion only exists for precise pointers. */
+input,
+select,
+textarea {
+  transition: none;
+}
+
+/* Hover movement only exists for precise pointers. */
 @media (hover: hover) and (pointer: fine) {
   .ds-hover-lift:hover:not(:disabled) {
     transform: translateY(-1px);
   }
 }
 
-/* Occasional floating UI: short, origin-correct transitions. */
+/* Occasional floating UI: short, origin-correct, interruptible transitions. */
 .modal,
 .toast,
 .failure-pop {
@@ -53,20 +54,27 @@
 .modal { transform-origin: center; }
 .failure-pop { transform-origin: var(--popover-origin, top left); }
 
-/* Progress shimmer is the only repeating decorative motion; testing pulse stays restrained. */
-@keyframes ds-skeleton-shimmer {
-  from { background-position: 100% 0; }
-  to { background-position: -100% 0; }
-}
+/* Cancel legacy whole-badge pulse. Only the small status dot breathes. */
+.pbadge.testing { animation: none !important; }
 
 @keyframes ds-status-pulse {
   0%, 100% { opacity: .58; }
   50% { opacity: 1; }
 }
 
-.skeleton-bar { animation: ds-skeleton-shimmer 1.35s linear infinite; }
+/* Loading skeletons stay static: no repaint-heavy background-position loop. */
+.skeleton-bar { animation: none !important; }
 .pbadge.testing .status-dot,
 .model-verdict.testing .status-dot { animation: ds-status-pulse 1.15s linear infinite; }
+
+@media (max-width: 45rem) {
+  @starting-style {
+    .toast {
+      opacity: 0;
+      transform: translateY(10px) scale(.98);
+    }
+  }
+}
 
 @media (prefers-reduced-motion: reduce) {
   *,
@@ -87,7 +95,6 @@
     transition: opacity 90ms linear !important;
   }
 
-  .skeleton-bar,
   .pbadge.testing .status-dot,
   .model-verdict.testing .status-dot {
     animation: none !important;
