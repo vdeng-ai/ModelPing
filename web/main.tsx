@@ -6,5 +6,6 @@ import "./design-system/materials.css";
 import "./design-system/motion.css";
 import "./design-system/components.css";
 import "./design-system/brand.css";
+import "./design-system/layout.css";
 
 render(<App />, document.getElementById("app")!);

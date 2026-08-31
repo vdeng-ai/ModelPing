@@ -4,6 +4,10 @@
 
 A lightweight, zero-config web tool to quickly check whether an LLM API is reachable, and to measure latency and token usage across providers.
 
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/vdeng-ai/ModelPing)
+
+> One-click Cloudflare deployment clones the repository, configures Workers Builds, and provisions resources declared by Wrangler. Before exposing the Worker publicly, set strong `APP_PASSWORD` and `PRIVATE_STATE_SECRET` values during deployment setup.
+
 ![Screenshot](./web/public/screenshot.png)
 
 Supported protocols:
@@ -111,6 +115,10 @@ Settings persistence (presets shared across devices) uses the file driver by def
 Private working state (history, the history persistence toggle, last connection, test settings, and Status entries, including API keys) is stored server-side as an encrypted blob when `PRIVATE_STATE_SECRET`, `STATUS_SECRET`, or `APP_PASSWORD` is available. For Docker, set a dedicated `PRIVATE_STATE_SECRET` so changing the access password does not make existing state undecryptable. `STATUS_SECRET` is only a legacy fallback; old sensitive localStorage keys are migrated once and removed; theme/language and non-sensitive preset cache stay local.
 
 ### Cloudflare Workers (free tier)
+
+For the simplest setup, use the **Deploy to Cloudflare** button near the top of this README. Cloudflare will clone the repository, configure Workers Builds, provision the Wrangler-declared KV binding for the new deployment, and let you provide `APP_PASSWORD` and `PRIVATE_STATE_SECRET` from the repository's example environment configuration.
+
+Manual deployment remains available:
 
 ```bash
 npx wrangler login
@@ -237,5 +245,3 @@ web/
 Released under the [MIT License](./LICENSE) — free to use, modify, and distribute. See the `LICENSE` file in the repo root.
 
 The default models and curated provider presets are referenced from [farion1231/cc-switch](https://github.com/farion1231/cc-switch) (provider / baseUrl / model / balance endpoints). Each provider's protocols, model ids, and endpoints belong to their respective owners. This tool only forwards and tests; it bundles no API keys and is not responsible for third-party service availability or billing.
-
-Issues and PRs welcome. Before submitting, please make sure `npm run typecheck`, `npm test`, `npm run lint`, and `npm run build` pass.
