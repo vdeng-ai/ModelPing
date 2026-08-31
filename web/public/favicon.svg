@@ -1,20 +1,47 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="ModelPing">
   <defs>
-    <linearGradient id="tile" x1="10" y1="8" x2="54" y2="56" gradientUnits="userSpaceOnUse">
+    <linearGradient id="tileLight" x1="10" y1="8" x2="54" y2="56" gradientUnits="userSpaceOnUse">
       <stop offset="0" stop-color="#EAFBFF"/>
-      <stop offset="0.56" stop-color="#DDEEFF"/>
-      <stop offset="1" stop-color="#D7E3FF"/>
+      <stop offset="0.68" stop-color="#E5EEFB"/>
+      <stop offset="1" stop-color="#E5EAF7"/>
+    </linearGradient>
+    <linearGradient id="tileDark" x1="10" y1="8" x2="54" y2="56" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#172839"/>
+      <stop offset="0.68" stop-color="#172538"/>
+      <stop offset="1" stop-color="#182335"/>
     </linearGradient>
     <linearGradient id="mark" x1="11" y1="8" x2="53" y2="56" gradientUnits="userSpaceOnUse">
       <stop offset="0" stop-color="#B7A3FF"/>
       <stop offset="1" stop-color="#7457DF"/>
     </linearGradient>
-    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+    <radialGradient id="specular" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(18 13) rotate(46) scale(27)">
+      <stop stop-color="#FFFFFF" stop-opacity=".56"/>
+      <stop offset=".42" stop-color="#FFFFFF" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="shadowLight" x="-24%" y="-24%" width="148%" height="148%">
       <feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#315A91" flood-opacity=".18"/>
     </filter>
+    <filter id="shadowDark" x="-24%" y="-24%" width="148%" height="148%">
+      <feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#000000" flood-opacity=".34"/>
+    </filter>
+    <style>
+      .tile-dark { display: none; }
+      @media (prefers-color-scheme: dark) {
+        .tile-light { display: none; }
+        .tile-dark { display: inline; }
+      }
+    </style>
   </defs>
 
-  <rect x="4" y="4" width="56" height="56" rx="16" fill="url(#tile)" stroke="#FFFFFF" stroke-opacity=".8" filter="url(#shadow)"/>
+  <g class="tile-light" filter="url(#shadowLight)">
+    <rect x="4" y="4" width="56" height="56" rx="16" fill="url(#tileLight)" stroke="#FFFFFF" stroke-opacity=".8"/>
+    <rect x="4.5" y="4.5" width="55" height="55" rx="15.5" fill="url(#specular)"/>
+  </g>
+  <g class="tile-dark" filter="url(#shadowDark)">
+    <rect x="4" y="4" width="56" height="56" rx="16" fill="url(#tileDark)" stroke="#FFFFFF" stroke-opacity=".13"/>
+    <rect x="4.5" y="4.5" width="55" height="55" rx="15.5" fill="url(#specular)" opacity=".3"/>
+  </g>
+
   <path d="M14.5 40C18 47 24.4 51.5 32 51.5S46 47 49.5 40" fill="none" stroke="url(#mark)" stroke-width="6.5" stroke-linecap="round"/>
   <circle cx="32" cy="30" r="16" fill="none" stroke="url(#mark)" stroke-width="3"/>
   <circle cx="32" cy="23.5" r="4" fill="#7457DF"/>
