@@ -1,0 +1,146 @@
+/* ModelPing material primitives. Glass is chrome, never the content plane. */
+.ds-glass {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  border: 0;
+  color: var(--ds-label);
+  -webkit-backdrop-filter: blur(var(--ds-glass-regular-blur)) saturate(var(--ds-glass-saturate));
+  backdrop-filter: blur(var(--ds-glass-regular-blur)) saturate(var(--ds-glass-saturate));
+  box-shadow:
+    inset 0 1px 0 var(--ds-specular),
+    inset 0 0 0 0.5px var(--ds-inner-rim),
+    0 0 0 0.5px var(--ds-outer-rim),
+    var(--ds-shadow-glass);
+}
+
+.ds-glass::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background:
+    radial-gradient(76% 54% at 12% -8%, rgba(255,255,255,.30), transparent 58%),
+    linear-gradient(118deg, color-mix(in srgb, var(--ds-env-cyan) 30%, transparent), transparent 34%),
+    linear-gradient(152deg, transparent 58%, color-mix(in srgb, var(--ds-env-amethyst) 22%, transparent));
+  opacity: .72;
+}
+
+.ds-glass::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  pointer-events: none;
+  left: 32%;
+  right: -14%;
+  bottom: -60%;
+  height: 80%;
+  border-radius: 999px;
+  background: linear-gradient(90deg,
+    color-mix(in srgb, var(--ds-env-cyan) 35%, transparent),
+    color-mix(in srgb, var(--ds-env-blue) 32%, transparent) 48%,
+    color-mix(in srgb, var(--ds-env-amethyst) 38%, transparent));
+  filter: blur(18px);
+  opacity: .48;
+}
+
+.ds-glass--thin {
+  background: var(--ds-glass-thin-tint);
+  -webkit-backdrop-filter: blur(var(--ds-glass-thin-blur)) saturate(168%);
+  backdrop-filter: blur(var(--ds-glass-thin-blur)) saturate(168%);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--ds-specular) 72%, transparent),
+    inset 0 0 0 .5px color-mix(in srgb, var(--ds-inner-rim) 70%, transparent),
+    0 0 0 .5px var(--ds-outer-rim),
+    var(--ds-shadow-1);
+}
+
+.ds-glass--regular { background: var(--ds-glass-regular-tint); }
+
+.ds-glass--thick {
+  background: var(--ds-glass-thick-tint);
+  -webkit-backdrop-filter: blur(var(--ds-glass-thick-blur)) saturate(182%);
+  backdrop-filter: blur(var(--ds-glass-thick-blur)) saturate(182%);
+  box-shadow:
+    inset 0 1px 0 var(--ds-specular),
+    inset 1px 0 0 color-mix(in srgb, var(--ds-env-cyan) 25%, transparent),
+    inset -1px -1px 0 color-mix(in srgb, var(--ds-env-amethyst) 28%, transparent),
+    0 0 0 .5px var(--ds-outer-rim),
+    var(--ds-shadow-optical);
+}
+
+/* Progressive optical material. Browser support is intentionally optional. */
+.ds-glass--optical {
+  background:
+    radial-gradient(82% 68% at 7% -4%, color-mix(in srgb, var(--ds-env-cyan) 34%, transparent), transparent 54%),
+    linear-gradient(145deg, transparent 54%, color-mix(in srgb, var(--ds-env-amethyst) 18%, transparent)),
+    var(--ds-glass-thick-tint);
+  -webkit-backdrop-filter: blur(24px) saturate(186%);
+  backdrop-filter: blur(24px) saturate(186%) url("#modelping-optical-glass");
+}
+
+.ds-glass--optical::before {
+  background:
+    radial-gradient(80% 46% at 12% -5%, rgba(255,255,255,.38), transparent 54%),
+    linear-gradient(104deg,
+      color-mix(in srgb, var(--ds-env-cyan) 30%, transparent),
+      transparent 28% 66%,
+      color-mix(in srgb, var(--ds-env-amethyst) 25%, transparent));
+}
+
+/* Amethyst appears only where hierarchy calls for tint. */
+.ds-glass--accent {
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--ds-accent) 9%, transparent), transparent 56%),
+    var(--ds-glass-regular-tint);
+}
+
+.ds-glass--accent::after {
+  opacity: .62;
+}
+
+/* Material-neutral content surface. */
+.ds-content-surface {
+  background: var(--ds-surface);
+  border: 1px solid var(--ds-separator);
+  box-shadow: var(--ds-shadow-1);
+}
+
+/* Safari/no-filter fallback. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .ds-glass,
+  .ds-glass--thin,
+  .ds-glass--regular,
+  .ds-glass--thick,
+  .ds-glass--optical {
+    background: color-mix(in srgb, var(--ds-bg-elevated) 94%, transparent);
+  }
+}
+
+/* Reduced transparency is non-negotiable. */
+@media (prefers-reduced-transparency: reduce) {
+  .ds-glass,
+  .ds-glass--thin,
+  .ds-glass--regular,
+  .ds-glass--thick,
+  .ds-glass--optical,
+  .ds-glass--accent {
+    background: var(--ds-bg-elevated) !important;
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+  }
+
+  .ds-glass::before,
+  .ds-glass::after {
+    display: none;
+  }
+}
+
+@media (prefers-contrast: more) {
+  .ds-glass,
+  .ds-content-surface {
+    box-shadow: inset 0 0 0 1px var(--ds-label), var(--ds-shadow-1);
+  }
+}
