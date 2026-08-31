@@ -1,0 +1,11 @@
+/* Page-level layout behavior owned by the Apple Web Design System. */
+
+/*
+ * The legacy desktop workbench gave both Models and History a viewport-sized
+ * minimum height. History benefits from that workspace treatment, but Models
+ * should end immediately after the actual model list and Add Model row.
+ */
+.workspace-content > .model-panel {
+  min-height: 0;
+  height: auto;
+}
