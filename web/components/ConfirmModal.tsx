@@ -2,6 +2,7 @@ import { useRef } from "preact/hooks";
 import { Trash2, X } from "lucide-preact";
 import { useI18n } from "../lib/i18n.js";
 import { useModalA11y } from "./useModalA11y.js";
+import { GlassDialog } from "./design-system/GlassSurfaces.js";
 
 interface Props {
   title: string;
@@ -31,8 +32,8 @@ export function ConfirmModal({
 
   return (
     <div class="modal-overlay" onClick={onClose}>
-      <div
-        ref={dialogRef}
+      <GlassDialog
+        elementRef={dialogRef}
         class="modal modal-confirm"
         role="alertdialog"
         aria-modal="true"
@@ -66,7 +67,7 @@ export function ConfirmModal({
             {confirmLabel}
           </button>
         </div>
-      </div>
+      </GlassDialog>
     </div>
   );
 }
