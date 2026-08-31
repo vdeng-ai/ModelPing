@@ -24,7 +24,7 @@ export function GlassSegmentedControl({ class: className = "", children, ...prop
 export function GlassButton({ class: className = "", active = false, children, ...props }: GlassButtonProps) {
   return (
     <button
-      class={`ds-control ${active ? "ds-control--active" : ""} ${className}`.trim()}
+      class={`ds-control ${active ? "ds-control--active active" : ""} ${className}`.trim()}
       {...props}
     >
       {children}
