@@ -4,6 +4,10 @@
 
 开箱即用的轻量 Web 工具，用于快速点测各家大模型 API 是否可用，并测量延迟与 token 消耗。
 
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/vdeng-ai/ModelPing)
+
+> Cloudflare 一键部署会自动克隆仓库、配置 Workers Builds，并 provision Wrangler 声明的资源。公网使用前请在部署配置中设置强 `APP_PASSWORD` 和独立的 `PRIVATE_STATE_SECRET`。
+
 ![Screenshot](./web/public/screenshot.png)
 
 支持的协议：
@@ -113,6 +117,10 @@ npm start        # http://localhost:8787
 私有工作态（历史记录、历史持久化开关、上次连接、测试参数、状态页条目，含 API Key）在存在 `PRIVATE_STATE_SECRET`、`STATUS_SECRET` 或 `APP_PASSWORD` 时，会以加密 blob 形式存到后端。Docker 建议单独设置 `PRIVATE_STATE_SECRET`，这样更换访问口令不会导致已有状态无法解密。`STATUS_SECRET` 仅作为旧版本兼容 fallback；旧版 localStorage 敏感键会被迁移一次并删除；主题、语言和非敏感 presets 缓存仍保留在本机。
 
 ### Cloudflare Workers（免费版）
+
+最简单的方式是点击 README 顶部的 **Deploy to Cloudflare** 按钮。Cloudflare 会自动克隆仓库、配置 Workers Builds、为新部署 provision Wrangler 声明的 KV binding，并让你根据仓库的示例环境配置填写 `APP_PASSWORD` 与 `PRIVATE_STATE_SECRET`。
+
+仍然支持手动部署：
 
 ```bash
 npx wrangler login
