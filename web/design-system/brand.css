@@ -1,9 +1,10 @@
-/* ModelPing brand layer — crisp cyan/blue mark on restrained quartz material. */
+/* ModelPing brand layer — crisp amethyst mark on restrained quartz material. */
 :root,
 :root[data-theme="light"],
 :root[data-theme="dark"] {
-  --brand-from: var(--ds-cyan);
-  --brand-to: var(--ds-blue);
+  /* The glyph is amethyst; the quartz tile/background remains unchanged below. */
+  --brand-from: color-mix(in srgb, var(--ds-amethyst) 74%, white);
+  --brand-to: color-mix(in srgb, var(--ds-amethyst) 72%, var(--ds-accent-strong));
   --brand-amethyst-edge: color-mix(in srgb, var(--ds-amethyst) 8%, var(--ds-blue));
 }
 
@@ -27,7 +28,7 @@
     var(--ds-shadow-1);
 }
 
-/* Glyph stays crisp cyan/blue. Amethyst is limited to a barely visible material edge. */
+/* Glyph stays crisp amethyst; the quartz background keeps its existing cyan/blue transmission. */
 .brand-logo svg,
 .pw-gate-logo svg {
   filter: none !important;
