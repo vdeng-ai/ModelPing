@@ -1,0 +1,164 @@
+/* ModelPing Apple Web Design System — semantic source of truth. */
+:root,
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  /* Typography: SF on Apple platforms, Inter only as cross-platform fallback. */
+  --ds-font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Inter Variable", "Helvetica Neue", "Segoe UI", system-ui, "PingFang SC", "Microsoft YaHei", sans-serif;
+  --ds-font-mono: "SFMono-Regular", ui-monospace, "Cascadia Code", "Roboto Mono", Consolas, monospace;
+  --ds-text-large-title: 2rem;
+  --ds-text-title-1: 1.5rem;
+  --ds-text-title-2: 1.25rem;
+  --ds-text-headline: 1.0625rem;
+  --ds-text-body: 0.9375rem;
+  --ds-text-callout: 0.875rem;
+  --ds-text-footnote: 0.8125rem;
+  --ds-text-caption: 0.75rem;
+  --ds-leading-tight: 1.08;
+  --ds-leading-snug: 1.2;
+  --ds-leading-normal: 1.38;
+  --ds-leading-relaxed: 1.52;
+  --ds-tracking-tight: -0.022em;
+  --ds-tracking-snug: -0.014em;
+  --ds-tracking-normal: 0;
+  --ds-tracking-wide: 0.01em;
+  --ds-weight-regular: 400;
+  --ds-weight-medium: 500;
+  --ds-weight-semibold: 600;
+  --ds-weight-bold: 700;
+
+  /* 4/8pt rhythm. */
+  --ds-space-1: 0.25rem;
+  --ds-space-2: 0.5rem;
+  --ds-space-3: 0.75rem;
+  --ds-space-4: 1rem;
+  --ds-space-5: 1.25rem;
+  --ds-space-6: 1.5rem;
+  --ds-space-7: 2rem;
+  --ds-space-8: 2.5rem;
+  --ds-space-9: 3rem;
+
+  /* Continuous-corner approximations. */
+  --ds-radius-xs: 0.5rem;
+  --ds-radius-sm: 0.6875rem;
+  --ds-radius-md: 0.875rem;
+  --ds-radius-lg: 1.125rem;
+  --ds-radius-xl: 1.5rem;
+  --ds-radius-2xl: 1.875rem;
+  --ds-radius-capsule: 999px;
+
+  /* Crisp content surfaces — never backdrop-filtered. */
+  --ds-bg: #f4f7fb;
+  --ds-bg-elevated: #fbfcfe;
+  --ds-surface: rgba(255, 255, 255, 0.96);
+  --ds-surface-raised: #ffffff;
+  --ds-surface-soft: #eef2f7;
+  --ds-surface-hover: #e8edf4;
+  --ds-separator: rgba(48, 61, 82, 0.13);
+  --ds-separator-strong: rgba(48, 61, 82, 0.22);
+
+  /* Semantic ink. */
+  --ds-label: #15181e;
+  --ds-label-secondary: rgba(34, 39, 49, 0.68);
+  --ds-label-tertiary: rgba(34, 39, 49, 0.47);
+  --ds-label-quaternary: rgba(34, 39, 49, 0.28);
+
+  /* Brand and environment. Amethyst is material character, not page paint. */
+  --ds-accent: #6556d9;
+  --ds-accent-strong: #5b4bd0;
+  --ds-accent-tint: rgba(101, 86, 217, 0.13);
+  --ds-cyan: #3dc7e8;
+  --ds-blue: #3984ff;
+  --ds-amethyst: #8a70e8;
+  --ds-green: #168a55;
+  --ds-yellow: #ad6b00;
+  --ds-red: #c72c45;
+
+  /* Environmental transmission. */
+  --ds-env-cyan: rgba(72, 218, 239, 0.22);
+  --ds-env-blue: rgba(62, 132, 255, 0.18);
+  --ds-env-amethyst: rgba(139, 105, 232, 0.16);
+
+  /* Standard Glass tints by thickness. */
+  --ds-glass-thin-tint: rgba(252, 253, 255, 0.54);
+  --ds-glass-regular-tint: rgba(250, 252, 255, 0.66);
+  --ds-glass-thick-tint: rgba(247, 250, 255, 0.78);
+  --ds-glass-thin-blur: 12px;
+  --ds-glass-regular-blur: 20px;
+  --ds-glass-thick-blur: 32px;
+  --ds-glass-saturate: 178%;
+  --ds-specular: rgba(255, 255, 255, 0.82);
+  --ds-inner-rim: rgba(255, 255, 255, 0.34);
+  --ds-outer-rim: rgba(40, 52, 75, 0.10);
+
+  /* Elevation: contact + ambient. */
+  --ds-shadow-1: 0 1px 2px rgba(30, 42, 65, 0.06), 0 4px 12px rgba(30, 42, 65, 0.05);
+  --ds-shadow-2: 0 2px 7px rgba(30, 42, 65, 0.08), 0 12px 32px rgba(30, 42, 65, 0.09);
+  --ds-shadow-glass: 0 2px 8px rgba(38, 55, 88, 0.08), 0 18px 48px rgba(44, 67, 112, 0.13);
+  --ds-shadow-optical: 0 5px 14px rgba(38, 55, 88, 0.10), 0 28px 68px rgba(45, 82, 140, 0.16), 10px 22px 50px rgba(89, 66, 180, 0.08);
+
+  /* Focus. */
+  --ds-focus: rgba(57, 132, 255, 0.95);
+  --ds-focus-halo: rgba(57, 132, 255, 0.22);
+
+  /* Motion tokens: frequent UI remains short; springs are reserved for direct manipulation. */
+  --ds-duration-instant: 110ms;
+  --ds-duration-fast: 160ms;
+  --ds-duration-base: 220ms;
+  --ds-duration-slow: 280ms;
+  --ds-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ds-ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --ds-ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --ds-bg: #070b11;
+  --ds-bg-elevated: #0c121b;
+  --ds-surface: rgba(14, 21, 31, 0.97);
+  --ds-surface-raised: #111a26;
+  --ds-surface-soft: #162130;
+  --ds-surface-hover: #1b2838;
+  --ds-separator: rgba(207, 222, 244, 0.11);
+  --ds-separator-strong: rgba(207, 222, 244, 0.20);
+
+  --ds-label: #f3f6fb;
+  --ds-label-secondary: rgba(235, 241, 250, 0.68);
+  --ds-label-tertiary: rgba(235, 241, 250, 0.46);
+  --ds-label-quaternary: rgba(235, 241, 250, 0.27);
+
+  --ds-accent: #9a85ff;
+  --ds-accent-strong: #a894ff;
+  --ds-accent-tint: rgba(153, 132, 255, 0.16);
+  --ds-cyan: #57d7ee;
+  --ds-blue: #5a9bff;
+  --ds-amethyst: #a78bfa;
+  --ds-green: #43d792;
+  --ds-yellow: #f3ba55;
+  --ds-red: #ff6f82;
+
+  --ds-env-cyan: rgba(56, 220, 238, 0.17);
+  --ds-env-blue: rgba(62, 135, 255, 0.16);
+  --ds-env-amethyst: rgba(149, 112, 244, 0.15);
+
+  --ds-glass-thin-tint: rgba(18, 28, 42, 0.46);
+  --ds-glass-regular-tint: rgba(19, 29, 44, 0.59);
+  --ds-glass-thick-tint: rgba(22, 32, 48, 0.72);
+  --ds-specular: rgba(255, 255, 255, 0.14);
+  --ds-inner-rim: rgba(255, 255, 255, 0.075);
+  --ds-outer-rim: rgba(0, 0, 0, 0.46);
+
+  --ds-shadow-1: 0 1px 2px rgba(0, 0, 0, 0.24), 0 5px 16px rgba(0, 0, 0, 0.16);
+  --ds-shadow-2: 0 2px 8px rgba(0, 0, 0, 0.28), 0 16px 38px rgba(0, 0, 0, 0.23);
+  --ds-shadow-glass: 0 3px 10px rgba(0, 0, 0, 0.28), 0 20px 54px rgba(0, 0, 0, 0.28), 0 13px 42px rgba(41, 156, 213, 0.055);
+  --ds-shadow-optical: 0 6px 18px rgba(0, 0, 0, 0.34), 0 30px 76px rgba(0, 0, 0, 0.37), 12px 24px 58px rgba(42, 174, 219, 0.065), -10px 22px 54px rgba(118, 78, 226, 0.055);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --ds-duration-instant: 70ms;
+    --ds-duration-fast: 90ms;
+    --ds-duration-base: 110ms;
+    --ds-duration-slow: 130ms;
+  }
+}
