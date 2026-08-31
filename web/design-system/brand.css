@@ -1,29 +1,33 @@
-/* ModelPing brand layer — cyan/blue identity with restrained amethyst material influence. */
+/* ModelPing brand layer — crisp cyan/blue mark on restrained quartz material. */
 :root,
 :root[data-theme="light"],
 :root[data-theme="dark"] {
   --brand-from: var(--ds-cyan);
   --brand-to: var(--ds-blue);
-  --brand-amethyst-edge: color-mix(in srgb, var(--ds-amethyst) 14%, var(--ds-blue));
+  --brand-amethyst-edge: color-mix(in srgb, var(--ds-amethyst) 8%, var(--ds-blue));
 }
 
 .brand-logo,
 .pw-gate-logo {
   background:
-    radial-gradient(circle at 26% 14%, rgba(255,255,255,.60), transparent 25%),
+    radial-gradient(circle at 26% 14%, rgba(255,255,255,.56), transparent 24%),
     linear-gradient(
       145deg,
-      color-mix(in srgb, var(--ds-cyan) 84%, white),
-      var(--ds-blue) 72%,
-      var(--brand-amethyst-edge)
+      color-mix(in srgb, var(--ds-cyan) 12%, var(--ds-glass-regular-tint)),
+      color-mix(in srgb, var(--ds-blue) 17%, var(--ds-glass-regular-tint)) 68%,
+      color-mix(in srgb, var(--brand-amethyst-edge) 7%, var(--ds-glass-regular-tint))
     );
+  -webkit-backdrop-filter: blur(var(--ds-glass-thin-blur)) saturate(168%);
+  backdrop-filter: blur(var(--ds-glass-thin-blur)) saturate(168%);
   box-shadow:
-    inset 0 1px 1px rgba(255,255,255,.48),
-    inset 0 -1px 0 color-mix(in srgb, var(--ds-blue) 26%, transparent),
+    inset 0 1px 1px rgba(255,255,255,.44),
+    inset 0 0 0 .5px var(--ds-inner-rim),
+    inset 0 -1px 0 color-mix(in srgb, var(--ds-blue) 16%, transparent),
+    0 0 0 .5px var(--ds-outer-rim),
     var(--ds-shadow-1);
 }
 
-/* The mark itself stays crisp and cyan/blue; amethyst belongs to the material edge, not the glyph. */
+/* Glyph stays crisp cyan/blue. Amethyst is limited to a barely visible material edge. */
 .brand-logo svg,
 .pw-gate-logo svg {
   filter: none !important;
