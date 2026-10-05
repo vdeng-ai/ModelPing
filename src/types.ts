@@ -10,10 +10,10 @@ export interface TestRequest {
   model: string;
   input: string;
   stream: boolean;
-  timeoutMs: number;   // 单次请求超时（含每次重试各自计时）
-  maxRetries: number;  // 失败重试次数（指数退避，仅网络/超时/5xx）
-  maxTokens: number;   // 输出 token 上限
-  userAgent: string;   // 可选 User-Agent；空串表示不覆盖运行时默认 UA。
+  timeoutMs: number; // 单次请求超时（含每次重试各自计时）
+  maxRetries: number; // 失败重试次数（指数退避，仅网络/超时/5xx）
+  maxTokens: number; // 输出 token 上限
+  userAgent: string; // 可选 User-Agent；空串表示不覆盖运行时默认 UA。
 }
 
 // token 消耗。各协议字段名不同，统一归一为这三个。
@@ -26,16 +26,16 @@ export interface Usage {
 // 后端 → 前端的统一测试结果（非流式，或流式聚合后的最终结果）。
 export interface TestResult {
   ok: boolean;
-  status: number;          // HTTP 状态码（0 表示请求未发出/网络层失败）
-  latencyMs: number;       // 总延迟（发起 → 完成）
-  ttftMs: number | null;   // 首 token 延迟（仅流式有意义）
+  status: number; // HTTP 状态码（0 表示请求未发出/网络层失败）
+  latencyMs: number; // 总延迟（发起 → 完成）
+  ttftMs: number | null; // 首 token 延迟（仅流式有意义）
   usage: Usage;
-  text: string;            // 模型输出文本（截断展示）
-  error: string | null;    // 失败原因
+  text: string; // 模型输出文本（截断展示）
+  error: string | null; // 失败原因
   requestUrl?: string | null; // 脱敏后的最终请求 URL，便于复盘。
   failureLog?: string | null; // 可复盘失败日志；协议不支持类失败不返回
   failureKind?: "unsupported_protocol" | "request_failed" | null;
-  attempts: number;        // 实际尝试次数
+  attempts: number; // 实际尝试次数
 }
 
 export interface DualTestResult {
@@ -81,7 +81,7 @@ export type StreamVerdict = "stream" | "single" | "none" | null;
 // ---------- 预设（供应商 / 模型 / 默认参数） ----------
 // 持久化到服务端并跨设备共享的「设置」。不含 apiKey。
 export interface ModelPreset {
-  id: string;     // 实际请求时传给供应商的 model id。
+  id: string; // 实际请求时传给供应商的 model id。
   label?: string; // 官方原始模型名；未填时使用 id，用于展示和跨供应商去重。
 }
 
@@ -122,10 +122,10 @@ export interface LookupRequest {
 export interface Balance {
   supported: boolean;
   remaining: number | null; // 可用余额
-  total: number | null;     // 总额度（如 OpenRouter）
-  used: number | null;      // 已用（如 OpenRouter）
-  currency: string | null;  // 币种/单位
-  isValid?: boolean | null;  // 账户/额度是否有效（如 DeepSeek is_available）
+  total: number | null; // 总额度（如 OpenRouter）
+  used: number | null; // 已用（如 OpenRouter）
+  currency: string | null; // 币种/单位
+  isValid?: boolean | null; // 账户/额度是否有效（如 DeepSeek is_available）
 }
 
 // 模型列表查询结果。
@@ -147,7 +147,7 @@ export interface PingRequest {
 // 测速结果。kind 标明走的是 models 探测还是补全回退。
 export interface PingResult {
   ok: boolean;
-  status: number;                  // HTTP 状态码（0=网络层失败）
+  status: number; // HTTP 状态码（0=网络层失败）
   latencyMs: number;
   kind: "models" | "completion";
   error: string | null;

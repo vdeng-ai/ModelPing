@@ -27,7 +27,8 @@ export const zh = {
     pwInvalid: "访问口令错误",
     loadFailed: "加载失败：{msg}",
     securityWarningTitle: "公网部署安全提醒",
-    securityWarningBody: "当前实例可能缺少访问口令或目标主机/私有地址限制。公网使用建议配置 APP_PASSWORD，并设置 ALLOWED_HOSTS、BLOCK_PRIVATE_HOSTS，或运行出站防火墙脚本。",
+    securityWarningBody:
+      "当前实例可能缺少访问口令或目标主机/私有地址限制。公网使用建议配置 APP_PASSWORD，并设置 ALLOWED_HOSTS、BLOCK_PRIVATE_HOSTS，或运行出站防火墙脚本。",
     retry: "重试",
     toastProvidersSaved: "供应商设置已保存",
     toastImported: "配置已导入",
@@ -70,7 +71,7 @@ export const zh = {
     quickImport: "快捷导入",
     quickImportPlaceholder: "粘贴包含 key 和 url 的 JSON 以自动导入连接",
     quickImportSuccess: "已导入连接配置",
-    quickImportInvalid: "导入 JSON 无效 — 需要 {\"key\":\"…\",\"url\":\"…\"}",
+    quickImportInvalid: '导入 JSON 无效 — 需要 {"key":"…","url":"…"}',
     provider: "供应商",
     baseUrl: "Base URL",
     fullUrl: "完整 URL",

@@ -11,6 +11,8 @@ export function rowState(row: ModelRow) {
 
 export function rowResult(row: ModelRow) {
   const probes = PROTOCOLS.map((protocol) => row.probes[protocol]);
-  return probes.find((probe) => probe.status === "success" && probe.result)
-    ?? probes.find((probe) => probe.status === "fail" && probe.result);
+  return (
+    probes.find((probe) => probe.status === "success" && probe.result) ??
+    probes.find((probe) => probe.status === "fail" && probe.result)
+  );
 }

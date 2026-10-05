@@ -35,9 +35,17 @@ export function CcSwitchButton({ name, endpoint, apiKey, model, defaultApp, disa
         disabled={disabled}
         onChange={(e) => setApp((e.target as HTMLSelectElement).value as CcApp)}
       >
-        {CC_APPS.map((a) => <option value={a}>{APP_LABELS[a]}</option>)}
+        {CC_APPS.map((a) => (
+          <option value={a}>{APP_LABELS[a]}</option>
+        ))}
       </select>
-      <button type="button" class="compact-button" title={t("ccswitch.importTitle")} disabled={disabled} onClick={launch}>
+      <button
+        type="button"
+        class="compact-button"
+        title={t("ccswitch.importTitle")}
+        disabled={disabled}
+        onClick={launch}
+      >
         <ArrowUpRight size={15} aria-hidden="true" />
         cc-switch
       </button>

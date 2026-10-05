@@ -24,23 +24,38 @@ export function ThemeToggle() {
     setPref(p);
   };
 
-  if (mobile) return <ActionMenu label={t("theme.label")}>{SEGS.map((s) => { const Icon = s.icon; return <button key={s.pref} type="button" aria-pressed={pref === s.pref} onClick={() => pick(s.pref)}><Icon size={16} aria-hidden="true" />{t(s.key)}</button>; })}</ActionMenu>;
+  if (mobile)
+    return (
+      <ActionMenu label={t("theme.label")}>
+        {SEGS.map((s) => {
+          const Icon = s.icon;
+          return (
+            <button key={s.pref} type="button" aria-pressed={pref === s.pref} onClick={() => pick(s.pref)}>
+              <Icon size={16} aria-hidden="true" />
+              {t(s.key)}
+            </button>
+          );
+        })}
+      </ActionMenu>
+    );
   return (
     <GlassSegmentedControl class="theme-toggle" role="group" aria-label={t("theme.label")}>
       {SEGS.map((s) => {
         const Icon = s.icon;
         const active = pref === s.pref;
-        return <GlassButton
-          class="seg"
-          active={active}
-          aria-pressed={active}
-          aria-label={t(s.key)}
-          title={t("theme.titlePrefix", { name: t(s.key) })}
-          onClick={() => pick(s.pref)}
-        >
-          <Icon class="seg-icon" size={15} aria-hidden="true" />
-          <span class="seg-label">{t(s.key)}</span>
-        </GlassButton>;
+        return (
+          <GlassButton
+            class="seg"
+            active={active}
+            aria-pressed={active}
+            aria-label={t(s.key)}
+            title={t("theme.titlePrefix", { name: t(s.key) })}
+            onClick={() => pick(s.pref)}
+          >
+            <Icon class="seg-icon" size={15} aria-hidden="true" />
+            <span class="seg-label">{t(s.key)}</span>
+          </GlassButton>
+        );
       })}
     </GlassSegmentedControl>
   );
