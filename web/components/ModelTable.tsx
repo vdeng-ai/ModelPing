@@ -1,18 +1,37 @@
-import { useMemo, useState } from "preact/hooks";
-import { Ban, BookmarkPlus, CheckSquare, ChevronRight, Equal, Play, Plus, RadioTower, Save, Square, Trash2, X } from "lucide-preact";
-import type { Protocol, StatusEntry, TestResult } from "../lib/types.js";
+import { useState } from "preact/hooks";
+import {
+  Ban,
+  BookmarkPlus,
+  ChevronRight,
+  Equal,
+  FileText,
+  Play,
+  Plus,
+  RadioTower,
+  Save,
+  Search,
+  Filter,
+  Trash2,
+  X,
+} from "lucide-preact";
+import type { Protocol, ProviderPreset, StatusEntry } from "../lib/types.js";
 import { fmtMs, fmtTok, PROTOCOL_LABEL } from "../lib/format.js";
 import { CcSwitchButton } from "./CcSwitchButton.js";
 import { PromptModal } from "./PromptModal.js";
 import { useI18n, translate, type Lang } from "../lib/i18n.js";
 import { PROTOCOLS, protocolsForProvider } from "../../src/protocols.js";
 import { CUSTOM_PROVIDER_ID } from "../lib/presets.js";
-import { groupModelsByFamily } from "../lib/model-groups.js";
+import { StatusMark } from "./StatusMark.js";
 import type { ModelRow, ProtocolProbe } from "../lib/model-rows.js";
+import { useMediaQuery } from "./useMediaQuery.js";
+import { ActionMenu } from "./ActionMenu.js";
+import { CopyButton } from "./CopyButton.js";
+import { rowState, rowResult } from "../lib/result-presentation.js";
 export { protocolsForModel } from "../lib/model-rows.js";
 
 interface Props {
   rows: ModelRow[];
+  providers: ProviderPreset[];
   busy: boolean;
   progress: { completed: number; total: number };
   conn: { providerId: string; baseUrl: string; isFullUrl?: boolean; apiKey: string };
@@ -38,7 +57,9 @@ function streamText(verdict: ProtocolProbe["streamVerdict"], ttftMs: number | nu
   const tr = (k: string, p?: Record<string, string | number>) => translate(lang, k, p);
   switch (verdict) {
     case "stream":
-      return tr("models.streamSupport", { ttft: ttftMs != null ? tr("models.streamSupportTtft", { ttft: fmtMs(ttftMs) }) : "" });
+      return tr("models.streamSupport", {
+        ttft: ttftMs != null ? tr("models.streamSupportTtft", { ttft: fmtMs(ttftMs) }) : "",
+      });
     case "single":
       return tr("models.streamSingle");
     case "none":
@@ -52,12 +73,27 @@ function Badge({ probe, lang }: { probe: ProtocolProbe; lang: Lang }) {
   const { protocol, status, result, streamVerdict, streamTtftMs } = probe;
   const tr = (k: string, p?: Record<string, string | number>) => translate(lang, k, p);
   const title =
-    status === "fail" && result?.error ? tr("models.badgeFail", { protocol, error: result.error })
-    : status === "success" ? tr("models.badgeSuccess", { protocol, latency: fmtMs(result?.latencyMs ?? null), stream: streamText(streamVerdict, streamTtftMs, lang) })
-    : status === "testing" ? tr("models.badgeTesting", { protocol })
-    : status === "skipped" ? tr("models.badgeSkipped", { protocol })
-    : tr("models.badgePending", { protocol });
-  const StreamIcon = streamVerdict === "stream" ? RadioTower : streamVerdict === "single" ? Equal : streamVerdict === "none" ? Ban : null;
+    status === "fail" && result?.error
+      ? tr("models.badgeFail", { protocol, error: result.error })
+      : status === "success"
+        ? tr("models.badgeSuccess", {
+            protocol,
+            latency: fmtMs(result?.latencyMs ?? null),
+            stream: streamText(streamVerdict, streamTtftMs, lang),
+          })
+        : status === "testing"
+          ? tr("models.badgeTesting", { protocol })
+          : status === "skipped"
+            ? tr("models.badgeSkipped", { protocol })
+            : tr("models.badgePending", { protocol });
+  const StreamIcon =
+    streamVerdict === "stream"
+      ? RadioTower
+      : streamVerdict === "single"
+        ? Equal
+        : streamVerdict === "none"
+          ? Ban
+          : null;
   return (
     <span class={"pbadge " + status} title={title} aria-label={title}>
       <span class="pbadge-label">{PROTOCOL_LABEL[protocol]}</span>
@@ -80,210 +116,302 @@ function shownProtocols(r: ModelRow, providerId: string): Protocol[] {
 
 export function ModelTable(props: Props) {
   const { t, lang } = useI18n();
-  const { rows, busy, conn, providerName, savedCustomModels } = props;
-  const [newModel, setNewModel] = useState("");
+  const mobile = useMediaQuery("(max-width: 760px)");
+  const { rows, busy, conn, providerName } = props;
+  const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState("all");
+  const [addingModel, setAddingModel] = useState(false);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   const [statusNamePrompt, setStatusNamePrompt] = useState<Array<Omit<StatusEntry, "id">> | null>(null);
   const [lastCustomProviderName, setLastCustomProviderName] = useState("");
-  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(() => new Set());
-
-  const allChecked = rows.length > 0 && rows.every((r) => r.checked);
-  const someChecked = rows.some((r) => r.checked);
-  const selectedCount = rows.filter((r) => r.checked).length;
-  const canAddStatus = Boolean(conn.baseUrl.trim() && conn.apiKey.trim());
-  const savedSet = useMemo(() => new Set(savedCustomModels), [savedCustomModels]);
-  const isCustomProvider = conn.providerId === CUSTOM_PROVIDER_ID;
-  const listEntries = useMemo(
-    () => groupModelsByFamily(rows, (row) => row.label),
-    [rows],
+  const visibleRows = rows.filter(
+    (row) =>
+      (!query.trim() ||
+        `${row.label} ${Object.values(row.modelByProvider).join(" ")}`
+          .toLowerCase()
+          .includes(query.trim().toLowerCase())) &&
+      (filter === "all" || rowState(row) === filter),
   );
-
-  const toggleGroup = (key: string) => {
-    setExpandedGroups((current) => {
+  const selectedCount = rows.filter((row) => row.checked).length;
+  const allVisibleChecked = visibleRows.length > 0 && visibleRows.every((row) => row.checked);
+  const canAddStatus = Boolean(conn.baseUrl.trim() && conn.apiKey.trim());
+  // Explicit preset membership determines groups, including single-model vendors.
+  const groups = props.providers.map((provider) => ({
+    key: provider.id,
+    label: provider.name,
+    models: visibleRows.filter((row) => !row.custom && Object.keys(row.modelByProvider)[0] === provider.id),
+  }));
+  const other = visibleRows.filter(
+    (row) => row.custom || !props.providers.some((p) => Object.keys(row.modelByProvider)[0] === p.id),
+  );
+  if (other.length) groups.push({ key: "custom-models", label: t("ui.otherModels"), models: other });
+  const listEntries = groups.filter((group) => group.models.length);
+  const passedCount = rows.filter((row) => rowState(row) === "success").length;
+  const failedCount = rows.filter((row) => rowState(row) === "fail").length;
+  const toggle = (setter: typeof setExpanded, key: string) =>
+    setter((current) => {
       const next = new Set(current);
       if (next.has(key)) next.delete(key);
       else next.add(key);
       return next;
     });
-  };
-
-  // 取该行第一个成功协议的输出文本作预览。
-  const previewText = (r: ModelRow): string => {
-    for (const p of PROTOCOLS) {
-      const pr = r.probes[p];
-      if (pr.status === "success" && pr.result?.text) return pr.result.text;
-    }
-    return "";
-  };
-  // 取该行第一个成功协议的 usage 作展示。
-  const firstSuccess = (r: ModelRow): TestResult | null => {
-    for (const p of PROTOCOLS) {
-      const pr = r.probes[p];
-      if (pr.status === "success" && pr.result) return pr.result;
-    }
-    return null;
-  };
-  const statusText = (r: ModelRow): string => {
-    const testing = PROTOCOLS.filter((p) => r.probes[p].status === "testing").length;
-    if (testing) return t("models.statusTesting");
-    const success = PROTOCOLS.filter((p) => r.probes[p].status === "success").length;
-    if (success) return t("models.statusPassed", { count: success });
-    const fail = PROTOCOLS.filter((p) => r.probes[p].status === "fail").length;
-    if (fail) return t("models.statusFailed");
-    return t("models.statusPending");
-  };
-  const statusClass = (r: ModelRow): string => {
-    if (PROTOCOLS.some((p) => r.probes[p].status === "testing")) return "testing";
-    if (PROTOCOLS.some((p) => r.probes[p].status === "success")) return "success";
-    if (PROTOCOLS.some((p) => r.probes[p].status === "fail")) return "fail";
-    return "idle";
-  };
-
-  const add = () => {
-    if (!newModel.trim()) return;
-    props.onAdd(newModel.trim());
-    setNewModel("");
-  };
-
-  const statusDraft = (r: ModelRow, name = providerName): Omit<StatusEntry, "id"> => {
-    const successProtocol = PROTOCOLS.find((p) => r.probes[p].status === "success");
-    const model = r.modelByProvider[conn.providerId] ?? r.label;
-    const protocol = successProtocol ?? protocolsForProvider(conn.providerId, `${r.label} ${model}`)[0];
-    return {
-      providerName: name,
-      protocol,
-      baseUrl: conn.baseUrl,
-      isFullUrl: Boolean(conn.isFullUrl),
-      apiKey: conn.apiKey,
-      userAgent: props.userAgent || undefined,
-      model,
-    };
-  };
-
   const addRowsToStatus = (items: ModelRow[]) => {
-    if (!canAddStatus || items.length === 0) return;
-    const drafts = items.map((r) => statusDraft(r));
-    if (isCustomProvider) {
-      setStatusNamePrompt(drafts);
-      return;
-    }
-    props.onAddToStatus(drafts);
+    if (!canAddStatus || !items.length) return;
+    const drafts = items.map(
+      (r): Omit<StatusEntry, "id"> => ({
+        providerName,
+        protocol:
+          PROTOCOLS.find((p) => r.probes[p].status === "success") ?? protocolsForProvider(conn.providerId, r.label)[0],
+        baseUrl: conn.baseUrl,
+        isFullUrl: conn.isFullUrl,
+        apiKey: conn.apiKey,
+        userAgent: props.userAgent || undefined,
+        model: r.modelByProvider[conn.providerId] ?? r.label,
+      }),
+    );
+    if (conn.providerId === CUSTOM_PROVIDER_ID) setStatusNamePrompt(drafts);
+    else props.onAddToStatus(drafts);
   };
-
   const renderRow = (r: ModelRow) => {
-    const fs = firstSuccess(r);
-    const preview = previewText(r);
-    const showSave = r.custom && !savedSet.has(r.label);
+    const state = rowState(r);
+    const probe = rowResult(r);
+    const result = probe?.result;
+    const ttft = probe?.streamTtftMs ?? result?.ttftMs ?? null;
+    const open = expanded.has(r.key);
     return (
-      <div
-        key={r.key}
-        class={"model-result-row " + (r.checked ? "selected " : "") + statusClass(r)}
-      >
+      <div key={r.key} class={"model-result-row " + state + (r.checked ? " selected" : "")}>
         <div class="model-row-main">
-          <label class="row-check" title={r.label}>
+          <label class="row-check">
             <input
               type="checkbox"
+              aria-label={r.label}
               checked={r.checked}
               disabled={busy}
-              aria-label={r.label}
-              onChange={(e) => props.onToggle(r.key, (e.target as HTMLInputElement).checked)}
+              onChange={(e) => props.onToggle(r.key, e.currentTarget.checked)}
             />
           </label>
           <div class="model-identity">
-            <span class="model-name" title={r.label}>{r.label}</span>
-            <span class={"model-verdict " + statusClass(r)}>
-              <span class="status-dot" aria-hidden="true" />
-              {statusText(r)}
+            <span class="model-name" title={r.label}>
+              {r.label}
             </span>
           </div>
           <div class="proto-badges">
-            {shownProtocols(r, conn.providerId).map((p) => <Badge key={p} probe={r.probes[p]} lang={lang} />)}
+            {shownProtocols(r, conn.providerId).map((p) => (
+              <Badge key={p} probe={r.probes[p]} lang={lang} />
+            ))}
           </div>
+          <span class={"model-verdict " + state}>
+            <StatusMark state={state} />
+            {t(
+              state === "success"
+                ? mobile
+                  ? "ui.passed"
+                  : "ui.success"
+                : state === "fail"
+                  ? "ui.failed"
+                  : state === "testing"
+                    ? "models.statusTesting"
+                    : "models.statusPending",
+            )}
+          </span>
           <div class="model-metrics">
-            <span><small>{t("models.latency")}</small><strong>{fs ? fmtMs(fs.latencyMs) : t("common.dash")}</strong></span>
-            <span><small>{t("models.ttft")}</small><strong>{fs ? fmtMs(fs.ttftMs) : t("common.dash")}</strong></span>
-            <span><small>{t("models.tokens")}</small><strong>{fs ? fmtTok(fs.usage.totalTokens) : t("common.dash")}</strong></span>
+            <span>
+              <small>{t("history.colLatency")}</small>
+              <strong>{fmtMs(result?.latencyMs ?? null)}</strong>
+            </span>
+            <span>
+              <small>{t("history.colTtft")}</small>
+              <strong>{fmtMs(ttft)}</strong>
+            </span>
+            <span>
+              <small>{t("models.tokens")}</small>
+              <strong>{fmtTok(result?.usage.totalTokens ?? null)}</strong>
+            </span>
           </div>
           <div class="model-row-actions">
-            {showSave ? (
+            <ActionMenu label={`${t("ui.more")} · ${r.label}`}>
+              <button disabled={busy || !canAddStatus} onClick={() => addRowsToStatus([r])}>
+                <BookmarkPlus size={16} />
+                {t("models.addToStatus")}
+              </button>
+              {r.custom && !props.savedCustomModels.includes(r.label) ? (
+                <button
+                  disabled={busy || !props.privatePersistAvailable}
+                  onClick={() => props.onSaveCustomModel(r.label)}
+                >
+                  <Save size={16} />
+                  {t("models.saveModelTitle")}
+                </button>
+              ) : null}
+              <button class="danger-quiet" disabled={busy} onClick={() => props.onRemove(r.key)}>
+                <Trash2 size={16} />
+                {t("common.remove")}
+              </button>
+            </ActionMenu>
+            {result ? (
               <button
                 type="button"
-                class="icon-button subtle"
-                title={props.privatePersistAvailable ? t("models.saveModelTitle") : t("models.saveModelUnavailable")}
-                aria-label={props.privatePersistAvailable ? t("models.saveModelTitle") : t("models.saveModelUnavailable")}
-                disabled={busy || !props.privatePersistAvailable}
-                onClick={() => props.onSaveCustomModel(r.label)}
+                class="icon-button subtle detail-toggle"
+                aria-label={open ? t("ui.collapse") : t("ui.details")}
+                aria-expanded={open}
+                onClick={() => toggle(setExpanded, r.key)}
               >
-                <Save size={15} aria-hidden="true" />
+                <ChevronRight size={17} />
               </button>
             ) : null}
-            <button
-              type="button"
-              class="icon-button subtle"
-              title={t("models.addToStatus")}
-              aria-label={t("models.addToStatus")}
-              disabled={busy || !canAddStatus}
-              onClick={() => addRowsToStatus([r])}
-            >
-              <BookmarkPlus size={15} aria-hidden="true" />
-            </button>
-            <button type="button" class="icon-button subtle danger-quiet" title={t("common.remove")} aria-label={t("common.remove")} disabled={busy} onClick={() => props.onRemove(r.key)}>
-              <Trash2 size={15} aria-hidden="true" />
-            </button>
           </div>
         </div>
-        {preview ? (
-          <details class="model-response">
-            <summary>{t("models.responsePreview")}</summary>
-            <pre>{preview}</pre>
-          </details>
+        {open && result ? (
+          <div class={"result-details " + state}>
+            <div class="result-callout">
+              {!result.ok ? (
+                <>
+                  <StatusMark state="fail" />
+                  <div>
+                    <p>
+                      <strong>HTTP {result.status || "—"}</strong> · {result.error}
+                    </p>
+                    <small>
+                      {t(result.status === 401 || result.status === 403 ? "ui.checkKeyPermissions" : "ui.viewResponse")}
+                    </small>
+                  </div>
+                </>
+              ) : (
+                <strong>{t("ui.response")}</strong>
+              )}
+              <span class="spacer" />
+              <CopyButton value={result.failureLog || result.error || result.text} title={t("ui.copyLog")} showLabel />
+              <button class="text-action" onClick={() => toggle(setExpanded, `${r.key}-response`)}>
+                <FileText size={16} />
+                {t("ui.viewResponse")}
+              </button>
+            </div>
+            <details class="result-response" open={result.ok || expanded.has(`${r.key}-response`)}>
+              <summary>{t(result.ok ? "ui.response" : "ui.failureLog")}</summary>
+              <div class="detail-heading">
+                <strong>{t(result.ok ? "ui.response" : "ui.failureLog")}</strong>
+                <CopyButton
+                  value={result.ok ? result.text : result.failureLog || result.error || ""}
+                  title={t("ui.copyLog")}
+                />
+              </div>
+              <pre>{result.ok ? result.text : result.failureLog || result.error}</pre>
+              {shownProtocols(r, conn.providerId).length > 1 ? (
+                <details>
+                  <summary>{t("models.colProtocol")}</summary>
+                  {shownProtocols(r, conn.providerId).map((p) => (
+                    <div key={p}>
+                      <Badge probe={r.probes[p]} lang={lang} />{" "}
+                      {r.probes[p].result?.error || r.probes[p].result?.text || t("models.statusPending")}
+                    </div>
+                  ))}
+                </details>
+              ) : null}
+            </details>
+          </div>
         ) : null}
       </div>
     );
   };
-
   return (
     <section class="panel model-panel" aria-labelledby="models-heading">
-      <h2 id="models-heading" class="sr-only">{t("models.title")}</h2>
-
+      <h2 id="models-heading" class="sr-only">
+        {t("models.title")}
+      </h2>
       <div class="model-toolbar">
+        <label class="search-control">
+          <Search size={17} aria-hidden="true" />
+          <input
+            type="search"
+            value={query}
+            placeholder={t("ui.searchModels")}
+            aria-label={t("ui.searchModels")}
+            onInput={(e) => setQuery(e.currentTarget.value)}
+          />
+        </label>
+        <span class="result-filter">
+          <ActionMenu label={t("ui.allResults")} icon={Filter}>
+            {/* Filter selection remains available in the menu. */}
+            <select
+              class="result-filter-select"
+              aria-label={t("ui.allResults")}
+              value={filter}
+              onChange={(e) => setFilter(e.currentTarget.value)}
+            >
+              <option value="all">{t("ui.allResults")}</option>
+              <option value="success">{t("ui.passed")}</option>
+              <option value="fail">{t("ui.failed")}</option>
+              <option value="idle">{t("ui.pending")}</option>
+            </select>
+          </ActionMenu>
+        </span>
+        <label class="select-visible">
+          <input
+            type="checkbox"
+            disabled={busy || !visibleRows.length}
+            checked={allVisibleChecked}
+            onChange={(e) =>
+              props.onToggleGroup(
+                visibleRows.map((row) => row.key),
+                e.currentTarget.checked,
+              )
+            }
+          />
+          {t("common.selectAll")}
+        </label>
+        <span class="selection-count">{t("ui.selected", { count: selectedCount })}</span>
+        <button class="mobile-add-model text-action" disabled={busy} onClick={() => setAddingModel(true)}>
+          <Plus size={16} />
+          {t("models.addModel")}
+        </button>
         <div class="model-primary-actions">
-          <button class="primary" disabled={busy || !someChecked} onClick={props.onTestSelected}>
-            <Play size={16} fill="currentColor" aria-hidden="true" />
-            {selectedCount ? t("models.testSelectedCount", { count: selectedCount }) : t("models.testSelected")}
-          </button>
+          <ActionMenu label={t("ui.more")} showLabel>
+            <button onClick={() => setAddingModel(true)}>
+              <Plus size={16} />
+              {t("models.addModel")}
+            </button>
+            <label class="menu-field">
+              {t("ui.allResults")}
+              <select value={filter} onChange={(e) => setFilter(e.currentTarget.value)}>
+                <option value="all">{t("ui.allResults")}</option>
+                <option value="success">{t("ui.passed")}</option>
+                <option value="fail">{t("ui.failed")}</option>
+                <option value="idle">{t("ui.pending")}</option>
+              </select>
+            </label>
+            <button
+              disabled={busy || !selectedCount || !canAddStatus}
+              onClick={() => addRowsToStatus(rows.filter((r) => r.checked))}
+            >
+              <BookmarkPlus size={16} />
+              {t("models.addSelectedToStatus")}
+            </button>
+            <CcSwitchButton
+              name={providerName}
+              endpoint={conn.baseUrl}
+              apiKey={conn.apiKey}
+              defaultApp="claude"
+              disabled={busy || !canAddStatus}
+              onLaunched={props.onLaunched}
+            />
+          </ActionMenu>
           {busy ? (
             <button class="danger" onClick={props.onCancel}>
-              <X size={16} aria-hidden="true" />
+              <X size={16} />
               {t("models.cancelTests")}
             </button>
-          ) : null}
-        </div>
-        <div class="model-secondary-actions">
-          <button disabled={busy || rows.length === 0} onClick={() => props.onToggleAll(!allChecked)}>
-            {allChecked ? <CheckSquare size={16} aria-hidden="true" /> : <Square size={16} aria-hidden="true" />}
-            {allChecked ? t("common.deselectAll") : t("common.selectAll")}
-          </button>
-          <button disabled={busy || !someChecked || !canAddStatus} onClick={() => addRowsToStatus(rows.filter((r) => r.checked))}>
-            <BookmarkPlus size={16} aria-hidden="true" />
-            {t("models.addSelectedToStatus")}
-          </button>
-        <CcSwitchButton
-          name={providerName}
-          endpoint={conn.baseUrl}
-          apiKey={conn.apiKey}
-          defaultApp="claude"
-          disabled={busy || !conn.baseUrl || !conn.apiKey}
-          onLaunched={props.onLaunched}
-        />
+          ) : (
+            <button class="primary" disabled={!selectedCount} onClick={props.onTestSelected}>
+              <Play size={16} fill="currentColor" />
+              {selectedCount ? t("models.testSelectedCount", { count: selectedCount }) : t("models.testSelected")}
+            </button>
+          )}
         </div>
       </div>
-
       {busy ? (
         <div class="batch-progress" aria-live="polite">
-          <div class="batch-progress-label">
-            <span>{t("models.progress", props.progress)}</span>
-            <span>{Math.round((props.progress.completed / Math.max(1, props.progress.total)) * 100)}%</span>
-          </div>
+          <div class="batch-progress-label">{t("models.progress", props.progress)}</div>
           <progress
             max={Math.max(1, props.progress.total)}
             value={props.progress.completed}
@@ -291,110 +419,131 @@ export function ModelTable(props: Props) {
           />
         </div>
       ) : null}
-
-      {rows.length === 0 ? (
-        <div class="empty">{t("models.empty")}</div>
-      ) : (
-        <div class="model-result-list">
-          <div class="model-list-head" aria-hidden="true">
-            <span />
-            <span>{t("models.colModel")}</span>
-            <span>{t("models.colProtocol")}</span>
-            <span>{t("models.colResult")}</span>
-            <span>{t("models.colActions")}</span>
+      <div class="model-result-list">
+        <div class="model-list-head">
+          <label class="row-check">
+            <input
+              type="checkbox"
+              checked={allVisibleChecked}
+              disabled={busy || !visibleRows.length}
+              aria-label={t("ui.selectVisible")}
+              onChange={(e) =>
+                props.onToggleGroup(
+                  visibleRows.map((r) => r.key),
+                  e.currentTarget.checked,
+                )
+              }
+            />
+          </label>
+          <span>{t("models.colModel")}</span>
+          <span>{t("models.colProtocol")}</span>
+          <span>{t("history.colStatus")}</span>
+          <div class="model-metric-head">
+            <span>{t("history.colLatency")}</span>
+            <span>{t("history.colTtft")}</span>
+            <span>{t("models.tokens")}</span>
           </div>
-          {listEntries.map((entry) => {
-            if (entry.kind === "model") return renderRow(entry.model);
-
-            const selectedInGroup = entry.models.filter((model) => model.checked).length;
-            const allInGroupChecked = selectedInGroup === entry.models.length;
-            const someInGroupChecked = selectedInGroup > 0 && !allInGroupChecked;
-            const expanded = expandedGroups.has(entry.key);
-            const contentId = `model-group-${encodeURIComponent(entry.key)}`;
-            const toggleLabel = expanded
-              ? t("models.collapseGroup", { group: entry.label })
-              : t("models.expandGroup", { group: entry.label });
-            const selectionLabel = allInGroupChecked
-              ? t("models.deselectGroup", { group: entry.label })
-              : t("models.selectGroup", { group: entry.label });
-
+          <span>{t("models.colActions")}</span>
+        </div>
+        {!visibleRows.length ? (
+          <div class="empty">{t(rows.length ? "ui.noMatch" : "models.empty")}</div>
+        ) : (
+          listEntries.map((entry) => {
+            const groupOpen = !collapsedGroups.has(entry.key);
+            const checked = entry.models.every((row) => row.checked);
             return (
-              <section key={`group:${entry.key}`} class="model-group" aria-label={entry.label}>
-                <div class={"model-group-head " + (expanded ? "expanded" : "collapsed")}>
-                  <label class="model-group-check" title={selectionLabel}>
+              <section key={entry.key} class="model-group" aria-label={entry.label}>
+                <div class="model-group-head">
+                  <label class="model-group-check">
                     <input
-                      ref={(element) => {
-                        if (element) element.indeterminate = someInGroupChecked;
-                      }}
                       type="checkbox"
-                      checked={allInGroupChecked}
+                      checked={checked}
                       disabled={busy}
-                      aria-label={selectionLabel}
-                      onChange={(event) => props.onToggleGroup(
-                        entry.models.map((model) => model.key),
-                        (event.target as HTMLInputElement).checked,
-                      )}
+                      aria-label={t("models.selectGroup", { group: entry.label })}
+                      ref={(el) => {
+                        if (el) el.indeterminate = !checked && entry.models.some((row) => row.checked);
+                      }}
+                      onChange={(e) =>
+                        props.onToggleGroup(
+                          entry.models.map((row) => row.key),
+                          e.currentTarget.checked,
+                        )
+                      }
                     />
                   </label>
                   <button
                     type="button"
                     class="model-group-toggle"
-                    aria-expanded={expanded}
-                    aria-controls={contentId}
-                    aria-label={toggleLabel}
-                    title={toggleLabel}
-                    onClick={() => toggleGroup(entry.key)}
+                    aria-expanded={groupOpen}
+                    aria-controls={`group-${entry.key}`}
+                    onClick={() => toggle(setCollapsedGroups, entry.key)}
                   >
-                    <ChevronRight class="model-group-chevron" size={17} aria-hidden="true" />
-                    <span class="model-group-name" title={entry.label}>{entry.label}</span>
-                    <span class="model-group-meta">
-                      <span>{t("models.groupModelCount", { count: entry.models.length })}</span>
-                      <span aria-hidden="true">/</span>
-                      <span>{t("models.groupSelectedCount", {
-                        selected: selectedInGroup,
-                        count: entry.models.length,
-                      })}</span>
-                    </span>
+                    <ChevronRight class={groupOpen ? "turned" : ""} size={16} />
+                    <strong>{entry.label}</strong>
+                    <span class="muted">({entry.models.length})</span>
                   </button>
                 </div>
-                <div id={contentId} class="model-group-rows" hidden={!expanded}>
-                  {expanded ? entry.models.map(renderRow) : null}
+                <div id={`group-${entry.key}`} hidden={!groupOpen}>
+                  {groupOpen ? entry.models.map(renderRow) : null}
                 </div>
               </section>
             );
-          })}
-        </div>
-      )}
-
-      <div class="add-model">
-        <input
-          class="mono"
-          placeholder={t("models.addPlaceholder")}
-          value={newModel}
-          onInput={(e) => setNewModel((e.target as HTMLInputElement).value)}
-          onKeyDown={(e) => { if (e.key === "Enter") add(); }}
-        />
-        <button disabled={!newModel.trim()} onClick={add}>
-          <Plus size={16} aria-hidden="true" />
-          {t("models.addModel")}
-        </button>
+          })
+        )}
       </div>
-
+      <div class="model-list-footer">
+        <button class="add-model-trigger" disabled={busy} onClick={() => setAddingModel(true)}>
+          <Plus size={16} />
+          {t("ui.addCustomModel")}
+        </button>
+        <span class="spacer" />
+        <span class="success">
+          <StatusMark state="success" />
+          {t("ui.passedCount", { count: passedCount })}
+        </span>
+        <span class="fail">
+          <StatusMark state="fail" />
+          {t("ui.failedCount", { count: failedCount })}
+        </span>
+        <span class="muted">{t("ui.batchCount", props.progress)}</span>
+      </div>
+      {addingModel ? (
+        <PromptModal
+          title={t("ui.addCustomModel")}
+          confirmLabel={t("models.addModel")}
+          fields={[
+            {
+              key: "model",
+              label: t("settings.modelIdPlaceholder"),
+              placeholder: t("models.addPlaceholder"),
+              required: true,
+              mono: true,
+            },
+          ]}
+          onClose={() => setAddingModel(false)}
+          onConfirm={({ model }) => {
+            props.onAdd(model.trim());
+            setAddingModel(false);
+          }}
+        />
+      ) : null}
       {statusNamePrompt ? (
         <PromptModal
           title={t("models.statusProviderNameTitle")}
           confirmLabel={t("models.statusProviderNameConfirm")}
-          fields={[{
-            key: "name",
-            label: t("models.statusProviderName"),
-            placeholder: t("models.statusProviderNamePlaceholder"),
-            defaultValue: lastCustomProviderName,
-            required: true,
-          }]}
+          fields={[
+            {
+              key: "name",
+              label: t("models.statusProviderName"),
+              placeholder: t("models.statusProviderNamePlaceholder"),
+              defaultValue: lastCustomProviderName,
+              required: true,
+            },
+          ]}
           onClose={() => setStatusNamePrompt(null)}
           onConfirm={({ name }) => {
             setLastCustomProviderName(name);
-            props.onAddToStatus(statusNamePrompt.map((d) => ({ ...d, providerName: name })));
+            props.onAddToStatus(statusNamePrompt.map((draft) => ({ ...draft, providerName: name })));
             setStatusNamePrompt(null);
           }}
         />
