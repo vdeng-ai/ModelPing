@@ -8,7 +8,30 @@
 
 > Cloudflare 一键部署会自动克隆仓库、配置 Workers Builds，并 provision Wrangler 声明的资源。公网使用前请在部署配置中设置强 `APP_PASSWORD` 和独立的 `PRIVATE_STATE_SECRET`。
 
-![Screenshot](./web/public/screenshot.png)
+![英文模型测试工作台](./web/public/screenshot.png)
+
+*截图使用英文界面、示例端点及模拟响应，不包含真实 API Key。*
+
+<details>
+<summary>更多截图：历史记录、状态监控、供应商配置与手机端</summary>
+
+**历史记录与失败诊断**
+
+![英文历史记录及展开的失败诊断](./docs/screenshots/history-en.png)
+
+**端点状态监控**
+
+![英文端点状态监控面板](./docs/screenshots/status-en.png)
+
+**供应商配置**
+
+![英文供应商配置及未保存状态](./docs/screenshots/providers-en.png)
+
+**手机端工作台**
+
+<img src="./docs/screenshots/mobile-en.png" alt="英文手机端模型测试工作台" width="393" />
+
+</details>
 
 支持的协议：
 

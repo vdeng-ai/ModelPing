@@ -8,7 +8,30 @@ A lightweight, zero-config web tool to quickly check whether an LLM API is reach
 
 > One-click Cloudflare deployment clones the repository, configures Workers Builds, and provisions resources declared by Wrangler. Before exposing the Worker publicly, set strong `APP_PASSWORD` and `PRIVATE_STATE_SECRET` values during deployment setup.
 
-![Screenshot](./web/public/screenshot.png)
+![Model testing workbench in English](./web/public/screenshot.png)
+
+*English interface with illustrative endpoints and responses. No real API keys are shown.*
+
+<details>
+<summary>More screenshots: history, status, providers, and mobile</summary>
+
+**Session history and failure diagnostics**
+
+![English session history with expanded failure diagnostics](./docs/screenshots/history-en.png)
+
+**Endpoint status**
+
+![English endpoint status dashboard](./docs/screenshots/status-en.png)
+
+**Provider configuration**
+
+![English provider configuration with unsaved changes](./docs/screenshots/providers-en.png)
+
+**Mobile workbench**
+
+<img src="./docs/screenshots/mobile-en.png" alt="English mobile model testing workbench" width="393" />
+
+</details>
 
 Supported protocols:
 
