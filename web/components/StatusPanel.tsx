@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "preact/hooks";
-import { RefreshCw, Search, Trash2, X } from "lucide-preact";
+import { BarChart3, Eye, EyeOff, File, Info, KeyRound, Network, RefreshCw, Search, Trash2, X } from "lucide-preact";
 import type { PingResult, StatusEntry } from "../lib/types.js";
 import { pingEndpoint } from "../lib/api.js";
 import { runConcurrent } from "../lib/concurrency.js";
@@ -7,6 +7,7 @@ import { PROTOCOL_LABEL, fmtMs, fmtTime } from "../lib/format.js";
 import { maskKey } from "../lib/storage.js";
 import { PROTOCOL_TO_APP } from "../lib/ccswitch.js";
 import { useI18n } from "../lib/i18n.js";
+import { StatusMark } from "./StatusMark.js";
 import { CopyButton } from "./CopyButton.js";
 import { ActionMenu } from "./ActionMenu.js";
 import { ConfirmModal } from "./ConfirmModal.js";
@@ -57,6 +58,7 @@ export function StatusPanel({ entries, persisted, onDelete, onGotoTest, onLaunch
   const someChecked = checked.size > 0;
   const estimated = dailyPingRequests(entries.length, autoSec);
   const overCap = autoSec > 0 && isOverFreeCap(entries.length, autoSec);
+  const lastChecked = Math.max(0, ...Object.values(pings).map((ping) => ping.ts ?? 0));
   const checkedCount = entries.filter((entry) => pings[entry.id]?.result).length;
   const healthyCount = entries.filter((entry) => pings[entry.id]?.result?.ok).length;
   const warningCount = entries.filter((entry) => pings[entry.id]?.result && !pings[entry.id].result?.ok).length;
@@ -214,36 +216,58 @@ export function StatusPanel({ entries, persisted, onDelete, onGotoTest, onLaunch
     <section class="panel status-panel">
       <div class="page-section-head">
         <h2>{t("status.title")}</h2>
-        <span class="muted">
-          {t("status.memoryOnly") && !persisted ? t("status.memoryOnly") : t("ui.total", { count: entries.length })}
-        </span>
+        <span class="muted">{!persisted ? t("status.memoryOnly") : t("ui.statusSubtitle")}</span>
       </div>
       <div class="status-summary-grid" aria-label={t("status.title")}>
         {[
-          ["ui.total", entries.length, ""],
-          ["ui.passed", healthyCount, "success"],
-          ["ui.failed", warningCount, "fail"],
-          ["ui.pending", uncheckedCount, ""],
+          ["ui.savedEndpoints", entries.length, "idle"],
+          ["ui.available", healthyCount, "success"],
+          ["ui.abnormal", warningCount, "fail"],
+          ["ui.pending", uncheckedCount, "idle"],
         ].map(([label, count, tone], i) => (
           <div key={i} class={"status-summary-card " + tone}>
-            <span>{i === 0 ? t("ui.total", { count: entries.length }) : t(String(label))}</span>
-            <strong>{count}</strong>
+            {i === 0 ? (
+              <File class="summary-file" size={24} />
+            ) : (
+              <StatusMark state={tone as "success" | "fail" | "idle"} />
+            )}
+            <div>
+              <span>{t(String(label))}</span>
+              <strong>{count}</strong>
+            </div>
           </div>
         ))}
+        <div class="status-provider-count">
+          <Network size={26} />
+          <span>{t("ui.providerCount", { count: new Set(entries.map((e) => e.providerName)).size })}</span>
+        </div>
       </div>
       <details class={"status-budget-card" + (overCap ? " danger" : "")}>
         <summary>
-          <strong>{t("ui.budgetTitle")}</strong>
-          <span>
-            {t("ui.budgetTotal", { count: budgetRequests.toLocaleString() })} · {budgetPct}%
+          <BarChart3 class="budget-icon" size={26} />
+          <div class="budget-heading">
+            <strong>
+              {t("ui.budgetTitle")} <Info size={16} />
+            </strong>
+            <small>{t("ui.budgetBody", { count: entries.length, seconds: autoSec })}</small>
+          </div>
+          <span class="budget-number">
+            {t("ui.budgetTotal", { count: budgetRequests.toLocaleString() })}
+            <span class="budget-mobile-percent"> · {budgetPct}%</span>
+          </span>
+          <div class="budget-meter">
+            <progress max={FREE_WORKER_SOFT_CAP} value={budgetRequests} aria-label={t("ui.budgetTitle")} />
+            <span>
+              {budgetRequests.toLocaleString()} / {FREE_WORKER_SOFT_CAP.toLocaleString()} · {budgetPct}%
+            </span>
+          </div>
+          <span class={"budget-verdict " + (overCap ? "fail" : "success")}>
+            <StatusMark state={overCap ? "fail" : "success"} />
+            {t(overCap ? "ui.budgetOver" : "ui.budgetWithin")}
           </span>
         </summary>
         <div class="budget-detail">
           <p>{t("ui.budgetBody", { count: entries.length, seconds: autoSec })}</p>
-          <progress max={FREE_WORKER_SOFT_CAP} value={budgetRequests} aria-label={t("ui.budgetTitle")} />
-          <span>
-            {budgetRequests.toLocaleString()} / {FREE_WORKER_SOFT_CAP.toLocaleString()}
-          </span>
         </div>
       </details>
       <div class="status-toolbar">
@@ -282,8 +306,11 @@ export function StatusPanel({ entries, persisted, onDelete, onGotoTest, onLaunch
             ))}
           </select>
         </label>
+        <span class="status-last-check">
+          {t("ui.lastChecked")} {lastChecked ? fmtTime(lastChecked, false).slice(0, 5) : t("common.dash")}
+        </span>
         <span class="status-desktop-search">{search}</span>
-        <ActionMenu label={t("ui.more")}>
+        <ActionMenu label={t("ui.bulkActions")} showLabel>
           <span class="status-mobile-search">{search}</span>
           <button disabled={busy || !someChecked} onClick={() => void refresh(selectedEntries())}>
             {t("status.refreshSelected")}
@@ -311,7 +338,7 @@ export function StatusPanel({ entries, persisted, onDelete, onGotoTest, onLaunch
               <th aria-label={t("common.selectAll")} />
               <th>{t("status.colProvider")}</th>
               <th>{t("status.colModel")}</th>
-              <th>{t("history.colStatus")}</th>
+              <th>{t("status.colResult")}</th>
               <th>{t("status.colLatency")}</th>
               <th>{t("status.colKind")}</th>
               <th>{t("status.colCheckedAt")}</th>
@@ -332,6 +359,7 @@ export function StatusPanel({ entries, persisted, onDelete, onGotoTest, onLaunch
                 const keyShown = revealed.has(entry.id);
                 const keyTools = (
                   <div class="status-key-tools">
+                    <KeyRound size={14} aria-hidden="true" />
                     <code class="mask">{keyShown ? entry.apiKey : maskKey(entry.apiKey)}</code>
                     <button
                       class="compact-button"
@@ -345,7 +373,7 @@ export function StatusPanel({ entries, persisted, onDelete, onGotoTest, onLaunch
                         })
                       }
                     >
-                      {t(keyShown ? "conn.hide" : "conn.show")}
+                      {keyShown ? <EyeOff size={15} /> : <Eye size={15} />}
                     </button>
                     <CopyButton value={entry.apiKey} title={t("conn.copyKey")} />
                   </div>
@@ -389,15 +417,19 @@ export function StatusPanel({ entries, persisted, onDelete, onGotoTest, onLaunch
                           (ping.status === "pinging" ? "testing" : result?.ok ? "success" : result ? "fail" : "idle")
                         }
                       >
-                        <span class="status-dot" />
+                        <StatusMark
+                          state={
+                            ping.status === "pinging" ? "testing" : result?.ok ? "success" : result ? "fail" : "idle"
+                          }
+                        />
                         {ping.status === "pinging"
                           ? t("status.pinging")
                           : ping.cancelled
                             ? t("ui.cancelled")
                             : result?.ok
-                              ? t("ui.passed")
+                              ? t("ui.available")
                               : result
-                                ? `HTTP ${result.status || "—"}`
+                                ? `HTTP ${result.status || "—"} ${t("ui.abnormal")}`
                                 : t("ui.pending")}
                       </span>
                       {result?.error ? (
@@ -451,10 +483,11 @@ export function StatusPanel({ entries, persisted, onDelete, onGotoTest, onLaunch
         </table>
       </div>
       <div class="status-footer muted">
-        <span>{visible ? t("ui.refreshPaused") : t("status.autoPausedHidden")}</span>
         <span>
-          {checkedCount} / {entries.length}
+          <Info size={16} />
+          {visible ? t("ui.refreshPaused") : t("status.autoPausedHidden")}
         </span>
+        <span>{t("ui.checkedCount", { completed: checkedCount, total: entries.length })}</span>
       </div>
       {pendingDelete ? (
         <ConfirmModal

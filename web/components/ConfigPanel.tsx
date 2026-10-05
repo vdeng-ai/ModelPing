@@ -2,7 +2,7 @@ import { useState } from "preact/hooks";
 import type { ConfigState } from "../lib/types.js";
 import { useI18n } from "../lib/i18n.js";
 import { USER_AGENT_PRESETS, isValidUserAgentHeader } from "../lib/user-agent.js";
-import { SlidersHorizontal } from "lucide-preact";
+import { ChevronRight, SlidersHorizontal } from "lucide-preact";
 import { useMediaQuery } from "./useMediaQuery.js";
 
 export function ConfigPanel({ value, onChange }: { value: ConfigState; onChange: (v: ConfigState) => void }) {
@@ -38,10 +38,12 @@ export function ConfigPanel({ value, onChange }: { value: ConfigState; onChange:
   return (
     <details class="panel config-panel setup-disclosure" open={!mobile}>
       <summary class="setup-summary">
+        <SlidersHorizontal size={20} aria-hidden="true" />
         <strong>{t("config.title")}</strong>
         <small>
-          {t("config.concurrency")} {value.concurrency} · {value.timeoutMs / 1000}s · {value.maxTokens}
+          {t("ui.concurrencyShort")} {value.concurrency} · {value.timeoutMs / 1000}s · {value.maxTokens}
         </small>
+        <ChevronRight size={16} class="config-edit" aria-hidden="true" />
       </summary>
       <div class="setup-body">
         <div class="panel-title-row">
@@ -97,12 +99,15 @@ export function ConfigPanel({ value, onChange }: { value: ConfigState; onChange:
           </div>
         ) : null}
         <div class="config-main-grid">
-          {numberField("concurrency", t("config.concurrency"), 1, 10)}
+          {numberField("concurrency", t("ui.concurrencyShort"), 1, 10)}
           {numberField("timeoutMs", t("ui.timeoutSeconds"), 1, 600)}
-          {numberField("maxTokens", t("config.maxTokens"), 1, 200000)}
+          {numberField("maxTokens", t("ui.outputLimit"), 1, 200000)}
         </div>
         <details class="disclosure advanced-settings">
-          <summary>{t("config.advanced")}</summary>
+          <summary>
+            <ChevronRight size={16} aria-hidden="true" />
+            {t("config.advanced")}
+          </summary>
           <div class="disclosure-body">{numberField("maxRetries", t("config.maxRetries"), 0, 10)}</div>
         </details>
       </div>

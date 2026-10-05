@@ -30,6 +30,7 @@ import {
 import { initTheme } from "../lib/theme.js";
 import { ConnectionPanel, type ConnValue, type AddToProviderDraft } from "./ConnectionPanel.js";
 import { ConfigPanel } from "./ConfigPanel.js";
+import { CubeMark } from "./CubeMark.js";
 import { ModelTable } from "./ModelTable.js";
 import { HistoryPanel } from "./HistoryPanel.js";
 import { ConfirmModal } from "./ConfirmModal.js";
@@ -751,7 +752,7 @@ export function App() {
   const testRoute = route === "test-models" || route === "test-history";
 
   return (
-    <div class="app-shell">
+    <div class={"app-shell " + (route.startsWith("test") ? "test-shell" : "settings-shell")}>
       <a class="skip-link" href="#main-content">
         {t("app.skipToContent")}
       </a>
@@ -803,7 +804,6 @@ export function App() {
             >
               <Activity size={17} aria-hidden="true" />
               {t("app.tabStatus")}
-              {statusEntries.length ? <span class="nav-count">{statusEntries.length}</span> : null}
             </button>
             <button
               type="button"
@@ -866,6 +866,11 @@ export function App() {
               <ConfigPanel value={config} onChange={onConfigChange} />
             </aside>
             <section class="workspace-content" aria-label={t("app.workspaceLabel")}>
+              {route === "test-models" ? (
+                <div class="workbench-intro">
+                  <h2>{t("ui.modelTest")}</h2>
+                </div>
+              ) : null}
               <div class="workspace-tabs" role="tablist" aria-label={t("app.workspaceLabel")}>
                 <button
                   type="button"
@@ -874,7 +879,7 @@ export function App() {
                   class={route === "test-models" ? "active" : ""}
                   onClick={() => navigateTo("test-models")}
                 >
-                  <FlaskConical size={16} aria-hidden="true" />
+                  <CubeMark size={20} filled={route === "test-models"} />
                   {t("app.workspaceModels")}
                   <span class="tab-count">{rows.length}</span>
                 </button>
@@ -887,12 +892,13 @@ export function App() {
                 >
                   <History size={16} aria-hidden="true" />
                   {t("app.workspaceHistory")}
-                  <span class="tab-count">{history.length}</span>
+                  {route === "test-history" ? <span class="tab-count">{history.length}</span> : null}
                 </button>
               </div>
               {route === "test-models" ? (
                 <ModelTable
                   rows={rows}
+                  providers={providers}
                   busy={busy}
                   progress={progress}
                   conn={conn}

@@ -1,8 +1,9 @@
 import { useEffect, useLayoutEffect, useState } from "preact/hooks";
-import { Check, Download, Plus, Save, Search, Trash2, Upload, X } from "lucide-preact";
+import { ChevronRight, Download, Plus, Search, Trash2, Upload } from "lucide-preact";
 import type { Defaults, PresetsResponse, ProviderPreset } from "../lib/types.js";
 import { normalizePresets } from "../lib/presets.js";
 import { useMediaQuery } from "./useMediaQuery.js";
+import { CubeMark } from "./CubeMark.js";
 import { ActionMenu } from "./ActionMenu.js";
 import { ConfirmModal } from "./ConfirmModal.js";
 import { useI18n } from "../lib/i18n.js";
@@ -198,6 +199,7 @@ export function SettingsPanel({ providers, defaults, busy, onChange, onImport, o
               onClick={addProvider}
             >
               <Plus size={18} />
+              <span>{t("settings.addProvider")}</span>
             </button>
           </div>
           <label class="search-control">
@@ -222,6 +224,13 @@ export function SettingsPanel({ providers, defaults, busy, onChange, onImport, o
                 disabled={busy}
                 onClick={() => guard(() => setSelectedId(p.id))}
               >
+                {p.id === selectedId ? (
+                  <span class="provider-selected-icon">
+                    <CubeMark size={22} filled />
+                  </span>
+                ) : (
+                  <span class="provider-icon-space" />
+                )}
                 <span class="provider-card-main">
                   <strong>{p.name}</strong>
                   <small class="mono muted">{p.id}</small>
@@ -229,7 +238,7 @@ export function SettingsPanel({ providers, defaults, busy, onChange, onImport, o
                 <span class="provider-card-meta">
                   {p.models.length} {lang === "zh" ? "个模型" : "models"}
                 </span>
-                {p.id === selectedId ? <Check size={14} /> : null}
+                <ChevronRight size={16} />
               </button>
             ))
           )}
@@ -240,7 +249,15 @@ export function SettingsPanel({ providers, defaults, busy, onChange, onImport, o
               <div class="provider-form-heading">
                 <h2>{draft.name}</h2>
                 <span class={dirty ? "dirty-indicator" : "muted"}>{dirty ? t("ui.dirty") : t("ui.saved")}</span>
-                <small class="mono muted">ID: {draft.id}</small>
+                <small class="muted">
+                  <span class="mono">ID: {draft.id}</span>
+                  {dirty ? (
+                    <>
+                      <span class="heading-separator"> · </span>
+                      {t("ui.providerSwitchHint")}
+                    </>
+                  ) : null}
+                </small>
               </div>
               {error ? (
                 <div class="settings-error fail" role="alert">
@@ -279,6 +296,7 @@ export function SettingsPanel({ providers, defaults, busy, onChange, onImport, o
                   </div>
                 </details>
               ) : null}
+              <p class="provider-key-hint muted">{t("ui.providerKeyHint")}</p>
               <div class="models-editor">
                 <div class="models-editor-head">
                   <h3>
@@ -303,6 +321,7 @@ export function SettingsPanel({ providers, defaults, busy, onChange, onImport, o
                           <span>{t("settings.modelIdPlaceholder")}</span>
                           <input
                             class="mono"
+                            aria-label={t("settings.modelIdPlaceholder")}
                             value={m.id}
                             disabled={busy}
                             onInput={(e) => updateModel(idx, { id: e.currentTarget.value })}
@@ -311,6 +330,7 @@ export function SettingsPanel({ providers, defaults, busy, onChange, onImport, o
                         <label class="field">
                           <span>{t("settings.modelLabelPlaceholder")}</span>
                           <input
+                            aria-label={t("settings.modelLabelPlaceholder")}
                             value={m.label ?? ""}
                             disabled={busy}
                             onInput={(e) => updateModel(idx, { label: e.currentTarget.value })}
@@ -322,7 +342,7 @@ export function SettingsPanel({ providers, defaults, busy, onChange, onImport, o
                           aria-label={t("settings.removeModel")}
                           onClick={() => updateDraft({ models: draft.models.filter((_, i) => i !== idx) })}
                         >
-                          <X size={16} />
+                          <Trash2 size={16} />
                         </button>
                       </div>
                     </details>
@@ -345,7 +365,6 @@ export function SettingsPanel({ providers, defaults, busy, onChange, onImport, o
                   {t("ui.discard")}
                 </button>
                 <button class="primary" disabled={busy || !dirty} onClick={saveProvider}>
-                  <Save size={16} />
                   {t("settings.saveProvider")}
                 </button>
               </div>

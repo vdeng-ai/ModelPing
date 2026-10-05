@@ -1,9 +1,10 @@
 import { useState } from "preact/hooks";
-import { ChevronRight, Download, Search, Trash2 } from "lucide-preact";
+import { ChevronRight, Download, FileText, Search, Trash2 } from "lucide-preact";
 import type { HistoryEntry } from "../lib/types.js";
 import { fmtMs, fmtTok, fmtTime, PROTOCOL_LABEL } from "../lib/format.js";
 import { PROTOCOL_TO_APP } from "../lib/ccswitch.js";
 import { maskKey } from "../lib/storage.js";
+import { StatusMark } from "./StatusMark.js";
 import { CopyButton } from "./CopyButton.js";
 import { CcSwitchButton } from "./CcSwitchButton.js";
 import { ConfirmModal } from "./ConfirmModal.js";
@@ -41,6 +42,11 @@ export function HistoryPanel({
       `${h.providerName} ${h.modelLabel} ${h.model} ${h.protocol}`.toLowerCase().includes(query.trim().toLowerCase()) &&
       (filter === "all" || (filter === "success") === h.result.ok),
   );
+  const dateCounts = new Map<string, number>();
+  for (const entry of filtered) {
+    const date = new Date(entry.ts).toDateString();
+    dateCounts.set(date, (dateCounts.get(date) ?? 0) + 1);
+  }
   const toggle = (setter: typeof setExpanded, id: string) =>
     setter((current) => {
       const next = new Set(current);
@@ -118,13 +124,29 @@ export function HistoryPanel({
                 </td>
               </tr>
             ) : (
-              filtered.map((h) => {
+              filtered.map((h, index) => {
                 const open = expanded.has(h.id);
                 const ttft = h.streamTtftMs ?? h.result.ttftMs;
                 const failureLog = h.result.failureLog || h.result.error || "";
                 return (
                   <>
-                    <tr key={h.id} class={"history-entry" + (open ? " expanded" : "")}>
+                    {index === 0 ||
+                    new Date(filtered[index - 1].ts).toDateString() !== new Date(h.ts).toDateString() ? (
+                      <tr class="history-date-group">
+                        <td colSpan={8}>
+                          {new Date(h.ts).toLocaleDateString("sv-SE")}{" "}
+                          <span class="muted">
+                            {t("ui.recordsCount", {
+                              count: dateCounts.get(new Date(h.ts).toDateString()) ?? 0,
+                            })}
+                          </span>
+                        </td>
+                      </tr>
+                    ) : null}
+                    <tr
+                      key={h.id}
+                      class={"history-entry" + (open ? " expanded" : "") + (h.result.ok ? " success" : " fail")}
+                    >
                       <td class="history-provider">
                         <button
                           class="icon-button subtle"
@@ -145,7 +167,7 @@ export function HistoryPanel({
                       </td>
                       <td class="history-result">
                         <span class={"model-verdict " + (h.result.ok ? "success" : "fail")}>
-                          <span class="status-dot" />
+                          <StatusMark state={h.result.ok ? "success" : "fail"} />
                           {h.result.ok ? t("ui.passed") : t("history.fail", { status: h.result.status || "—" })}
                         </span>
                       </td>
@@ -162,7 +184,7 @@ export function HistoryPanel({
                         {fmtTok(h.result.usage.inputTokens)} / {fmtTok(h.result.usage.outputTokens)} /{" "}
                         {fmtTok(h.result.usage.totalTokens)}
                       </td>
-                      <td class="history-time muted">{fmtTime(h.ts)}</td>
+                      <td class="history-time muted">{fmtTime(h.ts, mobile)}</td>
                       <td class="history-actions">
                         <ActionMenu label={`${t("ui.more")} · ${h.modelLabel}`}>
                           <button onClick={() => toggle(setExpanded, h.id)}>
@@ -208,53 +230,73 @@ export function HistoryPanel({
                               </span>
                             </div>
                             {!h.result.ok ? (
-                              <p class="fail">
-                                <strong>HTTP {h.result.status || "—"}</strong> · {h.result.error}
-                              </p>
+                              <div class="history-failure-callout">
+                                <StatusMark state="fail" />
+                                <div>
+                                  <strong>
+                                    {mobile
+                                      ? h.result.status === 401 || h.result.status === 403
+                                        ? t("ui.checkKeyPermissions")
+                                        : h.result.error
+                                      : `HTTP ${h.result.status || "—"} · ${h.result.error}`}
+                                  </strong>
+                                  <small>
+                                    {t(
+                                      h.result.status === 401 || h.result.status === 403
+                                        ? "ui.checkKeyPermissions"
+                                        : "ui.viewResponse",
+                                    )}
+                                  </small>
+                                </div>
+                                <span class="spacer" />
+                                <CopyButton value={failureLog} title={t("ui.copyLog")} showLabel />
+                              </div>
                             ) : null}
-                            <div class="detail-field">
-                              <span>Base URL</span>
-                              <code>{h.baseUrl}</code>
-                              <CopyButton value={h.baseUrl} title={t("history.copyUrlTitle")} />
-                            </div>
-                            <div class="detail-field">
-                              <span>{t("ui.url")}</span>
-                              <code>{h.result.requestUrl || h.baseUrl}</code>
-                              <CopyButton value={h.result.requestUrl || h.baseUrl} title={t("history.copyUrlTitle")} />
-                            </div>
-                            <div class="detail-field">
-                              <span>API Key</span>
-                              <code>{revealed.has(h.id) ? h.apiKey : maskKey(h.apiKey)}</code>
-                              <button class="compact-button" onClick={() => toggle(setRevealed, h.id)}>
-                                {t(revealed.has(h.id) ? "conn.hide" : "conn.show")}
-                              </button>
-                              <CopyButton value={h.apiKey} title={t("conn.copyKey")} />
-                            </div>
-                            {h.userAgent ? (
+                            <details class="history-connection-details" open={!mobile || h.result.ok}>
+                              <summary>{t("ui.moreConnection")}</summary>
                               <div class="detail-field">
-                                <span>User-Agent</span>
-                                <code>{h.userAgent}</code>
-                                <CopyButton value={h.userAgent} title="User-Agent" />
+                                <span>Base URL</span>
+                                <code>{h.baseUrl}</code>
+                                <CopyButton value={h.baseUrl} title={t("history.copyUrlTitle")} />
                               </div>
-                            ) : null}
-                            <details class="history-response" open={!mobile || !h.result.ok}>
-                              <summary>{t(h.result.ok ? "ui.response" : "ui.failureLog")}</summary>
-                              <div class="detail-heading">
-                                <strong>{t(h.result.ok ? "ui.response" : "ui.failureLog")}</strong>
-                                <CopyButton value={h.result.ok ? h.result.text : failureLog} title={t("ui.more")} />
+                              <div class="detail-field">
+                                <span>API Key</span>
+                                <code>{revealed.has(h.id) ? h.apiKey : maskKey(h.apiKey)}</code>
+                                <button class="compact-button" onClick={() => toggle(setRevealed, h.id)}>
+                                  {t(revealed.has(h.id) ? "conn.hide" : "conn.show")}
+                                </button>
+                                <CopyButton value={h.apiKey} title={t("conn.copyKey")} />
                               </div>
-                              <pre>{h.result.ok ? h.result.text : failureLog}</pre>
+                              {h.userAgent ? (
+                                <div class="detail-field">
+                                  <span>User-Agent</span>
+                                  <code>{h.userAgent}</code>
+                                  <CopyButton value={h.userAgent} title="User-Agent" />
+                                </div>
+                              ) : null}
+                              <details class="history-response" open={!mobile}>
+                                <summary>
+                                  <FileText size={16} />
+                                  {t(h.result.ok ? "ui.viewResponse" : "ui.failureLog")}
+                                </summary>
+                                <details class="history-request">
+                                  <summary>{t("ui.url")}</summary>
+                                  <div class="detail-field request-url-field">
+                                    <span>{t("ui.url")}</span>
+                                    <code>{h.result.requestUrl || h.baseUrl}</code>
+                                    <CopyButton
+                                      value={h.result.requestUrl || h.baseUrl}
+                                      title={t("history.copyUrlTitle")}
+                                    />
+                                  </div>
+                                </details>
+                                <div class="detail-heading">
+                                  <strong>{t(h.result.ok ? "ui.response" : "ui.failureLog")}</strong>
+                                  <CopyButton value={h.result.ok ? h.result.text : failureLog} title={t("ui.more")} />
+                                </div>
+                                <pre>{h.result.ok ? h.result.text : failureLog}</pre>
+                              </details>
                             </details>
-                            {h.result.ok ? (
-                              <CcSwitchButton
-                                name={`${h.providerName} - ${h.modelLabel}`}
-                                endpoint={h.baseUrl}
-                                apiKey={h.apiKey}
-                                model={h.model}
-                                defaultApp={PROTOCOL_TO_APP[h.protocol]}
-                                onLaunched={onLaunched}
-                              />
-                            ) : null}
                           </div>
                         </td>
                       </tr>
@@ -265,6 +307,11 @@ export function HistoryPanel({
             )}
           </tbody>
         </table>
+      </div>
+      <div class="history-list-footer">
+        <span>{t("ui.recordsCount", { count: filtered.length })}</span>
+        <span class="success">{t("ui.passedCount", { count: filtered.filter((h) => h.result.ok).length })}</span>
+        <span class="fail">{t("ui.failedCount", { count: filtered.filter((h) => !h.result.ok).length })}</span>
       </div>
       {confirmClear ? (
         <ConfirmModal

@@ -1,5 +1,5 @@
 import { useState } from "preact/hooks";
-import { Monitor, Moon, Sun, type LucideIcon } from "lucide-preact";
+import { Menu, Monitor, Moon, Sun, type LucideIcon } from "lucide-preact";
 import { getThemePref, setThemePref, type ThemePref } from "../lib/theme.js";
 import { useI18n } from "../lib/i18n.js";
 import { GlassButton, GlassSegmentedControl } from "./design-system/GlassControls.js";
@@ -26,17 +26,26 @@ export function ThemeToggle() {
 
   if (mobile)
     return (
-      <ActionMenu label={t("theme.label")}>
-        {SEGS.map((s) => {
-          const Icon = s.icon;
-          return (
-            <button key={s.pref} type="button" aria-pressed={pref === s.pref} onClick={() => pick(s.pref)}>
-              <Icon size={16} aria-hidden="true" />
-              {t(s.key)}
-            </button>
-          );
-        })}
-      </ActionMenu>
+      <>
+        <button
+          class="mobile-theme-toggle icon-button"
+          aria-label={t(pref === "dark" ? "theme.light" : "theme.dark")}
+          onClick={() => pick(pref === "dark" ? "light" : "dark")}
+        >
+          {pref === "dark" ? <Sun size={20} /> : <Moon size={20} />}
+        </button>
+        <ActionMenu label={t("theme.label")} icon={Menu}>
+          {SEGS.map((s) => {
+            const Icon = s.icon;
+            return (
+              <button key={s.pref} type="button" aria-pressed={pref === s.pref} onClick={() => pick(s.pref)}>
+                <Icon size={16} aria-hidden="true" />
+                {t(s.key)}
+              </button>
+            );
+          })}
+        </ActionMenu>
+      </>
     );
   return (
     <GlassSegmentedControl class="theme-toggle" role="group" aria-label={t("theme.label")}>

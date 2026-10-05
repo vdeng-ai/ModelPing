@@ -1,15 +1,19 @@
 import type { ComponentChildren } from "preact";
 import { useEffect, useId, useRef, useState } from "preact/hooks";
-import { MoreHorizontal } from "lucide-preact";
+import { ChevronDown, MoreHorizontal, type LucideIcon } from "lucide-preact";
 
 export function ActionMenu({
   label,
   children,
   disabled = false,
+  icon: Icon = MoreHorizontal,
+  showLabel = false,
 }: {
   label: string;
   children: ComponentChildren;
   disabled?: boolean;
+  icon?: LucideIcon;
+  showLabel?: boolean;
 }) {
   const id = useId();
   const menu = useRef<HTMLDivElement>(null);
@@ -25,7 +29,7 @@ export function ActionMenu({
     <span class="action-menu">
       <button
         type="button"
-        class="icon-button subtle"
+        class={showLabel ? "menu-trigger" : "icon-button subtle"}
         disabled={disabled}
         aria-label={label}
         title={label}
@@ -49,7 +53,14 @@ export function ActionMenu({
             ?.focus();
         }}
       >
-        <MoreHorizontal size={18} aria-hidden="true" />
+        {showLabel ? (
+          <>
+            {label}
+            <ChevronDown size={15} aria-hidden="true" />
+          </>
+        ) : (
+          <Icon size={18} aria-hidden="true" />
+        )}
       </button>
       <div
         id={id}

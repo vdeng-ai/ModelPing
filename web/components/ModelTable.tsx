@@ -1,14 +1,29 @@
 import { useState } from "preact/hooks";
-import { Ban, BookmarkPlus, ChevronRight, Equal, Play, Plus, RadioTower, Save, Search, Trash2, X } from "lucide-preact";
-import type { Protocol, StatusEntry } from "../lib/types.js";
+import {
+  Ban,
+  BookmarkPlus,
+  ChevronRight,
+  Equal,
+  FileText,
+  Play,
+  Plus,
+  RadioTower,
+  Save,
+  Search,
+  Filter,
+  Trash2,
+  X,
+} from "lucide-preact";
+import type { Protocol, ProviderPreset, StatusEntry } from "../lib/types.js";
 import { fmtMs, fmtTok, PROTOCOL_LABEL } from "../lib/format.js";
 import { CcSwitchButton } from "./CcSwitchButton.js";
 import { PromptModal } from "./PromptModal.js";
 import { useI18n, translate, type Lang } from "../lib/i18n.js";
 import { PROTOCOLS, protocolsForProvider } from "../../src/protocols.js";
 import { CUSTOM_PROVIDER_ID } from "../lib/presets.js";
-import { groupModelsByFamily } from "../lib/model-groups.js";
+import { StatusMark } from "./StatusMark.js";
 import type { ModelRow, ProtocolProbe } from "../lib/model-rows.js";
+import { useMediaQuery } from "./useMediaQuery.js";
 import { ActionMenu } from "./ActionMenu.js";
 import { CopyButton } from "./CopyButton.js";
 import { rowState, rowResult } from "../lib/result-presentation.js";
@@ -16,6 +31,7 @@ export { protocolsForModel } from "../lib/model-rows.js";
 
 interface Props {
   rows: ModelRow[];
+  providers: ProviderPreset[];
   busy: boolean;
   progress: { completed: number; total: number };
   conn: { providerId: string; baseUrl: string; isFullUrl?: boolean; apiKey: string };
@@ -100,10 +116,11 @@ function shownProtocols(r: ModelRow, providerId: string): Protocol[] {
 
 export function ModelTable(props: Props) {
   const { t, lang } = useI18n();
+  const mobile = useMediaQuery("(max-width: 760px)");
   const { rows, busy, conn, providerName } = props;
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("all");
-  const [newModel, setNewModel] = useState("");
+  const [addingModel, setAddingModel] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   const [statusNamePrompt, setStatusNamePrompt] = useState<Array<Omit<StatusEntry, "id">> | null>(null);
@@ -119,7 +136,19 @@ export function ModelTable(props: Props) {
   const selectedCount = rows.filter((row) => row.checked).length;
   const allVisibleChecked = visibleRows.length > 0 && visibleRows.every((row) => row.checked);
   const canAddStatus = Boolean(conn.baseUrl.trim() && conn.apiKey.trim());
-  const listEntries = groupModelsByFamily(visibleRows, (row) => row.label);
+  // Explicit preset membership determines groups, including single-model vendors.
+  const groups = props.providers.map((provider) => ({
+    key: provider.id,
+    label: provider.name,
+    models: visibleRows.filter((row) => !row.custom && Object.keys(row.modelByProvider)[0] === provider.id),
+  }));
+  const other = visibleRows.filter(
+    (row) => row.custom || !props.providers.some((p) => Object.keys(row.modelByProvider)[0] === p.id),
+  );
+  if (other.length) groups.push({ key: "custom-models", label: t("ui.otherModels"), models: other });
+  const listEntries = groups.filter((group) => group.models.length);
+  const passedCount = rows.filter((row) => rowState(row) === "success").length;
+  const failedCount = rows.filter((row) => rowState(row) === "fail").length;
   const toggle = (setter: typeof setExpanded, key: string) =>
     setter((current) => {
       const next = new Set(current);
@@ -173,10 +202,12 @@ export function ModelTable(props: Props) {
             ))}
           </div>
           <span class={"model-verdict " + state}>
-            <span class="status-dot" aria-hidden="true" />
+            <StatusMark state={state} />
             {t(
               state === "success"
-                ? "ui.passed"
+                ? mobile
+                  ? "ui.passed"
+                  : "ui.success"
                 : state === "fail"
                   ? "ui.failed"
                   : state === "testing"
@@ -186,11 +217,11 @@ export function ModelTable(props: Props) {
           </span>
           <div class="model-metrics">
             <span>
-              <small>{t("models.latency")}</small>
+              <small>{t("history.colLatency")}</small>
               <strong>{fmtMs(result?.latencyMs ?? null)}</strong>
             </span>
             <span>
-              <small>{t("models.ttft")}</small>
+              <small>{t("history.colTtft")}</small>
               <strong>{fmtMs(ttft)}</strong>
             </span>
             <span>
@@ -233,30 +264,51 @@ export function ModelTable(props: Props) {
         </div>
         {open && result ? (
           <div class={"result-details " + state}>
-            {!result.ok ? (
-              <p class="fail">
-                <strong>HTTP {result.status || "—"}</strong> · {result.error}
-              </p>
-            ) : null}
-            <div class="detail-heading">
-              <strong>{t(result.ok ? "ui.response" : "ui.failureLog")}</strong>
-              <CopyButton
-                value={result.ok ? result.text : result.failureLog || result.error || ""}
-                title={t("ui.more")}
-              />
-            </div>
-            <pre>{result.ok ? result.text : result.failureLog || result.error}</pre>
-            {shownProtocols(r, conn.providerId).length > 1 ? (
-              <details>
-                <summary>{t("models.colProtocol")}</summary>
-                {shownProtocols(r, conn.providerId).map((p) => (
-                  <div key={p}>
-                    <Badge probe={r.probes[p]} lang={lang} />{" "}
-                    {r.probes[p].result?.error || r.probes[p].result?.text || t("models.statusPending")}
+            <div class="result-callout">
+              {!result.ok ? (
+                <>
+                  <StatusMark state="fail" />
+                  <div>
+                    <p>
+                      <strong>HTTP {result.status || "—"}</strong> · {result.error}
+                    </p>
+                    <small>
+                      {t(result.status === 401 || result.status === 403 ? "ui.checkKeyPermissions" : "ui.viewResponse")}
+                    </small>
                   </div>
-                ))}
-              </details>
-            ) : null}
+                </>
+              ) : (
+                <strong>{t("ui.response")}</strong>
+              )}
+              <span class="spacer" />
+              <CopyButton value={result.failureLog || result.error || result.text} title={t("ui.copyLog")} showLabel />
+              <button class="text-action" onClick={() => toggle(setExpanded, `${r.key}-response`)}>
+                <FileText size={16} />
+                {t("ui.viewResponse")}
+              </button>
+            </div>
+            <details class="result-response" open={result.ok || expanded.has(`${r.key}-response`)}>
+              <summary>{t(result.ok ? "ui.response" : "ui.failureLog")}</summary>
+              <div class="detail-heading">
+                <strong>{t(result.ok ? "ui.response" : "ui.failureLog")}</strong>
+                <CopyButton
+                  value={result.ok ? result.text : result.failureLog || result.error || ""}
+                  title={t("ui.copyLog")}
+                />
+              </div>
+              <pre>{result.ok ? result.text : result.failureLog || result.error}</pre>
+              {shownProtocols(r, conn.providerId).length > 1 ? (
+                <details>
+                  <summary>{t("models.colProtocol")}</summary>
+                  {shownProtocols(r, conn.providerId).map((p) => (
+                    <div key={p}>
+                      <Badge probe={r.probes[p]} lang={lang} />{" "}
+                      {r.probes[p].result?.error || r.probes[p].result?.text || t("models.statusPending")}
+                    </div>
+                  ))}
+                </details>
+              ) : null}
+            </details>
           </div>
         ) : null}
       </div>
@@ -278,17 +330,22 @@ export function ModelTable(props: Props) {
             onInput={(e) => setQuery(e.currentTarget.value)}
           />
         </label>
-        <select
-          class="result-filter"
-          aria-label={t("ui.allResults")}
-          value={filter}
-          onChange={(e) => setFilter(e.currentTarget.value)}
-        >
-          <option value="all">{t("ui.allResults")}</option>
-          <option value="success">{t("ui.passed")}</option>
-          <option value="fail">{t("ui.failed")}</option>
-          <option value="idle">{t("ui.pending")}</option>
-        </select>
+        <span class="result-filter">
+          <ActionMenu label={t("ui.allResults")} icon={Filter}>
+            {/* Filter selection remains available in the menu. */}
+            <select
+              class="result-filter-select"
+              aria-label={t("ui.allResults")}
+              value={filter}
+              onChange={(e) => setFilter(e.currentTarget.value)}
+            >
+              <option value="all">{t("ui.allResults")}</option>
+              <option value="success">{t("ui.passed")}</option>
+              <option value="fail">{t("ui.failed")}</option>
+              <option value="idle">{t("ui.pending")}</option>
+            </select>
+          </ActionMenu>
+        </span>
         <label class="select-visible">
           <input
             type="checkbox"
@@ -304,8 +361,16 @@ export function ModelTable(props: Props) {
           {t("common.selectAll")}
         </label>
         <span class="selection-count">{t("ui.selected", { count: selectedCount })}</span>
+        <button class="mobile-add-model text-action" disabled={busy} onClick={() => setAddingModel(true)}>
+          <Plus size={16} />
+          {t("models.addModel")}
+        </button>
         <div class="model-primary-actions">
-          <ActionMenu label={t("ui.more")}>
+          <ActionMenu label={t("ui.more")} showLabel>
+            <button onClick={() => setAddingModel(true)}>
+              <Plus size={16} />
+              {t("models.addModel")}
+            </button>
             <label class="menu-field">
               {t("ui.allResults")}
               <select value={filter} onChange={(e) => setFilter(e.currentTarget.value)}>
@@ -355,15 +420,28 @@ export function ModelTable(props: Props) {
         </div>
       ) : null}
       <div class="model-result-list">
-        <div class="model-list-head" aria-hidden="true">
-          <span />
+        <div class="model-list-head">
+          <label class="row-check">
+            <input
+              type="checkbox"
+              checked={allVisibleChecked}
+              disabled={busy || !visibleRows.length}
+              aria-label={t("ui.selectVisible")}
+              onChange={(e) =>
+                props.onToggleGroup(
+                  visibleRows.map((r) => r.key),
+                  e.currentTarget.checked,
+                )
+              }
+            />
+          </label>
           <span>{t("models.colModel")}</span>
           <span>{t("models.colProtocol")}</span>
           <span>{t("history.colStatus")}</span>
           <div class="model-metric-head">
             <span>{t("history.colLatency")}</span>
             <span>{t("history.colTtft")}</span>
-            <span>Token</span>
+            <span>{t("models.tokens")}</span>
           </div>
           <span>{t("models.colActions")}</span>
         </div>
@@ -371,7 +449,6 @@ export function ModelTable(props: Props) {
           <div class="empty">{t(rows.length ? "ui.noMatch" : "models.empty")}</div>
         ) : (
           listEntries.map((entry) => {
-            if (entry.kind === "model") return renderRow(entry.model);
             const groupOpen = !collapsedGroups.has(entry.key);
             const checked = entry.models.every((row) => row.checked);
             return (
@@ -414,32 +491,42 @@ export function ModelTable(props: Props) {
           })
         )}
       </div>
-      <div class="add-model">
-        <input
-          class="mono"
-          value={newModel}
-          placeholder={t("models.addPlaceholder")}
-          aria-label={t("models.addModel")}
-          onInput={(e) => setNewModel(e.currentTarget.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && newModel.trim()) {
-              props.onAdd(newModel.trim());
-              setNewModel("");
-            }
+      <div class="model-list-footer">
+        <button class="add-model-trigger" disabled={busy} onClick={() => setAddingModel(true)}>
+          <Plus size={16} />
+          {t("ui.addCustomModel")}
+        </button>
+        <span class="spacer" />
+        <span class="success">
+          <StatusMark state="success" />
+          {t("ui.passedCount", { count: passedCount })}
+        </span>
+        <span class="fail">
+          <StatusMark state="fail" />
+          {t("ui.failedCount", { count: failedCount })}
+        </span>
+        <span class="muted">{t("ui.batchCount", props.progress)}</span>
+      </div>
+      {addingModel ? (
+        <PromptModal
+          title={t("ui.addCustomModel")}
+          confirmLabel={t("models.addModel")}
+          fields={[
+            {
+              key: "model",
+              label: t("settings.modelIdPlaceholder"),
+              placeholder: t("models.addPlaceholder"),
+              required: true,
+              mono: true,
+            },
+          ]}
+          onClose={() => setAddingModel(false)}
+          onConfirm={({ model }) => {
+            props.onAdd(model.trim());
+            setAddingModel(false);
           }}
         />
-        <button
-          disabled={busy || !newModel.trim()}
-          onClick={() => {
-            props.onAdd(newModel.trim());
-            setNewModel("");
-          }}
-        >
-          <Plus size={16} />
-          {t("models.addModel")}
-        </button>
-        <span class="muted">{t("ui.total", { count: rows.length })}</span>
-      </div>
+      ) : null}
       {statusNamePrompt ? (
         <PromptModal
           title={t("models.statusProviderNameTitle")}

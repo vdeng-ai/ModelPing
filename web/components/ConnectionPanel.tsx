@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from "preact/hooks";
-import { Eye, EyeOff, ListPlus, Save, WalletCards } from "lucide-preact";
+import { ChevronRight, Eye, EyeOff, Link, ListPlus, Save, WalletCards } from "lucide-preact";
 import type { Balance, ProviderPreset } from "../lib/types.js";
 import { CUSTOM_PROVIDER_ID } from "../lib/presets.js";
 import { fetchBalance, fetchModels } from "../lib/api.js";
@@ -186,10 +186,13 @@ export function ConnectionPanel({
   return (
     <details class="panel connection-panel setup-disclosure" open={!mobile}>
       <summary class="setup-summary">
+        <Link size={20} aria-hidden="true" />
         <strong>
           {t("conn.title")}: {providers.find((p) => p.id === value.providerId)?.name ?? t("common.custom")}
         </strong>
-        <span>{value.baseUrl && value.apiKey ? t("ui.connectionReady") : t("ui.connectionEmpty")}</span>
+        <span class="connection-edit">
+          {t("ui.edit")} <ChevronRight size={16} />
+        </span>
         <small>{value.baseUrl || t("conn.baseUrl")}</small>
       </summary>
       <div class="setup-body">
@@ -217,28 +220,12 @@ export function ConnectionPanel({
             value={value.providerId}
             onChange={(e) => onProvider((e.target as HTMLSelectElement).value)}
           >
-            <option value={CUSTOM_PROVIDER_ID}>{t("common.custom")}</option>
+            <option value={CUSTOM_PROVIDER_ID}>{t("ui.customCompatible")}</option>
             {sortedProviders.map((p) => (
               <option value={p.id}>{p.name}</option>
             ))}
           </select>
         </div>
-
-        <details class="disclosure quick-import">
-          <summary>{t("conn.quickImport")}</summary>
-          <div class="disclosure-body">
-            <label class="sr-only" for="connection-quick-import">
-              {t("conn.quickImport")}
-            </label>
-            <input
-              id="connection-quick-import"
-              class="mono"
-              type="text"
-              placeholder={t("conn.quickImportPlaceholder")}
-              onInput={(e) => tryQuickImport((e.target as HTMLInputElement).value, e.target as HTMLInputElement)}
-            />
-          </div>
-        </details>
 
         <div class="row mt-12">
           <div class="field grow">
@@ -251,7 +238,9 @@ export function ConnectionPanel({
                 placeholder="https://api.example.com/v1"
                 onInput={(e) => onChange({ ...value, baseUrl: (e.target as HTMLInputElement).value })}
               />
-              <CopyButton value={value.baseUrl} title={t("conn.copyBaseUrl")} />
+              <span class="base-url-copy">
+                <CopyButton value={value.baseUrl} title={t("conn.copyBaseUrl")} />
+              </span>
             </div>
             <div class="field-tools">
               <label class="toggle">
@@ -306,7 +295,7 @@ export function ConnectionPanel({
                     }
                   }}
                 >
-                  B64
+                  Base64
                 </button>
                 <button
                   class="compact-button"
@@ -346,19 +335,23 @@ export function ConnectionPanel({
                   {t("conn.reverse")}
                 </button>
               </div>
+              <details class="disclosure quick-import">
+                <summary>{t("ui.moreConnection")}</summary>
+                <div class="disclosure-body">
+                  <CopyButton value={value.baseUrl} title={t("conn.copyBaseUrl")} showLabel />
+                  <label class="sr-only" for="connection-quick-import">
+                    {t("conn.quickImport")}
+                  </label>
+                  <input
+                    id="connection-quick-import"
+                    class="mono"
+                    type="text"
+                    placeholder={t("conn.quickImportPlaceholder")}
+                    onInput={(e) => tryQuickImport((e.target as HTMLInputElement).value, e.target as HTMLInputElement)}
+                  />
+                </div>
+              </details>
               <div class="field-tools-row lookup-tools-row">
-                <button
-                  class="compact-button"
-                  title={t("conn.queryBalanceTitle")}
-                  disabled={!canLookup || balanceBusy}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onQueryBalance();
-                  }}
-                >
-                  <WalletCards size={15} aria-hidden="true" />
-                  {t("conn.queryBalance")}
-                </button>
                 <button
                   ref={fetchModelsButtonRef}
                   class="compact-button secondary"
@@ -371,6 +364,18 @@ export function ConnectionPanel({
                 >
                   <ListPlus size={15} aria-hidden="true" />
                   {modelsBusy ? t("conn.fetchingModels") : t("conn.fetchModels")}
+                </button>{" "}
+                <button
+                  class="compact-button"
+                  title={t("conn.queryBalanceTitle")}
+                  disabled={!canLookup || balanceBusy}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onQueryBalance();
+                  }}
+                >
+                  <WalletCards size={15} aria-hidden="true" />
+                  {t("conn.queryBalance")}
                 </button>
               </div>
             </div>
