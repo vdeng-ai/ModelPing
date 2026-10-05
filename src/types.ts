@@ -196,6 +196,7 @@ export interface HistoryEntry {
   model: string;
   modelLabel: string;
   streamVerdict: StreamVerdict;
+  streamTtftMs?: number | null;
   result: TestResult;
 }
 

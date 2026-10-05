@@ -45,6 +45,12 @@ export function App() {
   const [providers, setProviders] = useState<ProviderPreset[]>([]);
   const [presetDefaults, setPresetDefaults] = useState<Defaults>(FALLBACK_DEFAULTS);
   const [route, setRoute] = useState<AppRoute>(() => appRouteFromHash(window.location.hash));
+  const [providerDirty, setProviderDirty] = useState(false);
+  const providerDirtyRef = useRef(false);
+  providerDirtyRef.current = providerDirty;
+  const [pendingRoute, setPendingRoute] = useState<AppRoute | null>(null);
+  const routeRef = useRef(route);
+  routeRef.current = route;
   const [conn, setConn] = useState<ConnValue>({ providerId: CUSTOM_PROVIDER_ID, baseUrl: "", isFullUrl: false, apiKey: "" });
   const [config, setConfig] = useState<ConfigState>({ input: "", timeoutMs: 30000, maxRetries: 1, maxTokens: 512, userAgent: "", concurrency: 2 });
   const [rows, setRows] = useState<ModelRow[]>([]);
@@ -82,6 +88,7 @@ export function App() {
   const defaultInputRef = useRef(t("config.defaultInput"));
 
   const navigateTo = (next: AppRoute) => {
+    if (providerDirtyRef.current && next !== routeRef.current) { setPendingRoute(next); return; }
     const hash = hashForAppRoute(next);
     if (window.location.hash === hash) {
       setRoute(next);
@@ -208,6 +215,11 @@ export function App() {
   useEffect(() => {
     const syncRoute = () => {
       const next = appRouteFromHash(window.location.hash);
+      if (providerDirtyRef.current && next !== routeRef.current) {
+        window.history.replaceState(null, "", hashForAppRoute(routeRef.current));
+        setPendingRoute(next);
+        return;
+      }
       setRoute(next);
       const canonical = hashForAppRoute(next);
       if (window.location.hash !== canonical) {
@@ -217,6 +229,12 @@ export function App() {
     syncRoute();
     window.addEventListener("hashchange", syncRoute);
     return () => window.removeEventListener("hashchange", syncRoute);
+  }, []);
+
+  useEffect(() => {
+    const guard = (event: BeforeUnloadEvent) => { if (providerDirtyRef.current) { event.preventDefault(); event.returnValue = ""; } };
+    window.addEventListener("beforeunload", guard);
+    return () => window.removeEventListener("beforeunload", guard);
   }, []);
 
   useEffect(() => {
@@ -679,7 +697,7 @@ export function App() {
             </span>
             <span class="brand-copy">
               <strong>ModelPing</strong>
-              <span>{t("app.title")}</span>
+              <span>LLM API Tester</span>
             </span>
           </div>
 
@@ -747,7 +765,7 @@ export function App() {
         ) : null}
 
         {!loadErr && bootstrapped && testRoute ? (
-          <div class="test-workspace">
+          <div class={"test-workspace" + (route === "test-history" ? " history-workspace" : "")}>
             <aside class="workspace-sidebar" aria-label={t("app.setupLabel")}>
               <ConnectionPanel
                 providers={providers}
@@ -830,11 +848,14 @@ export function App() {
             busy={busy}
             onChange={onPresetProvidersChange}
             onImport={onImportPresets}
+            onDirtyChange={setProviderDirty}
+            onSaved={() => showToast(t("ui.saved"), { tone: "success" })}
           />
         ) : null}
 
         {toast ? <div class={"toast" + (toastTone === "error" ? " error" : "") + (toastTone === "success" ? " success" : "")} role="status" aria-live="polite">{toast}</div> : null}
       </main>
+      {pendingRoute ? <ConfirmModal title={t("ui.discardTitle")} description={t("ui.discardBody")} confirmLabel={t("ui.discardConfirm")} onClose={() => setPendingRoute(null)} onConfirm={() => { const next = pendingRoute; setPendingRoute(null); providerDirtyRef.current = false; setProviderDirty(false); navigateTo(next); }} /> : null}
       {pendingPresetModelDelete ? (
         <ConfirmModal
           title={t("models.deletePresetTitle", { model: pendingPresetModelDelete.label })}

@@ -31,6 +31,7 @@ export function CcSwitchButton({ name, endpoint, apiKey, model, defaultApp, disa
         class="ccswitch-app"
         value={app}
         title={t("ccswitch.targetApp")}
+        aria-label={t("ccswitch.targetApp")}
         disabled={disabled}
         onChange={(e) => setApp((e.target as HTMLSelectElement).value as CcApp)}
       >

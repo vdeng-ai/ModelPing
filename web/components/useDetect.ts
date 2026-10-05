@@ -138,6 +138,7 @@ export function useDetect(deps: DetectDeps) {
           model,
           modelLabel: row.label,
           streamVerdict,
+          streamTtftMs,
           result,
         };
         addHistoryEntry(entry);

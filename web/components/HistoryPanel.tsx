@@ -1,262 +1,73 @@
-import { createPortal } from "preact/compat";
-import { useEffect, useRef, useState } from "preact/hooks";
-import { Ban, Download, Equal, RadioTower, Trash2 } from "lucide-preact";
+import { useState } from "preact/hooks";
+import { ChevronRight, Download, Search, Trash2 } from "lucide-preact";
 import type { HistoryEntry } from "../lib/types.js";
 import { fmtMs, fmtTok, fmtTime, PROTOCOL_LABEL } from "../lib/format.js";
 import { PROTOCOL_TO_APP } from "../lib/ccswitch.js";
+import { maskKey } from "../lib/storage.js";
 import { CopyButton } from "./CopyButton.js";
 import { CcSwitchButton } from "./CcSwitchButton.js";
+import { ConfirmModal } from "./ConfirmModal.js";
+import { ActionMenu } from "./ActionMenu.js";
 import { useI18n } from "../lib/i18n.js";
 
-interface Props {
+function exportJson(entries: HistoryEntry[]) {
+  const url = URL.createObjectURL(new Blob([JSON.stringify(entries, null, 2)], { type: "application/json" }));
+  const anchor = document.createElement("a"); anchor.href = url; anchor.download = `llm-test-history-${Date.now()}.json`; anchor.click(); URL.revokeObjectURL(url);
+}
+
+export function HistoryPanel({ entries, onClear, onLaunched }: {
   entries: HistoryEntry[];
   onClear: () => void;
   onLaunched: (msg: string, opts?: { tone?: "info" | "error"; ms?: number }) => void;
-}
-
-interface FailurePopoverState {
-  id: string;
-  detail: string;
-  anchor: HTMLButtonElement;
-  pinned: boolean;
-  left: number;
-  top: number;
-  width: number;
-  maxHeight: number;
-  above: boolean;
-}
-
-function failurePopoverId(id: string): string {
-  return `history-failure-${id.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
-}
-
-function placeFailurePopover(
-  id: string,
-  detail: string,
-  anchor: HTMLButtonElement,
-  pinned: boolean,
-): FailurePopoverState {
-  const margin = 12;
-  const gap = 8;
-  const rect = anchor.getBoundingClientRect();
-  const availableWidth = Math.max(160, window.innerWidth - margin * 2);
-  const width = Math.min(520, availableWidth);
-  const left = Math.min(
-    Math.max(margin, rect.left),
-    Math.max(margin, window.innerWidth - margin - width),
-  );
-  const roomBelow = Math.max(48, window.innerHeight - rect.bottom - gap - margin);
-  const roomAbove = Math.max(48, rect.top - gap - margin);
-  const above = roomBelow < 220 && roomAbove > roomBelow;
-  const maxHeight = Math.min(360, above ? roomAbove : roomBelow);
-  return {
-    id,
-    detail,
-    anchor,
-    pinned,
-    left,
-    top: above ? rect.top - gap : rect.bottom + gap,
-    width,
-    maxHeight,
-    above,
-  };
-}
-
-function exportJson(entries: HistoryEntry[]) {
-  // 导出时保留 key（用户自己机器），便于复盘。
-  const blob = new Blob([JSON.stringify(entries, null, 2)], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `llm-test-history-${Date.now()}.json`;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
-export function HistoryPanel({ entries, onClear, onLaunched }: Props) {
+}) {
   const { t } = useI18n();
-  const [failurePopover, setFailurePopover] = useState<FailurePopoverState | null>(null);
-  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const cancelPopoverClose = () => {
-    if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
-    closeTimerRef.current = null;
-  };
-
-  const schedulePopoverClose = () => {
-    cancelPopoverClose();
-    closeTimerRef.current = setTimeout(() => {
-      setFailurePopover((current) => current?.pinned ? current : null);
-    }, 120);
-  };
-
-  const showFailurePopover = (
-    id: string,
-    detail: string,
-    anchor: HTMLButtonElement,
-    pinned: boolean,
-  ) => {
-    cancelPopoverClose();
-    setFailurePopover((current) => {
-      if (!pinned && current?.pinned) return current;
-      if (pinned && current?.id === id && current.pinned) return null;
-      return placeFailurePopover(id, detail, anchor, pinned);
-    });
-  };
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setFailurePopover(null);
-    };
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      cancelPopoverClose();
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!failurePopover) return;
-    const reposition = () => {
-      setFailurePopover((current) => current
-        ? placeFailurePopover(current.id, current.detail, current.anchor, current.pinned)
-        : null);
-    };
-    window.addEventListener("resize", reposition);
-    window.addEventListener("scroll", reposition, true);
-    return () => {
-      window.removeEventListener("resize", reposition);
-      window.removeEventListener("scroll", reposition, true);
-    };
-  }, [failurePopover?.id]);
-
-  return (
-    <>
-      <section class="panel history-panel" aria-labelledby="history-heading">
-      <h2 id="history-heading" class="sr-only">{t("history.title")}</h2>
-      <div class="history-controls">
-        <span class="status-text">{t("history.sessionOnly")}</span>
-        <span class="spacer" />
-        <button disabled={!entries.length} onClick={() => exportJson(entries)}><Download size={16} aria-hidden="true" />{t("history.exportJson")}</button>
-        <button class="danger-quiet" disabled={!entries.length} onClick={onClear}><Trash2 size={16} aria-hidden="true" />{t("history.clear")}</button>
-      </div>
-
-      <div class="table-frame">
-      <table class="models history-table">
-        <thead>
-          <tr>
-            <th>{t("history.colProvider")}</th>
-            <th>{t("history.colModel")}</th>
-            <th>{t("history.colStatus")}</th>
-            <th class="num">{t("history.colLatency")}</th>
-            <th class="num" data-col="ttft">{t("history.colTtft")}</th>
-            <th class="num" data-col="tokens">{t("history.colTokens")}</th>
-            <th>{t("history.colActions")}</th>
-            <th class="history-copy-column" data-col="url">{t("history.colUrl")}</th>
-            <th class="history-copy-column" data-col="key">{t("history.colKey")}</th>
-            <th data-col="time">{t("history.colTime")}</th>
+  const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState("all");
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [revealed, setRevealed] = useState<Set<string>>(new Set());
+  const [confirmClear, setConfirmClear] = useState(false);
+  const filtered = entries.filter((h) => `${h.providerName} ${h.modelLabel} ${h.model} ${h.protocol}`.toLowerCase().includes(query.trim().toLowerCase()) && (filter === "all" || (filter === "success") === h.result.ok));
+  const toggle = (setter: typeof setExpanded, id: string) => setter((current) => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next; });
+  const filterControl = <label class="menu-field">{t("ui.allResults")}<select aria-label={t("ui.allResults")} value={filter} onChange={(e) => setFilter(e.currentTarget.value)}><option value="all">{t("ui.allResults")}</option><option value="success">{t("ui.passed")}</option><option value="fail">{t("ui.failed")}</option></select></label>;
+  return <section class="panel history-panel" aria-labelledby="history-heading">
+    <div class="history-intro"><h2 id="history-heading">{t("history.title")}</h2><span class="muted">{t("history.sessionOnly")} · {entries.length}</span></div>
+    <div class="history-controls">
+      <label class="search-control"><Search size={17} aria-hidden="true" /><input type="search" value={query} placeholder={t("ui.searchHistory")} aria-label={t("ui.searchHistory")} onInput={(e) => setQuery(e.currentTarget.value)} /></label>
+      <span class="desktop-filter">{filterControl}</span>
+      <button class="primary" disabled={!entries.length} onClick={() => exportJson(entries)}><Download size={16} aria-hidden="true" />{t("history.exportJson")}</button>
+      <button class="danger-quiet desktop-clear" disabled={!entries.length} onClick={() => setConfirmClear(true)}><Trash2 size={16} />{t("history.clear")}</button>
+      <span class="mobile-history-menu"><ActionMenu label={t("ui.more")}>{filterControl}<button class="danger-quiet" disabled={!entries.length} onClick={() => setConfirmClear(true)}><Trash2 size={16} />{t("history.clear")}</button></ActionMenu></span>
+    </div>
+    <div class="table-frame"><table class="models history-table">
+      <thead><tr><th>{t("history.colProvider")}</th><th>{t("history.colModel")}</th><th>{t("history.colStatus")}</th><th>{t("history.colLatency")}</th><th>{t("history.colTtft")}</th><th>{t("history.colTokens")}</th><th>{t("history.colTime")}</th><th>{t("history.colActions")}</th></tr></thead>
+      <tbody>{!filtered.length ? <tr><td colSpan={8} class="empty">{t(entries.length ? "ui.noMatch" : "history.empty")}</td></tr> : filtered.map((h) => {
+        const open = expanded.has(h.id);
+        const ttft = h.streamTtftMs ?? h.result.ttftMs;
+        const failureLog = h.result.failureLog || h.result.error || "";
+        return <>
+          <tr key={h.id} class={"history-entry" + (open ? " expanded" : "")}>
+            <td class="history-provider"><button class="icon-button subtle" aria-expanded={open} aria-controls={`history-detail-${h.id}`} aria-label={open ? t("ui.collapse") : t("ui.details")} onClick={() => toggle(setExpanded, h.id)}><ChevronRight class={open ? "turned" : ""} size={16} /></button><span>{h.providerName}</span></td>
+            <td class="history-model"><strong class="model-name">{h.modelLabel}</strong><span class="proto-tag" title={h.protocol}>{PROTOCOL_LABEL[h.protocol]}</span></td>
+            <td class="history-result"><span class={"model-verdict " + (h.result.ok ? "success" : "fail")}><span class="status-dot" />{h.result.ok ? t("ui.passed") : t("history.fail", { status: h.result.status || "—" })}</span></td>
+            <td class="history-latency num"><small>{t("history.colLatency")}</small>{fmtMs(h.result.latencyMs)}</td>
+            <td class="history-ttft num">{fmtMs(ttft)}</td>
+            <td class="history-tokens num">{fmtTok(h.result.usage.inputTokens)} / {fmtTok(h.result.usage.outputTokens)} / {fmtTok(h.result.usage.totalTokens)}</td>
+            <td class="history-time muted">{fmtTime(h.ts)}</td>
+            <td class="history-actions"><ActionMenu label={`${t("ui.more")} · ${h.modelLabel}`}><button onClick={() => toggle(setExpanded, h.id)}>{open ? t("ui.collapse") : t("ui.details")}</button><CopyButton value={h.result.requestUrl || h.baseUrl} title={t("history.copyUrlTitle")} /><CopyButton value={h.apiKey} title={t("conn.copyKey")} />{h.result.ok ? <CcSwitchButton name={`${h.providerName} - ${h.modelLabel}`} endpoint={h.baseUrl} apiKey={h.apiKey} model={h.model} defaultApp={PROTOCOL_TO_APP[h.protocol]} onLaunched={onLaunched} /> : null}</ActionMenu></td>
           </tr>
-        </thead>
-        <tbody>
-          {entries.length === 0 ? (
-            <tr><td colSpan={10} class="empty">{t("history.empty")}</td></tr>
-          ) : (
-            entries.map((h) => {
-              const requestUrl = h.result.requestUrl || h.baseUrl;
-              const StreamIcon = h.streamVerdict === "stream" ? RadioTower : h.streamVerdict === "single" ? Equal : h.streamVerdict === "none" ? Ban : null;
-              const detail = !h.result.ok ? (h.result.failureLog || h.result.error || "") : "";
-              const hasPop = Boolean(detail);
-              const popoverVisible = failurePopover?.id === h.id;
-              return (
-                <tr key={h.id}>
-                  <td>{h.providerName}</td>
-                  <td>
-                    <span class="model-name" title={h.protocol}>{h.modelLabel}</span>{" "}
-                    <span class={"pbadge " + (h.result.ok ? "success" : "fail")} title={h.protocol}>
-                      <span class="pbadge-label">{PROTOCOL_LABEL[h.protocol]}</span>
-                      {StreamIcon ? <StreamIcon class={"stream-icon " + h.streamVerdict} size={12} aria-hidden="true" /> : null}
-                    </span>
-                  </td>
-                  <td>
-                    <span class={"status-cell" + (hasPop ? " has-pop" : "")}>
-                      {hasPop ? (
-                        <button
-                          type="button"
-                          class="status-pop-trigger"
-                          aria-expanded={popoverVisible}
-                          aria-describedby={popoverVisible ? failurePopoverId(h.id) : undefined}
-                          aria-label={t("history.failureDetails")}
-                          onMouseEnter={(e) => showFailurePopover(h.id, detail, e.currentTarget as HTMLButtonElement, false)}
-                          onMouseLeave={schedulePopoverClose}
-                          onFocus={(e) => showFailurePopover(h.id, detail, e.currentTarget as HTMLButtonElement, false)}
-                          onBlur={schedulePopoverClose}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            showFailurePopover(h.id, detail, e.currentTarget as HTMLButtonElement, true);
-                          }}
-                        >
-                          <span class={"status-text" + (h.result.ok ? "" : " fail")}>
-                            <span class={"dot " + (h.result.ok ? "success" : "fail")} />
-                            {h.result.ok ? t("history.pass") : t("history.fail", { status: h.result.status || "—" })}
-                          </span>
-                        </button>
-                      ) : (
-                        <span class={"status-text" + (h.result.ok ? "" : " fail")}>
-                          <span class={"dot " + (h.result.ok ? "success" : "fail")} />
-                          {h.result.ok ? t("history.pass") : t("history.fail", { status: h.result.status || "—" })}
-                        </span>
-                      )}
-                    </span>
-                  </td>
-                  <td class="num">{fmtMs(h.result.latencyMs)}</td>
-                  <td class="num" data-col="ttft">{fmtMs(h.result.ttftMs)}</td>
-                  <td class="num" data-col="tokens">
-                    {fmtTok(h.result.usage.inputTokens)}/{fmtTok(h.result.usage.outputTokens)}/{fmtTok(h.result.usage.totalTokens)}
-                  </td>
-                  <td>
-                    {h.result.ok ? (
-                      <CcSwitchButton
-                        name={`${h.providerName} - ${h.modelLabel}`}
-                        endpoint={h.baseUrl}
-                        apiKey={h.apiKey}
-                        model={h.model}
-                        defaultApp={PROTOCOL_TO_APP[h.protocol]}
-                        onLaunched={onLaunched}
-                      />
-                    ) : null}
-                  </td>
-                  <td
-                    class="history-copy-column"
-                    data-col="url"
-                    title={t("history.urlTitle", { requestUrl, baseUrl: h.baseUrl, full: h.isFullUrl ? t("history.urlFull") : "" })}
-                  >
-                    <CopyButton value={requestUrl} title={t("history.copyUrlTitle")} />
-                  </td>
-                  <td class="history-copy-column" data-col="key">
-                    {h.apiKey ? <CopyButton value={h.apiKey} title={t("conn.copyKey")} /> : <span class="status-text">—</span>}
-                  </td>
-                  <td class="status-text history-time" data-col="time">{fmtTime(h.ts)}</td>
-                </tr>
-              );
-            })
-          )}
-        </tbody>
-      </table>
-      </div>
-      </section>
-      {failurePopover ? createPortal(
-        <div
-          id={failurePopoverId(failurePopover.id)}
-          class={"failure-pop floating " + (failurePopover.above ? "above" : "below")}
-          role="tooltip"
-          style={`left:${failurePopover.left}px;top:${failurePopover.top}px;width:${failurePopover.width}px`}
-          onMouseEnter={cancelPopoverClose}
-          onMouseLeave={schedulePopoverClose}
-        >
-          <pre style={`max-height:${failurePopover.maxHeight}px`}>{failurePopover.detail}</pre>
-        </div>,
-        document.body,
-      ) : null}
-    </>
-  );
+          {open ? <tr key={`detail-${h.id}`} class="history-detail-row"><td colSpan={8}><div id={`history-detail-${h.id}`} class={"history-inline-details " + (h.result.ok ? "success" : "fail")}>
+            <div class="mobile-history-metrics"><span>{t("history.colLatency")}<strong>{fmtMs(h.result.latencyMs)}</strong></span><span>{t("history.colTtft")}<strong>{fmtMs(ttft)}</strong></span><span>Token<strong>{fmtTok(h.result.usage.inputTokens)} / {fmtTok(h.result.usage.outputTokens)} / {fmtTok(h.result.usage.totalTokens)}</strong></span></div>
+            {!h.result.ok ? <p class="fail"><strong>HTTP {h.result.status || "—"}</strong> · {h.result.error}</p> : null}
+            <div class="detail-field"><span>Base URL</span><code>{h.baseUrl}</code><CopyButton value={h.baseUrl} title={t("history.copyUrlTitle")} /></div>
+            <div class="detail-field"><span>{t("ui.url")}</span><code>{h.result.requestUrl || h.baseUrl}</code><CopyButton value={h.result.requestUrl || h.baseUrl} title={t("history.copyUrlTitle")} /></div>
+            <div class="detail-field"><span>API Key</span><code>{revealed.has(h.id) ? h.apiKey : maskKey(h.apiKey)}</code><button class="compact-button" onClick={() => toggle(setRevealed, h.id)}>{t(revealed.has(h.id) ? "conn.hide" : "conn.show")}</button><CopyButton value={h.apiKey} title={t("conn.copyKey")} /></div>
+            {h.userAgent ? <div class="detail-field"><span>User-Agent</span><code>{h.userAgent}</code><CopyButton value={h.userAgent} title="User-Agent" /></div> : null}
+            <div class="detail-heading"><strong>{t(h.result.ok ? "ui.response" : "ui.failureLog")}</strong><CopyButton value={h.result.ok ? h.result.text : failureLog} title={t("ui.more")} /></div><pre>{h.result.ok ? h.result.text : failureLog}</pre>
+            {h.result.ok ? <CcSwitchButton name={`${h.providerName} - ${h.modelLabel}`} endpoint={h.baseUrl} apiKey={h.apiKey} model={h.model} defaultApp={PROTOCOL_TO_APP[h.protocol]} onLaunched={onLaunched} /> : null}
+          </div></td></tr> : null}
+        </>;
+      })}</tbody>
+    </table></div>
+    {confirmClear ? <ConfirmModal title={t("ui.clearHistoryTitle")} description={t("ui.clearHistoryBody")} confirmLabel={t("history.clear")} onClose={() => setConfirmClear(false)} onConfirm={() => { onClear(); setConfirmClear(false); setExpanded(new Set()); }} /> : null}
+  </section>;
 }

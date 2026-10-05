@@ -7,6 +7,7 @@ import { sortByDisplayText } from "../lib/alphabetical-sort.js";
 import { CopyButton } from "./CopyButton.js";
 import { ModelPickerModal } from "./ModelPickerModal.js";
 import { PromptModal } from "./PromptModal.js";
+import { useMediaQuery } from "./useMediaQuery.js";
 import { useI18n, translate, type Lang } from "../lib/i18n.js";
 
 export interface ConnValue {
@@ -67,6 +68,7 @@ export function ConnectionPanel({
   onToast,
 }: Props) {
   const { t, lang } = useI18n();
+  const mobile = useMediaQuery("(max-width: 760px)");
   const [showKey, setShowKey] = useState(false);
   const [balanceBusy, setBalanceBusy] = useState(false);
   const [balanceText, setBalanceText] = useState<string | null>(null);
@@ -175,7 +177,9 @@ export function ConnectionPanel({
   };
 
   return (
-    <section class="panel connection-panel">
+    <details class="panel connection-panel setup-disclosure" open={!mobile}>
+      <summary class="setup-summary"><strong>{t("conn.title")}: {providers.find((p) => p.id === value.providerId)?.name ?? t("common.custom")}</strong><span>{value.baseUrl && value.apiKey ? t("ui.connectionReady") : t("ui.connectionEmpty")}</span><small>{value.baseUrl || t("conn.baseUrl")}</small></summary>
+      <div class="setup-body">
       <div class="panel-title-row">
         <div>
           <span class="section-index">01</span>
@@ -381,6 +385,6 @@ export function ConnectionPanel({
           }}
         />
       ) : null}
-    </section>
+    </div></details>
   );
 }
