@@ -58,6 +58,7 @@ import {
 import { statusEntryKey } from "../lib/status-entries.js";
 import { removeProviderModelsByLabel, upsertProviderFromConn, upsertProviderModel } from "../lib/provider-upsert.js";
 import { appRouteFromHash, hashForAppRoute, type AppRoute } from "../lib/navigation.js";
+import { DEFAULT_MODELPING_DAILY_BUDGET } from "../lib/status-budget.js";
 
 let statusSeq = 0;
 const nextStatusId = () => `s${Date.now()}-${++statusSeq}`;
@@ -103,6 +104,7 @@ export function App() {
   const [loadErr, setLoadErr] = useState<string | null>(null);
   const [bootstrapped, setBootstrapped] = useState(false);
   const [securityWarn, setSecurityWarn] = useState(false);
+  const [dailyRequestBudget, setDailyRequestBudget] = useState(DEFAULT_MODELPING_DAILY_BUDGET);
 
   // 口令门：need=后端要求口令，authed=已通过。
   const [needPassword, setNeedPassword] = useState(false);
@@ -292,6 +294,7 @@ export function App() {
       const bootstrap = await fetchBootstrap();
       const health = bootstrap.health;
       const security = health.security;
+      setDailyRequestBudget(health.limits?.dailyRequestBudget ?? DEFAULT_MODELPING_DAILY_BUDGET);
       const scope = health.persistence?.privateState ? health.persistence.privateStateScope : "none";
       privateStateScopeRef.current = scope;
       setSecurityWarn(Boolean(security && !isLocalOrigin() && (!security.hasPassword || security.shouldWarnOpenProxy)));
@@ -929,6 +932,7 @@ export function App() {
           <StatusPanel
             entries={statusEntries}
             persisted={statusPersisted}
+            dailyRequestBudget={dailyRequestBudget}
             onDelete={onDeleteStatus}
             onGotoTest={onGotoStatusTest}
             onLaunched={showToast}

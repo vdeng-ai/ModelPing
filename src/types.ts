@@ -153,6 +153,15 @@ export interface PingResult {
   error: string | null;
 }
 
+// Status 页批量测速：一个 Worker 请求最多聚合 10 个条目，降低免费层请求数。
+export interface PingBatchEntry extends PingRequest {
+  id: string;
+}
+
+export interface PingBatchResult {
+  results: Record<string, PingResult>;
+}
+
 // ---------- 状态列表（持久化到后端，加密落盘） ----------
 // 含 apiKey；仅以密文存储（src/crypto.ts），且受 APP_PASSWORD 中间件保护。
 export interface StatusEntry {

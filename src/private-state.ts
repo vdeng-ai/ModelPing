@@ -2,6 +2,15 @@ import type { ConfigState, ConnState, HistoryEntry, PrivateState, StatusEntry, T
 import { protocolOf } from "./protocols.js";
 
 export const MAX_PRIVATE_HISTORY = 200;
+export const MAX_STATUS_ENTRIES = 100;
+export const MAX_CUSTOM_MODELS = 500;
+const MAX_STATUS_ID_LENGTH = 128;
+const MAX_STATUS_PROVIDER_LENGTH = 256;
+const MAX_STATUS_BASE_URL_LENGTH = 2048;
+const MAX_STATUS_API_KEY_LENGTH = 8192;
+const MAX_STATUS_MODEL_LENGTH = 512;
+const MAX_STATUS_USER_AGENT_LENGTH = 1024;
+const MAX_CUSTOM_MODEL_LENGTH = 512;
 export type PrivateStateScope = "full" | "config" | "none";
 
 export function emptyPrivateState(): PrivateState {
@@ -57,22 +66,22 @@ function normalizeTestResult(raw: any): TestResult {
 export function normalizeStatusEntries(raw: unknown): StatusEntry[] {
   if (!Array.isArray(raw)) throw new Error("状态列表须为数组");
   const out: StatusEntry[] = [];
-  for (const e of raw) {
+  for (const e of raw.slice(0, MAX_STATUS_ENTRIES)) {
     if (!e || typeof e !== "object") continue;
     const item = e as any;
     const protocol = protocolOf(item.protocol);
-    const baseUrl = String(item.baseUrl ?? "").trim();
-    const model = String(item.model ?? "").trim();
-    const id = String(item.id ?? "").trim();
+    const baseUrl = String(item.baseUrl ?? "").trim().slice(0, MAX_STATUS_BASE_URL_LENGTH);
+    const model = String(item.model ?? "").trim().slice(0, MAX_STATUS_MODEL_LENGTH);
+    const id = String(item.id ?? "").trim().slice(0, MAX_STATUS_ID_LENGTH);
     if (!id || !baseUrl || !model || !protocol) continue;
     out.push({
       id,
-      providerName: String(item.providerName ?? ""),
+      providerName: String(item.providerName ?? "").slice(0, MAX_STATUS_PROVIDER_LENGTH),
       protocol,
       baseUrl,
       isFullUrl: Boolean(item.isFullUrl),
-      apiKey: String(item.apiKey ?? ""),
-      userAgent: typeof item.userAgent === "string" ? item.userAgent : undefined,
+      apiKey: String(item.apiKey ?? "").slice(0, MAX_STATUS_API_KEY_LENGTH),
+      userAgent: typeof item.userAgent === "string" ? item.userAgent.slice(0, MAX_STATUS_USER_AGENT_LENGTH) : undefined,
       model,
     });
   }
@@ -148,10 +157,11 @@ function normalizeCustomModels(raw: unknown): string[] {
   const out: string[] = [];
   for (const value of raw) {
     if (typeof value !== "string") continue;
-    const model = value.trim();
+    const model = value.trim().slice(0, MAX_CUSTOM_MODEL_LENGTH);
     if (!model || seen.has(model)) continue;
     seen.add(model);
     out.push(model);
+    if (out.length >= MAX_CUSTOM_MODELS) break;
   }
   return out;
 }

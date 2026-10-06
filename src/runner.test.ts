@@ -118,6 +118,43 @@ describe("retryable", () => {
   });
 });
 
+describe("stream probe", () => {
+  it("stops the upstream body after the first delta", async () => {
+    let cancelled = false;
+    const encoder = new TextEncoder();
+    const upstream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encoder.encode('data: {"choices":[{"delta":{"content":"first"}}]}\n\n'));
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(upstream, {
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
+    })));
+
+    try {
+      const reader = runTestStream(req({ stream: true }), undefined, { stopAfterFirstDelta: true }).getReader();
+      const decoder = new TextDecoder();
+      let output = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        output += decoder.decode(value);
+      }
+
+      expect(output).toContain('"type":"delta"');
+      expect(output).toContain('"type":"done"');
+      expect(output).toContain("first");
+      expect(cancelled).toBe(true);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});
+
 describe("external cancellation", () => {
   it("aborts an active non-stream upstream request", async () => {
     const fetchMock = vi.fn((_input: unknown, init?: RequestInit) => new Promise<Response>((_resolve, reject) => {

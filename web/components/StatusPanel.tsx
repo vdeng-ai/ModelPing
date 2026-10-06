@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import { BarChart3, Eye, EyeOff, File, Info, KeyRound, Network, RefreshCw, Search, Trash2, X } from "lucide-preact";
 import type { PingResult, StatusEntry } from "../lib/types.js";
-import { pingEndpoint } from "../lib/api.js";
+import { pingBatchEndpoints } from "../lib/api.js";
 import { runConcurrent } from "../lib/concurrency.js";
 import { PROTOCOL_LABEL, fmtMs, fmtTime } from "../lib/format.js";
 import { maskKey } from "../lib/storage.js";
@@ -12,11 +12,13 @@ import { CopyButton } from "./CopyButton.js";
 import { ActionMenu } from "./ActionMenu.js";
 import { ConfirmModal } from "./ConfirmModal.js";
 import { CcSwitchButton } from "./CcSwitchButton.js";
-import { FREE_WORKER_SOFT_CAP, dailyPingRequests, isOverFreeCap, safestInterval } from "../lib/status-budget.js";
+import { PING_BATCH_SIZE, dailyPingRequests, isOverFreeCap, safestInterval } from "../lib/status-budget.js";
+import { acquireStatusPollLeadership } from "../lib/status-poll-leader.js";
 
 interface Props {
   entries: StatusEntry[];
   persisted: boolean;
+  dailyRequestBudget: number;
   onDelete: (ids: string[]) => void;
   onGotoTest: (entry: StatusEntry) => void;
   onLaunched: (msg: string, opts?: { tone?: "info" | "error"; ms?: number }) => void;
@@ -35,7 +37,7 @@ function intervalLabelKey(sec: number): string {
   return `status.auto${sec}`;
 }
 
-export function StatusPanel({ entries, persisted, onDelete, onGotoTest, onLaunched }: Props) {
+export function StatusPanel({ entries, persisted, dailyRequestBudget, onDelete, onGotoTest, onLaunched }: Props) {
   const { t } = useI18n();
   const [query, setQuery] = useState("");
   const [revealed, setRevealed] = useState<Set<string>>(new Set());
@@ -46,7 +48,11 @@ export function StatusPanel({ entries, persisted, onDelete, onGotoTest, onLaunch
   const [progress, setProgress] = useState({ completed: 0, total: 0 });
   const [autoSec, setAutoSec] = useState<number>(0);
   const [visible, setVisible] = useState(() => document.visibilityState === "visible");
+  const [pollLeader, setPollLeader] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+  const channelRef = useRef<BroadcastChannel | null>(null);
+  const entriesRef = useRef(entries);
+  entriesRef.current = entries;
   const busyRef = useRef(false);
   const autoSecRef = useRef(autoSec);
   autoSecRef.current = autoSec;
@@ -57,14 +63,14 @@ export function StatusPanel({ entries, persisted, onDelete, onGotoTest, onLaunch
   const allChecked = filtered.length > 0 && filtered.every((entry) => checked.has(entry.id));
   const someChecked = checked.size > 0;
   const estimated = dailyPingRequests(entries.length, autoSec);
-  const overCap = autoSec > 0 && isOverFreeCap(entries.length, autoSec);
+  const overCap = autoSec > 0 && isOverFreeCap(entries.length, autoSec, dailyRequestBudget);
   const lastChecked = Math.max(0, ...Object.values(pings).map((ping) => ping.ts ?? 0));
   const checkedCount = entries.filter((entry) => pings[entry.id]?.result).length;
   const healthyCount = entries.filter((entry) => pings[entry.id]?.result?.ok).length;
   const warningCount = entries.filter((entry) => pings[entry.id]?.result && !pings[entry.id].result?.ok).length;
   const uncheckedCount = entries.length - checkedCount;
   const budgetRequests = autoSec > 0 ? estimated : 0;
-  const budgetPct = Math.round((budgetRequests / FREE_WORKER_SOFT_CAP) * 10000) / 100;
+  const budgetPct = Math.round((budgetRequests / dailyRequestBudget) * 10000) / 100;
 
   const refresh = async (targets: StatusEntry[]) => {
     if (busyRef.current || targets.length === 0) return;
@@ -82,29 +88,57 @@ export function StatusPanel({ entries, persisted, onDelete, onGotoTest, onLaunch
     });
 
     try {
+      const batches: StatusEntry[][] = [];
+      for (let i = 0; i < targets.length; i += PING_BATCH_SIZE) {
+        batches.push(targets.slice(i, i + PING_BATCH_SIZE));
+      }
       await runConcurrent(
-        targets,
-        3,
+        batches,
+        2,
         controller.signal,
-        async (entry, signal) => {
-          const result = await pingEndpoint(
-            {
+        async (batch, signal) => {
+          const results = await pingBatchEndpoints(
+            batch.map((entry) => ({
+              id: entry.id,
               protocol: entry.protocol,
               baseUrl: entry.baseUrl,
               isFullUrl: entry.isFullUrl,
               apiKey: entry.apiKey,
               model: entry.model,
               userAgent: entry.userAgent,
-            },
+            })),
             signal,
           );
           if (signal.aborted) return;
-          setPings((prev) => ({
+          const checkedAt = Date.now();
+          setPings((prev) => {
+            const next = { ...prev };
+            for (const entry of batch) {
+              next[entry.id] = {
+                status: "done",
+                result: results[entry.id] ?? {
+                  ok: false,
+                  status: 0,
+                  latencyMs: 0,
+                  kind: "models",
+                  error: "批量测速未返回该条目结果",
+                },
+                ts: checkedAt,
+              };
+            }
+            return next;
+          });
+          setProgress((prev) => ({
             ...prev,
-            [entry.id]: { status: "done", result, ts: Date.now() },
+            completed: Math.min(prev.total, prev.completed + batch.length),
           }));
+          channelRef.current?.postMessage({
+            type: "ping-results",
+            checkedAt,
+            results,
+          });
         },
-        () => setProgress((prev) => ({ ...prev, completed: prev.completed + 1 })),
+        () => undefined,
       );
     } catch (e: any) {
       if (!controller.signal.aborted) {
@@ -137,16 +171,16 @@ export function StatusPanel({ entries, persisted, onDelete, onGotoTest, onLaunch
   };
 
   const trySetAutoSec = (sec: number) => {
-    if (sec > 0 && isOverFreeCap(entries.length, sec)) {
-      const safe = safestInterval(entries.length, AUTO_OPTIONS);
+    if (sec > 0 && isOverFreeCap(entries.length, sec, dailyRequestBudget)) {
+      const safe = safestInterval(entries.length, AUTO_OPTIONS, dailyRequestBudget);
       const requests = dailyPingRequests(entries.length, sec);
       setAutoSec(safe);
       onLaunched(
         safe > 0
-          ? t("status.autoOverCap", { cap: FREE_WORKER_SOFT_CAP, requests }) +
+          ? t("status.autoOverCap", { cap: dailyRequestBudget, requests }) +
               " " +
               t("status.autoDowngraded", { interval: t(intervalLabelKey(safe)) })
-          : t("status.autoOverCap", { cap: FREE_WORKER_SOFT_CAP, requests }),
+          : t("status.autoOverCap", { cap: dailyRequestBudget, requests }),
         { tone: "error" },
       );
       return;
@@ -157,8 +191,8 @@ export function StatusPanel({ entries, persisted, onDelete, onGotoTest, onLaunch
   // 条目变多后若当前间隔超 cap，自动降到安全间隔。
   useEffect(() => {
     const current = autoSecRef.current;
-    if (!current || !isOverFreeCap(entries.length, current)) return;
-    const safe = safestInterval(entries.length, AUTO_OPTIONS);
+    if (!current || !isOverFreeCap(entries.length, current, dailyRequestBudget)) return;
+    const safe = safestInterval(entries.length, AUTO_OPTIONS, dailyRequestBudget);
     setAutoSec(safe);
     onLaunched(
       t("status.autoDowngraded", {
@@ -190,13 +224,48 @@ export function StatusPanel({ entries, persisted, onDelete, onGotoTest, onLaunch
   }, []);
 
   useEffect(() => {
-    if (!autoSec || !visible) return;
-    if (isOverFreeCap(entries.length, autoSec)) return;
+    if (typeof BroadcastChannel === "undefined") return;
+    const channel = new BroadcastChannel("modelping-status-results-v1");
+    channelRef.current = channel;
+    channel.onmessage = (event) => {
+      const data = event.data as {
+        type?: unknown;
+        checkedAt?: unknown;
+        results?: Record<string, PingResult>;
+      };
+      if (data?.type !== "ping-results" || typeof data.checkedAt !== "number" || !data.results) return;
+      const ids = new Set(entriesRef.current.map((entry) => entry.id));
+      setPings((prev) => {
+        const next = { ...prev };
+        for (const [id, result] of Object.entries(data.results!)) {
+          if (!ids.has(id)) continue;
+          next[id] = { status: "done", result, ts: data.checkedAt as number };
+        }
+        return next;
+      });
+    };
+    return () => {
+      if (channelRef.current === channel) channelRef.current = null;
+      channel.close();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!autoSec || !visible) {
+      setPollLeader(false);
+      return;
+    }
+    return acquireStatusPollLeadership(setPollLeader);
+  }, [autoSec, visible]);
+
+  useEffect(() => {
+    if (!autoSec || !visible || !pollLeader) return;
+    if (isOverFreeCap(entries.length, autoSec, dailyRequestBudget)) return;
     const timer = setInterval(() => {
       if (!busyRef.current && entries.length > 0) void refresh(entries);
     }, autoSec * 1000);
     return () => clearInterval(timer);
-  }, [autoSec, entries, visible]);
+  }, [autoSec, entries, visible, pollLeader, dailyRequestBudget]);
 
   useEffect(() => () => abortRef.current?.abort(), []);
 
@@ -256,9 +325,9 @@ export function StatusPanel({ entries, persisted, onDelete, onGotoTest, onLaunch
             <span class="budget-mobile-percent"> · {budgetPct}%</span>
           </span>
           <div class="budget-meter">
-            <progress max={FREE_WORKER_SOFT_CAP} value={budgetRequests} aria-label={t("ui.budgetTitle")} />
+            <progress max={dailyRequestBudget} value={budgetRequests} aria-label={t("ui.budgetTitle")} />
             <span>
-              {budgetRequests.toLocaleString()} / {FREE_WORKER_SOFT_CAP.toLocaleString()} · {budgetPct}%
+              {budgetRequests.toLocaleString()} / {dailyRequestBudget.toLocaleString()} · {budgetPct}%
             </span>
           </div>
           <span class={"budget-verdict " + (overCap ? "fail" : "success")}>

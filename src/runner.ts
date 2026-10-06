@@ -202,7 +202,13 @@ async function runOnce(adapter: Adapter, req: TestRequest, attempt: number, sign
 }
 
 // ---------- 流式（内部生成器，逐事件 yield，最终 yield done） ----------
-async function* runStreamOnce(adapter: Adapter, req: TestRequest, attempt: number, signal?: AbortSignal): AsyncGenerator<StreamEvent> {
+async function* runStreamOnce(
+  adapter: Adapter,
+  req: TestRequest,
+  attempt: number,
+  signal?: AbortSignal,
+  stopAfterFirstDelta = false,
+): AsyncGenerator<StreamEvent> {
   const url = adapter.buildUrl(req);
   const requestUrl = sanitizeUrl(url, req);
   const headers = withUserAgent({ ...adapter.buildHeaders(req), accept: "text/event-stream" }, req.userAgent);
@@ -321,11 +327,54 @@ async function* runStreamOnce(adapter: Adapter, req: TestRequest, attempt: numbe
       const { blocks, rest } = drainSseBlocks(buf);
       buf = rest;
       for (const block of blocks) {
-        for (const ev of handleEventBlock(block)) yield ev;
+        for (const ev of handleEventBlock(block)) {
+          yield ev;
+          if (stopAfterFirstDelta && ev.type === "delta") {
+            await reader.cancel().catch(() => undefined);
+            cleanup();
+            yield {
+              type: "done",
+              result: {
+                ok: true,
+                status: res.status,
+                latencyMs: Date.now() - start,
+                ttftMs,
+                usage,
+                text: truncate(text),
+                error: null,
+                requestUrl,
+                attempts: 1,
+              },
+            };
+            return;
+          }
+        }
       }
     }
     // 处理残留缓冲
-    if (buf.trim()) for (const ev of handleEventBlock(buf)) yield ev;
+    if (buf.trim()) {
+      for (const ev of handleEventBlock(buf)) {
+        yield ev;
+        if (stopAfterFirstDelta && ev.type === "delta") {
+          cleanup();
+          yield {
+            type: "done",
+            result: {
+              ok: true,
+              status: res.status,
+              latencyMs: Date.now() - start,
+              ttftMs,
+              usage,
+              text: truncate(text),
+              error: null,
+              requestUrl,
+              attempts: 1,
+            },
+          };
+          return;
+        }
+      }
+    }
   } catch (e: any) {
     cleanup();
     if (signal?.aborted) return;
@@ -389,9 +438,14 @@ export async function runTest(req: TestRequest, signal?: AbortSignal): Promise<T
 
 // ---------- 对外：流式（含重试，整轮失败才重试） ----------
 // 返回一个 SSE 字符串的 ReadableStream，供 Hono c.body 直接返回。
-export function runTestStream(req: TestRequest, signal?: AbortSignal): ReadableStream<Uint8Array> {
+export function runTestStream(
+  req: TestRequest,
+  signal?: AbortSignal,
+  options: { stopAfterFirstDelta?: boolean } = {},
+): ReadableStream<Uint8Array> {
   const adapter = getAdapter(req.protocol);
   const encoder = new TextEncoder();
+  const stopAfterFirstDelta = options.stopAfterFirstDelta === true;
 
   return new ReadableStream<Uint8Array>({
     async start(controller) {
@@ -408,7 +462,7 @@ export function runTestStream(req: TestRequest, signal?: AbortSignal): ReadableS
         let finalResult: TestResult | null = null;
         let producedDelta = false;
 
-        for await (const ev of runStreamOnce(adapter, req, attempt, signal)) {
+        for await (const ev of runStreamOnce(adapter, req, attempt, signal, stopAfterFirstDelta)) {
           if (ev.type === "done") {
             finalResult = ev.result;
             finalResult.attempts = attempt;
