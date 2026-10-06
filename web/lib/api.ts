@@ -1,4 +1,4 @@
-import type { Balance, DualTestResult, ModelsResult, PingResult, PresetsResponse, PrivateState, RowTestResult, StreamEvent, TestResult, Usage } from "./types.js";
+import type { Balance, DualTestResult, ModelsResult, PingBatchEntry, PingBatchResult, PingResult, PresetsResponse, PrivateState, RowTestResult, StreamEvent, TestResult, Usage } from "./types.js";
 import { normalizePresets } from "./presets.js";
 import { drainSseBlocks, extractSseData } from "../../src/sse.js";
 import {
@@ -91,6 +91,10 @@ export interface HealthResponse {
     settings: boolean;
     privateState: boolean;
     privateStateScope: "full" | "config" | "none";
+  };
+  limits?: {
+    dailyRequestBudget: number;
+    pingBatchSize: number;
   };
 }
 
@@ -232,6 +236,36 @@ export async function pingEndpoint(payload: PingPayload, signal?: AbortSignal): 
     return await res.json();
   } catch (e: any) {
     return { ok: false, status: res.status, latencyMs: 0, kind: "models", error: `响应解析失败: ${e?.message ?? e}` };
+  }
+}
+
+export async function pingBatchEndpoints(
+  entries: PingBatchEntry[],
+  signal?: AbortSignal,
+): Promise<PingBatchResult["results"]> {
+  const failed = (error: string, status = 0): PingBatchResult["results"] =>
+    Object.fromEntries(entries.map((entry) => [
+      entry.id,
+      { ok: false, status, latencyMs: 0, kind: "models" as const, error },
+    ]));
+
+  let res: Response;
+  try {
+    res = await fetch("/api/ping-batch", {
+      method: "POST",
+      headers: { "content-type": "application/json", ...authHeaders() },
+      body: JSON.stringify({ entries }),
+      signal,
+    });
+  } catch (e: any) {
+    return failed(e?.message ?? String(e));
+  }
+  if (!res.ok) return failed(await parseErrorMessage(res), res.status);
+  try {
+    const data = await res.json() as PingBatchResult;
+    return data.results ?? failed("批量测速响应缺少 results");
+  } catch (e: any) {
+    return failed(`响应解析失败: ${e?.message ?? e}`, res.status);
   }
 }
 

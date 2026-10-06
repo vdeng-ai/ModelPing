@@ -5,6 +5,7 @@ import { timingSafeEqual } from "hono/utils/buffer";
 import type {
   DualTestResult,
   LookupRequest,
+  PingBatchEntry,
   PingRequest,
   PresetsResponse,
   PrivateState,
@@ -20,7 +21,7 @@ import { normalizePresets, FALLBACK_DEFAULTS } from "./presets-schema.js";
 import type { SettingsStore } from "./store/index.js";
 import { fetchModels, modelsTargetUrls } from "./models-fetch.js";
 import { fetchBalance, balanceTargetUrl } from "./balance.js";
-import { pingEndpoint, pingTargetUrls } from "./ping.js";
+import { MAX_PING_BATCH_SIZE, pingBatch, pingEndpoint, pingTargetUrls } from "./ping.js";
 import { encrypt, decrypt } from "./crypto.js";
 import { applyPrivateStateScope, emptyPrivateState, normalizePrivateState, type PrivateStateScope } from "./private-state.js";
 import { normalizeUserAgent } from "./user-agent.js";
@@ -50,6 +51,8 @@ export interface Env {
   PRIVATE_STATE_SECRET?: string;
   // 私有工作态持久化范围：full=全部；config=连接/参数/状态页，不保存历史；none=关闭。
   PRIVATE_STATE_SCOPE?: string;
+  // Status 自动刷新每天最多预算多少次 Worker 请求；Cloudflare 默认 60k，给其他 API 留余量。
+  DAILY_REQUEST_BUDGET?: string;
 }
 
 type AppContext = Context<{ Bindings: Env }>;
@@ -73,6 +76,12 @@ function privateStateScope(env?: Env): PrivateStateScope {
   return "full";
 }
 
+function dailyRequestBudget(env?: Env): number {
+  const n = Number(env?.DAILY_REQUEST_BUDGET);
+  if (!Number.isFinite(n)) return 60_000;
+  return Math.min(100_000, Math.max(1_000, Math.trunc(n)));
+}
+
 function healthPayload(env?: Env) {
   const hasAllowedHosts = Boolean((env?.ALLOWED_HOSTS ?? "").trim());
   const blockPrivateHosts = blockPrivate(env);
@@ -91,6 +100,10 @@ function healthPayload(env?: Env) {
       settings: Boolean(env?.store),
       privateState: privateStateEnabled,
       privateStateScope: privateStateEnabled ? scope : "none",
+    },
+    limits: {
+      dailyRequestBudget: dailyRequestBudget(env),
+      pingBatchSize: MAX_PING_BATCH_SIZE,
     },
   };
 }
@@ -342,6 +355,30 @@ function normalizePing(raw: any): { req?: PingRequest; error?: string } {
   return { req: { ...lookup.req, protocol, model } };
 }
 
+function normalizePingBatch(raw: unknown): { entries?: PingBatchEntry[]; error?: string } {
+  const body = asBodyObject(raw);
+  const list = body?.entries;
+  if (!Array.isArray(list) || list.length === 0) return { error: "entries 须为非空数组" };
+  if (list.length > MAX_PING_BATCH_SIZE) {
+    return { error: `批量测速最多支持 ${MAX_PING_BATCH_SIZE} 个条目` };
+  }
+
+  const ids = new Set<string>();
+  const entries: PingBatchEntry[] = [];
+  for (const item of list) {
+    const obj = asBodyObject(item);
+    const id = String(obj?.id ?? "").trim();
+    if (!id) return { error: "批量测速条目缺少 id" };
+    if (ids.has(id)) return { error: "批量测速 id 不可重复" };
+    ids.add(id);
+
+    const normalized = normalizePing(item);
+    if (normalized.error || !normalized.req) return { error: normalized.error ?? "批量测速参数错误" };
+    entries.push({ id, ...normalized.req });
+  }
+  return { entries };
+}
+
 // 轻量校验状态列表：保留形状合法的条目，丢弃非法项。落盘前用于 PUT。
 export function createApp() {
   const app = new Hono<{ Bindings: Env }>();
@@ -565,6 +602,26 @@ export function createApp() {
       return c.json(await fetchBalance(req));
     } catch (e: any) {
       return c.json({ error: e?.message ?? "查询余额失败" }, 502);
+    }
+  });
+
+  // Status 批量测速：一个 Worker 请求聚合最多 10 个条目，并按连接身份去重 /models 探测。
+  app.post("/api/ping-batch", async (c) => {
+    const parsed = await readJsonBody(c);
+    if ("response" in parsed) return parsed.response;
+    const { entries, error } = normalizePingBatch(parsed.raw);
+    if (error || !entries) return c.json({ error: error ?? "参数错误" }, 400);
+
+    const targets = entries.flatMap((entry) => pingTargetUrls(entry));
+    const targetError = targetPolicyError(targets, c.env);
+    if (targetError) return c.json({ error: targetError }, 403);
+    try {
+      return c.json(await pingBatch(entries, c.req.raw.signal));
+    } catch (e: any) {
+      if (c.req.raw.signal.aborted || e?.name === "AbortError") {
+        return new Response(null, { status: 499 });
+      }
+      return c.json({ error: e?.message ?? "批量测速失败" }, 502);
     }
   });
 

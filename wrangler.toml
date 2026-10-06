@@ -15,6 +15,8 @@ not_found_handling = "single-page-application"
 # ALLOWED_HOSTS = "api.openai.com,api.anthropic.com,generativelanguage.googleapis.com"
 # Cloudflare 免费版推荐只把配置类私有状态写入 KV，测试历史留在浏览器，降低 KV 写入。
 PRIVATE_STATE_SCOPE = "config"
+# Status 自动刷新仅使用免费层请求额度的一部分，默认给手工测试/初始化等保留 40% 余量。
+DAILY_REQUEST_BUDGET = "60000"
 # Workers 没有 Docker 版的网络层 egress 防火墙，公网部署建议默认开启应用层私网拦截。
 BLOCK_PRIVATE_HOSTS = "1"
 
