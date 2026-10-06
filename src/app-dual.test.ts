@@ -74,9 +74,11 @@ describe("api test-dual", () => {
   });
 
   it("aggregates a row probe through one API request", async () => {
+    const streamMaxTokens: number[] = [];
     const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
-      const body = JSON.parse(String(init?.body ?? "{}")) as { stream?: boolean };
+      const body = JSON.parse(String(init?.body ?? "{}")) as { stream?: boolean; max_tokens?: number };
       if (body.stream) {
+        if (typeof body.max_tokens === "number") streamMaxTokens.push(body.max_tokens);
         return streamResponse([
           'data: {"choices":[{"delta":{"content":"stream ok"}}]}\n\n',
           'data: {"choices":[{"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":2,"total_tokens":3}}\n\n',
@@ -103,7 +105,7 @@ describe("api test-dual", () => {
       input: "hi",
       timeoutMs: 1000,
       maxRetries: 0,
-      maxTokens: 1,
+      maxTokens: 512,
     }));
 
     expect(res.status).toBe(200);
@@ -114,6 +116,7 @@ describe("api test-dual", () => {
       streamVerdict: "stream",
     });
     expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(streamMaxTokens).toEqual([8]);
   });
 
   it("rejects row probes above the per-invocation protocol limit", async () => {

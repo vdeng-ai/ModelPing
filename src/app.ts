@@ -57,6 +57,7 @@ export interface Env {
 
 type AppContext = Context<{ Bindings: Env }>;
 const ROW_PROTOCOL_CONCURRENCY = 2;
+const ROW_STREAM_PROBE_MAX_TOKENS = 8;
 
 function privateStateSecret(env?: Env): string | null {
   const s = (env?.PRIVATE_STATE_SECRET || env?.STATUS_SECRET || env?.APP_PASSWORD || "").trim();
@@ -121,13 +122,20 @@ function httpBaseUrlError(baseUrl: string): string | null {
   }
 }
 
-async function runDualTest(req: TestRequest, signal?: AbortSignal): Promise<DualTestResult> {
+async function runDualTest(
+  req: TestRequest,
+  signal?: AbortSignal,
+  streamProbe = false,
+): Promise<DualTestResult> {
   let gotDelta = false;
   let streamTtftMs: number | null = null;
   let streamResult: TestResult | null = null;
 
   const streamPromise = (async () => {
-    const stream = runTestStream({ ...req, stream: true }, signal);
+    const streamReq = streamProbe
+      ? { ...req, stream: true, maxTokens: Math.min(req.maxTokens, ROW_STREAM_PROBE_MAX_TOKENS) }
+      : { ...req, stream: true };
+    const stream = runTestStream(streamReq, signal, { stopAfterFirstDelta: streamProbe });
     const reader = stream.getReader();
     const decoder = new TextDecoder();
     let buf = "";
@@ -192,7 +200,7 @@ async function runRowTest(req: RowTestRequest, signal?: AbortSignal): Promise<Ro
     while (!signal?.aborted) {
       const protocol = protocols[cursor++];
       if (!protocol) return;
-      results[protocol] = await runDualTest({ ...base, protocol, stream: false }, signal);
+      results[protocol] = await runDualTest({ ...base, protocol, stream: false }, signal, true);
     }
   });
   await Promise.all(workers);
