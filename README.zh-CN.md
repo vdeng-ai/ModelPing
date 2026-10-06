@@ -8,7 +8,7 @@
 
 > Cloudflare 一键部署会自动克隆仓库、配置 Workers Builds，并 provision Wrangler 声明的资源。公网使用前请在部署配置中设置强 `APP_PASSWORD` 和独立的 `PRIVATE_STATE_SECRET`。
 
-![英文模型测试工作台](./web/public/screenshot.png)
+![英文模型测试工作台](./docs/screenshots/workbench-en.png)
 
 *截图使用英文界面、示例端点及模拟响应，不包含真实 API Key。*
 
@@ -54,7 +54,7 @@
 - 模型表格逐行状态灯：灰待测 → 蓝测试中 → 绿通过 / 红失败
 - 批量测试（默认并发 2）、自定义模型、可调超时/重试/maxTokens/输入文本
 - 历史记录（可持久化开关、复制 baseUrl/掩码 key、导出 JSON）
-- 状态页：保存常用 provider + model，批量刷新端点延迟，支持自动刷新与 cc-switch 导入
+- 状态页：保存常用 provider + model，批量刷新端点延迟；自动刷新会跨标签页选出单一轮询者，并支持 cc-switch 导入
 - **密钥安全**：后端不明文存储、不打印任何 API Key；启用私有工作态时仅以加密 blob 保存
 
 ## 快速开始（本地）
@@ -161,11 +161,12 @@ binding = "SETTINGS_KV"
 id = "<your-kv-namespace-id>"
 ```
 
-静态资源经 `[assets]` 托管，SPA 路由自动回退 index.html。`wrangler.toml` 已启用 `assets_navigation_prefers_asset_serving`，浏览器刷新前端路由会走 Assets，不消耗 Worker 请求；只有 `/api/*` 调用 Worker。
+静态资源经 `[assets]` 托管，SPA 路由自动回退 index.html。`run_worker_first = ["/api/*"]` 明确规定只有 API 请求进入 Worker；前端路由和静态文件直接由 Workers Static Assets 提供。
 
 免费版默认策略偏保守：
 
 - `PRIVATE_STATE_SCOPE=config`：KV 保存 presets、上次连接、测试参数和状态页条目，不保存测试历史。
+- `DAILY_REQUEST_BUDGET=60000`：状态页自动刷新默认只使用 10 万请求/日上限的 60%；每 10 条打成一个 Worker 请求，同连接的 `/models` 探测会去重。
 - `BLOCK_PRIVATE_HOSTS=1`：Workers 没有 Docker 版出站防火墙，公网部署默认启用应用层私网地址拦截。
 - `APP_PASSWORD` 和 `PRIVATE_STATE_SECRET` 必须用 Workers secret，不写进 `wrangler.toml`。
 
@@ -211,8 +212,9 @@ UI「设置」里增删改的供应商/模型默认存浏览器本地。若想�
 | `CORS_ORIGIN`          | 可选 CORS 允许来源（逗号分隔，`*` 表示全开）；缺省不下发 ACAO（默认同源） |
 | `STORAGE_DRIVER`       | 显式选驱动：`file` / `cf-kv` / `vercel` / `none`             |
 | `SETTINGS_FILE`        | file 驱动的 presets 路径，缺省 `./web/public/presets.json`   |
-| `PRIVATE_STATE_SECRET` | 私有工作态加密密钥；全局可选，但内置 Docker compose 要求设置；缺省回退 `STATUS_SECRET`，再回退 `APP_PASSWORD` |
+| `PRIVATE_STATE_SECRET` | 私有工作态独立高熵加密密钥；使用低 CPU 的 v2 格式。缺省回退到 PBKDF2 保护的 `STATUS_SECRET`，再回退 `APP_PASSWORD` |
 | `PRIVATE_STATE_SCOPE`  | 私有工作态持久化范围：`full`（默认）、`config`（仅连接/参数/状态，不保存历史）或 `none` |
+| `DAILY_REQUEST_BUDGET` | 状态页自动刷新每天可使用的 Worker 请求软预算；Cloudflare 默认 `60000` |
 | `PRIVATE_STATE_FILE`   | file 驱动的私有工作态密文路径，缺省 `./data/private-state.enc` |
 | `STATUS_SECRET`        | 可选旧密钥兼容项；仅作为 private-state fallback             |
 | `BLOB_READ_WRITE_TOKEN`| Vercel Blob token（接入 Blob 后自动注入）                    |
@@ -240,7 +242,7 @@ src/
   models-fetch.ts     拉取供应商模型列表（按 baseUrl 形态选 /models 端点）
   presets-schema.ts   presets 校验（前后端共享的纯函数）
   app.ts              框架无关的 Hono app（校验 / 口令 / CORS / 白名单 / 路由 / 设置持久化）
-  env.ts              Node / Workers / Vercel 共用的运行时 env/store 注入
+  env.ts              Node / Vercel 共用运行时 env/store 注入（Worker 直接使用 cf-kv）
   node.ts             Node 入口（@hono/node-server + 静态资源）
   worker.ts           Cloudflare Workers 入口（ASSETS 绑定）
   store/              设置持久化驱动：types / file / cf-kv / vercel / index（按平台自动选）

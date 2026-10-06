@@ -58,6 +58,15 @@ export interface Env {
 type AppContext = Context<{ Bindings: Env }>;
 const ROW_PROTOCOL_CONCURRENCY = 2;
 const ROW_STREAM_PROBE_MAX_TOKENS = 8;
+export const MAX_ROW_PROTOCOLS = 2;
+export const MAX_TEST_RETRIES = 10;
+export const MAX_JSON_BODY_BYTES = 256 * 1024;
+const MAX_BASE_URL_LENGTH = 2048;
+const MAX_API_KEY_LENGTH = 8192;
+const MAX_MODEL_LENGTH = 512;
+const MAX_INPUT_LENGTH = 64 * 1024;
+const MAX_USER_AGENT_LENGTH = 1024;
+const MAX_BATCH_ID_LENGTH = 128;
 
 interface PrivateStateSecretInfo {
   value: string;
@@ -225,10 +234,20 @@ async function runRowTest(req: RowTestRequest, signal?: AbortSignal): Promise<Ro
 function normalize(raw: any): { req?: TestRequest; error?: string } {
   const body = asBodyObject(raw);
   if (!body) return { error: "请求体非法" };
-  const baseUrl = String(body.baseUrl ?? "").trim();
+  const baseUrlRaw = String(body.baseUrl ?? "");
   const apiKey = String(body.apiKey ?? "");
-  const model = String(body.model ?? "").trim();
+  const modelRaw = String(body.model ?? "");
   const rawProtocol = String(body.protocol ?? "").trim();
+  const inputRaw = typeof body.input === "string" && body.input.length ? body.input : FALLBACK_DEFAULTS.input;
+  const userAgentRaw = typeof body.userAgent === "string" ? body.userAgent : "";
+  if (baseUrlRaw.length > MAX_BASE_URL_LENGTH) return { error: "baseUrl 过长" };
+  if (apiKey.length > MAX_API_KEY_LENGTH) return { error: "apiKey 过长" };
+  if (modelRaw.length > MAX_MODEL_LENGTH) return { error: "model 过长" };
+  if (inputRaw.length > MAX_INPUT_LENGTH) return { error: "input 过长" };
+  if (userAgentRaw.length > MAX_USER_AGENT_LENGTH) return { error: "User-Agent 过长" };
+
+  const baseUrl = baseUrlRaw.trim();
+  const model = modelRaw.trim();
   const protocol = protocolOf(rawProtocol);
   if (!baseUrl) return { error: "缺少 baseUrl" };
   if (!model) return { error: "缺少 model" };
@@ -250,12 +269,12 @@ function normalize(raw: any): { req?: TestRequest; error?: string } {
     isFullUrl: Boolean(body.isFullUrl),
     apiKey,
     model,
-    input: typeof body.input === "string" && body.input.length ? body.input : FALLBACK_DEFAULTS.input,
+    input: inputRaw,
     stream: Boolean(body.stream ?? false),
     timeoutMs: toInt(body.timeoutMs, FALLBACK_DEFAULTS.timeoutMs, 1000, 600000),
-    maxRetries: toInt(body.maxRetries, FALLBACK_DEFAULTS.maxRetries, 0, 10),
+    maxRetries: toInt(body.maxRetries, FALLBACK_DEFAULTS.maxRetries, 0, MAX_TEST_RETRIES),
     maxTokens: toInt(body.maxTokens, FALLBACK_DEFAULTS.maxTokens, 1, 200000),
-    userAgent: normalizeUserAgent(body.userAgent) ?? "",
+    userAgent: normalizeUserAgent(userAgentRaw) ?? "",
   };
   return { req };
 }
@@ -269,7 +288,7 @@ function normalizeRow(raw: any): { req?: RowTestRequest; error?: string } {
       .filter((value): value is Protocol => Boolean(value)),
   )];
   if (!protocols.length) return { error: "缺少 protocols" };
-  if (protocols.length > 2) return { error: "单行聚合探测最多支持 2 个协议" };
+  if (protocols.length > MAX_ROW_PROTOCOLS) return { error: `单行聚合探测最多支持 ${MAX_ROW_PROTOCOLS} 个协议` };
 
   const normalized = normalize({ ...body, protocol: protocols[0], stream: false });
   if (normalized.error || !normalized.req) return { error: normalized.error };
@@ -304,8 +323,30 @@ function hostAllowed(baseUrl: string, allowed?: string): boolean {
 }
 
 async function readJsonBody(c: AppContext): Promise<{ raw: unknown } | { response: Response }> {
+  const contentLength = Number(c.req.header("content-length") ?? "");
+  if (Number.isFinite(contentLength) && contentLength > MAX_JSON_BODY_BYTES) {
+    return { response: c.json({ error: "请求体过大" }, 413) };
+  }
+
   try {
-    return { raw: await c.req.json() };
+    const body = c.req.raw.body;
+    if (!body) return { response: c.json({ error: "请求体须为 JSON" }, 400) };
+    const reader = body.getReader();
+    const decoder = new TextDecoder();
+    let bytes = 0;
+    let text = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      bytes += value.byteLength;
+      if (bytes > MAX_JSON_BODY_BYTES) {
+        await reader.cancel().catch(() => undefined);
+        return { response: c.json({ error: "请求体过大" }, 413) };
+      }
+      text += decoder.decode(value, { stream: true });
+    }
+    text += decoder.decode();
+    return { raw: JSON.parse(text) };
   } catch {
     return { response: c.json({ error: "请求体须为 JSON" }, 400) };
   }
@@ -356,13 +397,18 @@ function targetPolicyError(targets: Iterable<string | null | undefined>, env?: E
 function normalizeLookup(raw: any): { req?: LookupRequest; error?: string } {
   const body = asBodyObject(raw);
   if (!body) return { error: "请求体非法" };
-  const baseUrl = String(body.baseUrl ?? "").trim();
+  const baseUrlRaw = String(body.baseUrl ?? "");
   const apiKey = String(body.apiKey ?? "");
+  const userAgentRaw = typeof body.userAgent === "string" ? body.userAgent : "";
+  if (baseUrlRaw.length > MAX_BASE_URL_LENGTH) return { error: "baseUrl 过长" };
+  if (apiKey.length > MAX_API_KEY_LENGTH) return { error: "apiKey 过长" };
+  if (userAgentRaw.length > MAX_USER_AGENT_LENGTH) return { error: "User-Agent 过长" };
+  const baseUrl = baseUrlRaw.trim();
   if (!baseUrl) return { error: "缺少 baseUrl" };
   if (!apiKey) return { error: "缺少 apiKey" };
   const baseUrlError = httpBaseUrlError(baseUrl);
   if (baseUrlError) return { error: baseUrlError };
-  return { req: { baseUrl, isFullUrl: Boolean(body.isFullUrl), apiKey, userAgent: normalizeUserAgent(body.userAgent) } };
+  return { req: { baseUrl, isFullUrl: Boolean(body.isFullUrl), apiKey, userAgent: normalizeUserAgent(userAgentRaw) } };
 }
 
 // 校验测速请求体（baseUrl + apiKey + protocol + model）。
@@ -371,7 +417,9 @@ function normalizePing(raw: any): { req?: PingRequest; error?: string } {
   if (lookup.error || !lookup.req) return { error: lookup.error };
   const body = asBodyObject(raw);
   const protocol = protocolOf(body?.protocol);
-  const model = String(body?.model ?? "").trim();
+  const modelRaw = String(body?.model ?? "");
+  if (modelRaw.length > MAX_MODEL_LENGTH) return { error: "model 过长" };
+  const model = modelRaw.trim();
   if (!protocol) return { error: "protocol 非法" };
   if (!model) return { error: "缺少 model" };
   return { req: { ...lookup.req, protocol, model } };
@@ -389,7 +437,9 @@ function normalizePingBatch(raw: unknown): { entries?: PingBatchEntry[]; error?:
   const entries: PingBatchEntry[] = [];
   for (const item of list) {
     const obj = asBodyObject(item);
-    const id = String(obj?.id ?? "").trim();
+    const idRaw = String(obj?.id ?? "");
+    if (idRaw.length > MAX_BATCH_ID_LENGTH) return { error: "批量测速 id 过长" };
+    const id = idRaw.trim();
     if (!id) return { error: "批量测速条目缺少 id" };
     if (ids.has(id)) return { error: "批量测速 id 不可重复" };
     ids.add(id);

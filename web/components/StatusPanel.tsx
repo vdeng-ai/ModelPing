@@ -13,6 +13,7 @@ import { ActionMenu } from "./ActionMenu.js";
 import { ConfirmModal } from "./ConfirmModal.js";
 import { CcSwitchButton } from "./CcSwitchButton.js";
 import { PING_BATCH_SIZE, dailyPingRequests, isOverFreeCap, safestInterval } from "../lib/status-budget.js";
+import { acquireStatusPollLeadership } from "../lib/status-poll-leader.js";
 
 interface Props {
   entries: StatusEntry[];
@@ -47,7 +48,11 @@ export function StatusPanel({ entries, persisted, dailyRequestBudget, onDelete, 
   const [progress, setProgress] = useState({ completed: 0, total: 0 });
   const [autoSec, setAutoSec] = useState<number>(0);
   const [visible, setVisible] = useState(() => document.visibilityState === "visible");
+  const [pollLeader, setPollLeader] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+  const channelRef = useRef<BroadcastChannel | null>(null);
+  const entriesRef = useRef(entries);
+  entriesRef.current = entries;
   const busyRef = useRef(false);
   const autoSecRef = useRef(autoSec);
   autoSecRef.current = autoSec;
@@ -127,6 +132,11 @@ export function StatusPanel({ entries, persisted, dailyRequestBudget, onDelete, 
             ...prev,
             completed: Math.min(prev.total, prev.completed + batch.length),
           }));
+          channelRef.current?.postMessage({
+            type: "ping-results",
+            checkedAt,
+            results,
+          });
         },
         () => undefined,
       );
@@ -214,13 +224,48 @@ export function StatusPanel({ entries, persisted, dailyRequestBudget, onDelete, 
   }, []);
 
   useEffect(() => {
-    if (!autoSec || !visible) return;
+    if (typeof BroadcastChannel === "undefined") return;
+    const channel = new BroadcastChannel("modelping-status-results-v1");
+    channelRef.current = channel;
+    channel.onmessage = (event) => {
+      const data = event.data as {
+        type?: unknown;
+        checkedAt?: unknown;
+        results?: Record<string, PingResult>;
+      };
+      if (data?.type !== "ping-results" || typeof data.checkedAt !== "number" || !data.results) return;
+      const ids = new Set(entriesRef.current.map((entry) => entry.id));
+      setPings((prev) => {
+        const next = { ...prev };
+        for (const [id, result] of Object.entries(data.results!)) {
+          if (!ids.has(id)) continue;
+          next[id] = { status: "done", result, ts: data.checkedAt as number };
+        }
+        return next;
+      });
+    };
+    return () => {
+      if (channelRef.current === channel) channelRef.current = null;
+      channel.close();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!autoSec || !visible) {
+      setPollLeader(false);
+      return;
+    }
+    return acquireStatusPollLeadership(setPollLeader);
+  }, [autoSec, visible]);
+
+  useEffect(() => {
+    if (!autoSec || !visible || !pollLeader) return;
     if (isOverFreeCap(entries.length, autoSec, dailyRequestBudget)) return;
     const timer = setInterval(() => {
       if (!busyRef.current && entries.length > 0) void refresh(entries);
     }, autoSec * 1000);
     return () => clearInterval(timer);
-  }, [autoSec, entries, visible]);
+  }, [autoSec, entries, visible, pollLeader, dailyRequestBudget]);
 
   useEffect(() => () => abortRef.current?.abort(), []);
 

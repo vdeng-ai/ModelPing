@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createApp, type Env } from "./app.js";
 import { encrypt } from "./crypto.js";
-import { applyPrivateStateScope, emptyPrivateState, normalizePrivateState } from "./private-state.js";
+import { MAX_CUSTOM_MODELS, MAX_STATUS_ENTRIES, applyPrivateStateScope, emptyPrivateState, normalizePrivateState } from "./private-state.js";
 import type { SettingsStore } from "./store/index.js";
 
 class MemoryStore implements SettingsStore {
@@ -82,6 +82,22 @@ describe("private state", () => {
     expect(state.customModelsPersist).toBe(true);
     expect(state.customModels).toEqual(["custom-a", "custom-b"]);
     expect(state.statusEntries).toEqual([]);
+  });
+
+  it("caps custom models and status entries before persistence", () => {
+    const state = normalizePrivateState({
+      customModels: Array.from({ length: MAX_CUSTOM_MODELS + 20 }, (_, i) => `model-${i}`),
+      statusEntries: Array.from({ length: MAX_STATUS_ENTRIES + 20 }, (_, i) => ({
+        id: `s${i}`,
+        providerName: "P",
+        protocol: "openai-chat",
+        baseUrl: "https://api.example.com",
+        apiKey: "sk",
+        model: `m${i}`,
+      })),
+    });
+    expect(state.customModels).toHaveLength(MAX_CUSTOM_MODELS);
+    expect(state.statusEntries).toHaveLength(MAX_STATUS_ENTRIES);
   });
 
   it("returns 204 when private store is unavailable", async () => {
