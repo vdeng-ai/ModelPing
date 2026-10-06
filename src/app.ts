@@ -59,9 +59,23 @@ type AppContext = Context<{ Bindings: Env }>;
 const ROW_PROTOCOL_CONCURRENCY = 2;
 const ROW_STREAM_PROBE_MAX_TOKENS = 8;
 
+interface PrivateStateSecretInfo {
+  value: string;
+  fastKdf: boolean;
+}
+
+function privateStateSecretInfo(env?: Env): PrivateStateSecretInfo | null {
+  const dedicated = (env?.PRIVATE_STATE_SECRET ?? "").trim();
+  if (dedicated) return { value: dedicated, fastKdf: true };
+  const legacy = (env?.STATUS_SECRET ?? "").trim();
+  if (legacy) return { value: legacy, fastKdf: false };
+  const password = (env?.APP_PASSWORD ?? "").trim();
+  if (password) return { value: password, fastKdf: false };
+  return null;
+}
+
 function privateStateSecret(env?: Env): string | null {
-  const s = (env?.PRIVATE_STATE_SECRET || env?.STATUS_SECRET || env?.APP_PASSWORD || "").trim();
-  return s || null;
+  return privateStateSecretInfo(env)?.value ?? null;
 }
 
 // BLOCK_PRIVATE_HOSTS 是否开启。
@@ -487,7 +501,8 @@ export function createApp() {
   app.put("/api/private-state", async (c) => {
     const scope = privateStateScope(c.env);
     const store = c.env?.privateStore;
-    const secret = privateStateSecret(c.env);
+    const secretInfo = privateStateSecretInfo(c.env);
+    const secret = secretInfo?.value ?? null;
     if (!store || !secret || scope === "none") return c.json({ error: "服务端未配置私有工作态持久化（需 store + PRIVATE_STATE_SECRET/STATUS_SECRET/APP_PASSWORD）" }, 501);
     const parsed = await readJsonBody(c);
     if ("response" in parsed) return parsed.response;
@@ -499,7 +514,7 @@ export function createApp() {
     }
     state = applyPrivateStateScope(state, scope);
     state.updatedAt = Date.now();
-    await store.put(await encrypt(JSON.stringify(state), secret));
+    await store.put(await encrypt(JSON.stringify(state), secret, { fastKdf: secretInfo?.fastKdf === true }));
     return c.json({ ok: true });
   });
 

@@ -1,21 +1,39 @@
 import { createApp, type Env } from "./app.js";
-import { buildAppEnv } from "./env.js";
-import type { StoreEnv } from "./store/index.js";
+import { CfKvStore } from "./store/cf-kv.js";
 
-// Cloudflare Workers 入口。复用框架无关的 app。
-// 静态资源由 wrangler.toml 的 [assets] 绑定处理（非 /api 路由自动回退到 index.html，
-// 通过 not_found_handling = "single-page-application" 实现 SPA 兜底），
-// 这里只需把未命中的请求交给 ASSETS 取静态文件。
-//
-// 环境变量（Workers Bindings / Secrets）：
-//   APP_PASSWORD   可选访问口令（建议用 `wrangler secret put APP_PASSWORD` 设置）
-//   ALLOWED_HOSTS  可选目标主机白名单（逗号分隔）
-//   PRIVATE_STATE_SECRET / STATUS_SECRET  可选私有工作态加密密钥
-//   PRIVATE_STATE_SCOPE  可选私有工作态范围：full | config | none
+// Cloudflare Workers 入口。Cloudflare 只需要 KV/none 两种存储路径，直接构造 CfKvStore，
+// 避免把 Node file driver / Vercel Blob driver / 通用 runtime 选择逻辑带进 Worker 依赖图。
 interface WorkerEnv extends Env {
   ASSETS?: { fetch: (req: Request) => Promise<Response> };
-  SETTINGS_KV?: unknown; // KV 命名空间绑定（wrangler.toml 配置）。
+  SETTINGS_KV?: unknown;
   STORAGE_DRIVER?: string;
+}
+
+function buildWorkerAppEnv(raw: WorkerEnv): Env {
+  const driver = (raw.STORAGE_DRIVER ?? "").trim().toLowerCase();
+  if (driver && driver !== "cf-kv" && driver !== "none") {
+    throw new Error(`Cloudflare Worker 不支持 STORAGE_DRIVER=${driver}；仅支持 cf-kv / none`);
+  }
+  if (driver === "cf-kv" && !raw.SETTINGS_KV) {
+    throw new Error("STORAGE_DRIVER=cf-kv 但缺少 SETTINGS_KV 绑定");
+  }
+
+  const useKv = driver !== "none" && Boolean(raw.SETTINGS_KV);
+  const store = useKv ? new CfKvStore(raw.SETTINGS_KV as any, "presets") : undefined;
+  const privateStore = useKv ? new CfKvStore(raw.SETTINGS_KV as any, "private") : undefined;
+
+  return {
+    APP_PASSWORD: raw.APP_PASSWORD,
+    ALLOWED_HOSTS: raw.ALLOWED_HOSTS,
+    CORS_ORIGIN: raw.CORS_ORIGIN,
+    BLOCK_PRIVATE_HOSTS: raw.BLOCK_PRIVATE_HOSTS,
+    STATUS_SECRET: raw.STATUS_SECRET,
+    PRIVATE_STATE_SECRET: raw.PRIVATE_STATE_SECRET,
+    PRIVATE_STATE_SCOPE: raw.PRIVATE_STATE_SCOPE,
+    DAILY_REQUEST_BUDGET: raw.DAILY_REQUEST_BUDGET,
+    store,
+    privateStore,
+  };
 }
 
 const app = createApp();
@@ -29,12 +47,7 @@ app.all("*", async (c) => {
 });
 
 export default {
-  async fetch(req: Request, env: WorkerEnv, ctx: ExecutionContext) {
-    // 绑定了 SETTINGS_KV 则启用 cf-kv 持久化；所有 /api 安全配置在 fetch 前注入。
-    const storageEnv = {
-      ...env,
-      STORAGE_DRIVER: env.STORAGE_DRIVER ?? (env.SETTINGS_KV ? undefined : "none"),
-    };
-    return app.fetch(req, { ...env, ...await buildAppEnv(storageEnv as StoreEnv & Record<string, unknown>) }, ctx);
+  fetch(req: Request, env: WorkerEnv, ctx: ExecutionContext) {
+    return app.fetch(req, { ...env, ...buildWorkerAppEnv(env) }, ctx);
   },
 };
