@@ -16,4 +16,4 @@ export function getAdapter(protocol: Protocol): Adapter | null {
   return REGISTRY[protocol] ?? null;
 }
 
-export type { Adapter, StreamChunk } from "./base.js";
+export type { Adapter, StreamChunk, StreamTerminal } from "./base.js";
