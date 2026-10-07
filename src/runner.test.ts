@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import type { TestRequest, Usage } from "./types.js";
-import { redactSecrets, sanitizeUrl, mergeUsage, isUnsupportedProtocol, retryable, runTest, runTestStream } from "./runner.js";
+import { classifyFailure, redactSecrets, sanitizeUrl, mergeUsage, isUnsupportedProtocol, retryable, runTest, runTestStream } from "./runner.js";
 
 function req(over: Partial<TestRequest> = {}): TestRequest {
   return {
@@ -84,23 +84,45 @@ describe("mergeUsage", () => {
   it("derives total when input+output known but total missing", () => {
     expect(mergeUsage(NIL, { inputTokens: 10, outputTokens: 20 }).totalTokens).toBe(30);
   });
+
+  it("recomputes a derived total as output tokens increase", () => {
+    const first = mergeUsage(NIL, { inputTokens: 10, outputTokens: 1 });
+    expect(first).toEqual({ inputTokens: 10, outputTokens: 1, totalTokens: 11 });
+
+    const second = mergeUsage(first, { outputTokens: 5 });
+    expect(second).toEqual({ inputTokens: 10, outputTokens: 5, totalTokens: 15 });
+  });
 });
 
-describe("isUnsupportedProtocol", () => {
-  it("treats 404/405/501 as unsupported", () => {
-    expect(isUnsupportedProtocol(404)).toBe(true);
-    expect(isUnsupportedProtocol(405)).toBe(true);
-    expect(isUnsupportedProtocol(501)).toBe(true);
+describe("failure classification", () => {
+  it("only treats a 404 as unsupported when the body identifies an endpoint/route problem", () => {
+    expect(classifyFailure(404, "route not found")).toBe("unsupported_protocol");
+    expect(isUnsupportedProtocol(404, "route not found")).toBe(true);
+    expect(classifyFailure(404, "Not Found")).toBe("request_failed");
+    expect(isUnsupportedProtocol(404, "Not Found")).toBe(false);
+    expect(classifyFailure(405)).toBe("unsupported_protocol");
+    expect(classifyFailure(501)).toBe("unsupported_protocol");
   });
 
-  it("matches body phrases on 400/422", () => {
+  it("distinguishes missing models from unsupported endpoints", () => {
+    expect(classifyFailure(404, '{"error":{"code":"model_not_found","message":"Model foo not found"}}')).toBe(
+      "model_not_found",
+    );
+    expect(isUnsupportedProtocol(404, "Model foo not found")).toBe(false);
+  });
+
+  it("distinguishes permission failures even when a provider hides them behind 404", () => {
+    expect(classifyFailure(404, "You do not have access to model foo")).toBe("permission_denied");
+    expect(classifyFailure(403, "Forbidden")).toBe("permission_denied");
+  });
+
+  it("matches endpoint phrases on 400/422", () => {
     expect(isUnsupportedProtocol(400, "Unsupported protocol")).toBe(true);
     expect(isUnsupportedProtocol(422, "route not found")).toBe(true);
     expect(isUnsupportedProtocol(400, "invalid api key")).toBe(false);
   });
 
-  it("ignores other statuses", () => {
-    expect(isUnsupportedProtocol(401, "unsupported endpoint")).toBe(false);
+  it("ignores unrelated successful responses", () => {
     expect(isUnsupportedProtocol(200)).toBe(false);
   });
 });
@@ -149,6 +171,94 @@ describe("stream probe", () => {
       expect(output).toContain('"type":"done"');
       expect(output).toContain("first");
       expect(cancelled).toBe(true);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});
+
+describe("stream completion semantics", () => {
+  async function finalResultFor(events: string, protocol: TestRequest["protocol"] = "openai-chat") {
+    const encoder = new TextEncoder();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(encoder.encode(events));
+              controller.close();
+            },
+          }),
+          { status: 200, headers: { "content-type": "text/event-stream" } },
+        ),
+      ),
+    );
+
+    const reader = runTestStream(req({ protocol, stream: true })).getReader();
+    const decoder = new TextDecoder();
+    let output = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      output += decoder.decode(value);
+    }
+    const doneLine = output
+      .split("\n")
+      .filter((line) => line.startsWith("data: "))
+      .map((line) => JSON.parse(line.slice(6)))
+      .findLast((event: any) => event.type === "done");
+    return doneLine?.result;
+  }
+
+  it("fails when Chat Completions emits text but closes before [DONE]", async () => {
+    try {
+      const result = await finalResultFor('data: {"choices":[{"delta":{"content":"partial"}}]}\n\n');
+      expect(result).toMatchObject({
+        ok: false,
+        status: 200,
+        text: "partial",
+        failureKind: "request_failed",
+      });
+      expect(result.error).toContain("完成标记");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("succeeds only after the Chat Completions [DONE] marker", async () => {
+    try {
+      const result = await finalResultFor(
+        'data: {"choices":[{"delta":{"content":"ok"}}]}\n\ndata: [DONE]\n\n',
+      );
+      expect(result).toMatchObject({ ok: true, status: 200, text: "ok" });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("treats response.failed as failure even after Responses emitted text", async () => {
+    try {
+      const result = await finalResultFor(
+        'data: {"type":"response.output_text.delta","delta":"partial"}\n\n' +
+          'data: {"type":"response.failed","response":{"error":{"message":"upstream failed"}}}\n\n',
+        "openai-responses",
+      );
+      expect(result).toMatchObject({ ok: false, status: 200, text: "partial", failureKind: "request_failed" });
+      expect(result.error).toContain("upstream failed");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("treats response.incomplete as failure", async () => {
+    try {
+      const result = await finalResultFor(
+        'data: {"type":"response.incomplete","response":{"incomplete_details":{"reason":"max_output_tokens"}}}\n\n',
+        "openai-responses",
+      );
+      expect(result).toMatchObject({ ok: false, status: 200 });
+      expect(result.error).toContain("max_output_tokens");
     } finally {
       vi.unstubAllGlobals();
     }
