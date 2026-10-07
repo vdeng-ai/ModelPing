@@ -42,6 +42,10 @@ export const openaiChatAdapter: Adapter = {
     };
   },
 
+  isStreamDoneData(data: string): boolean {
+    return data === "[DONE]";
+  },
+
   parseStreamChunk(payload: any): StreamChunk | null {
     const chunk: StreamChunk = {};
     const delta = payload?.choices?.[0]?.delta?.content;
