@@ -1,9 +1,15 @@
 import type { Protocol, TestRequest, Usage } from "../types.js";
 
+export interface StreamTerminal {
+  state: "completed" | "failed" | "incomplete";
+  error?: string;
+}
+
 // 流式增量片段。runner 负责把多次片段聚合成最终 TestResult。
 export interface StreamChunk {
   text?: string;            // 本次新增文本
   usage?: Partial<Usage>;   // 本次可解析到的 usage（部分字段，runner 合并，最新非空者覆盖）
+  terminal?: StreamTerminal; // 协议明确给出的完成/失败/未完成终态
 }
 
 // 协议适配器统一接口。每个协议族实现一份，runner 与协议解耦。
@@ -21,6 +27,8 @@ export interface Adapter {
   parseUsage(json: any): Usage;
   // 流式：解析单个 SSE `data:` 负载（已 JSON.parse）。返回 null 表示该事件无可用增量。
   parseStreamChunk(payload: any): StreamChunk | null;
+  // 少数协议（如 Chat Completions）用非 JSON data 标记终止。
+  isStreamDoneData?(data: string): boolean;
 }
 
 export const EMPTY_USAGE: Usage = { inputTokens: null, outputTokens: null, totalTokens: null };

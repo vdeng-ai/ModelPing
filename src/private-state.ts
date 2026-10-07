@@ -58,7 +58,13 @@ function normalizeTestResult(raw: any): TestResult {
     error: raw?.error == null ? null : String(raw.error).slice(0, 20_000),
     requestUrl: raw?.requestUrl == null ? null : String(raw.requestUrl).slice(0, 20_000),
     failureLog: raw?.failureLog == null ? null : String(raw.failureLog).slice(0, 100_000),
-    failureKind: raw?.failureKind === "unsupported_protocol" || raw?.failureKind === "request_failed" ? raw.failureKind : null,
+    failureKind:
+      raw?.failureKind === "unsupported_protocol" ||
+      raw?.failureKind === "model_not_found" ||
+      raw?.failureKind === "permission_denied" ||
+      raw?.failureKind === "request_failed"
+        ? raw.failureKind
+        : null,
     attempts: intOrNull(raw?.attempts, 0, 100) ?? 0,
   };
 }

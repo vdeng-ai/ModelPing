@@ -58,17 +58,49 @@ export const openaiResponsesAdapter: Adapter = {
     if (t === "response.output_text.delta" && typeof payload.delta === "string") {
       return { text: payload.delta };
     }
-    // 完成事件携带最终 usage。
-    if ((t === "response.completed" || t === "response.incomplete") && payload?.response?.usage) {
-      const u = payload.response.usage;
-      return {
-        usage: {
+
+    const response = payload?.response;
+    const u = response?.usage;
+    const usage = u
+      ? {
           inputTokens: num(u.input_tokens),
           outputTokens: num(u.output_tokens),
           totalTokens: num(u.total_tokens),
+        }
+      : undefined;
+
+    if (t === "response.completed") {
+      return { usage, terminal: { state: "completed" } };
+    }
+    if (t === "response.failed") {
+      const detail = response?.error?.message ?? response?.error?.code ?? payload?.error?.message ?? payload?.error;
+      return {
+        usage,
+        terminal: {
+          state: "failed",
+          error: detail ? `Responses API failed: ${String(detail)}` : "Responses API reported response.failed",
+        },
+      };
+    }
+    if (t === "response.incomplete") {
+      const reason = response?.incomplete_details?.reason;
+      return {
+        usage,
+        terminal: {
+          state: "incomplete",
+          error: reason ? `Responses API incomplete: ${String(reason)}` : "Responses API reported response.incomplete",
+        },
+      };
+    }
+    if (t === "error") {
+      const detail = payload?.message ?? payload?.error?.message ?? payload?.error ?? payload?.code;
+      return {
+        terminal: {
+          state: "failed",
+          error: detail ? `Responses API stream error: ${String(detail)}` : "Responses API stream error",
         },
       };
     }
     return null;
-  },
+  }
 };

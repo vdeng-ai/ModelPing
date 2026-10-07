@@ -23,6 +23,12 @@ export interface Usage {
   totalTokens: number | null;
 }
 
+export type FailureKind =
+  | "unsupported_protocol"
+  | "model_not_found"
+  | "permission_denied"
+  | "request_failed";
+
 // 后端 → 前端的统一测试结果（非流式，或流式聚合后的最终结果）。
 export interface TestResult {
   ok: boolean;
@@ -34,7 +40,7 @@ export interface TestResult {
   error: string | null; // 失败原因
   requestUrl?: string | null; // 脱敏后的最终请求 URL，便于复盘。
   failureLog?: string | null; // 可复盘失败日志；协议不支持类失败不返回
-  failureKind?: "unsupported_protocol" | "request_failed" | null;
+  failureKind?: FailureKind | null;
   attempts: number; // 实际尝试次数
 }
 

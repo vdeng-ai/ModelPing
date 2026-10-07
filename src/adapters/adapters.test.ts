@@ -18,6 +18,8 @@ describe("openaiChatAdapter", () => {
     expect(openaiChatAdapter.parseStreamChunk({ choices: [{ delta: { content: "hi" } }] })).toEqual({ text: "hi" });
     expect(openaiChatAdapter.parseStreamChunk({ usage: { prompt_tokens: 1 } })?.usage?.inputTokens).toBe(1);
     expect(openaiChatAdapter.parseStreamChunk({ choices: [{ delta: {} }] })).toBeNull();
+    expect(openaiChatAdapter.isStreamDoneData?.("[DONE]")).toBe(true);
+    expect(openaiChatAdapter.isStreamDoneData?.('{"done":true}')).toBe(false);
   });
 });
 
@@ -38,6 +40,22 @@ describe("openaiResponsesAdapter", () => {
       response: { usage: { input_tokens: 2, output_tokens: 4, total_tokens: 6 } },
     });
     expect(done?.usage).toEqual({ inputTokens: 2, outputTokens: 4, totalTokens: 6 });
+    expect(done?.terminal).toEqual({ state: "completed" });
+
+    const failed = openaiResponsesAdapter.parseStreamChunk({
+      type: "response.failed",
+      response: { error: { message: "boom" } },
+    });
+    expect(failed?.terminal).toEqual({ state: "failed", error: "Responses API failed: boom" });
+
+    const incomplete = openaiResponsesAdapter.parseStreamChunk({
+      type: "response.incomplete",
+      response: { incomplete_details: { reason: "max_output_tokens" } },
+    });
+    expect(incomplete?.terminal).toEqual({
+      state: "incomplete",
+      error: "Responses API incomplete: max_output_tokens",
+    });
     expect(openaiResponsesAdapter.parseStreamChunk({ type: "response.created" })).toBeNull();
   });
 });
@@ -53,6 +71,13 @@ describe("geminiAdapter", () => {
     expect(
       geminiAdapter.parseUsage({ usageMetadata: { promptTokenCount: 1, candidatesTokenCount: 2, totalTokenCount: 3 } }),
     ).toEqual({ inputTokens: 1, outputTokens: 2, totalTokens: 3 });
+  });
+
+  it("marks a finishReason as stream completion", () => {
+    expect(
+      geminiAdapter.parseStreamChunk({ candidates: [{ finishReason: "STOP", content: { parts: [{ text: "done" }] } }] })
+        ?.terminal,
+    ).toEqual({ state: "completed" });
   });
 });
 
@@ -82,5 +107,9 @@ describe("anthropicAdapter", () => {
     expect(
       anthropicAdapter.parseStreamChunk({ type: "message_delta", usage: { output_tokens: 9 } })?.usage?.outputTokens,
     ).toBe(9);
+    expect(anthropicAdapter.parseStreamChunk({ type: "message_stop" })?.terminal).toEqual({ state: "completed" });
+    expect(
+      anthropicAdapter.parseStreamChunk({ type: "error", error: { message: "bad stream" } })?.terminal,
+    ).toEqual({ state: "failed", error: "Anthropic stream error: bad stream" });
   });
 });

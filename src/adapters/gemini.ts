@@ -57,6 +57,17 @@ export const geminiAdapter: Adapter = {
         totalTokens: num(u.totalTokenCount),
       };
     }
-    return chunk.text || chunk.usage ? chunk : null;
+
+    if (payload?.error) {
+      const detail = payload.error?.message ?? payload.error?.status ?? payload.error;
+      chunk.terminal = {
+        state: "failed",
+        error: detail ? `Gemini stream error: ${String(detail)}` : "Gemini stream error",
+      };
+    } else if (payload?.candidates?.[0]?.finishReason) {
+      chunk.terminal = { state: "completed" };
+    }
+
+    return chunk.text || chunk.usage || chunk.terminal ? chunk : null;
   },
 };
