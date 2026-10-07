@@ -55,6 +55,8 @@ Features:
 - Batch testing (default concurrency 2), custom models, adjustable timeout/retries/maxTokens/input text
 - History (toggleable persistence, copy baseUrl/masked key, export JSON)
 - Status page: save common provider + model entries, batch-refresh endpoint latency, auto-refresh with multi-tab leader election, and import to cc-switch
+  - Green **Reachable** means the model-list endpoint responded successfully; models sharing a connection may share this result. It does not verify a particular model's existence, permissions, or generation.
+  - **Minimal generation passed** means only the fallback generation request succeeded; fallback requests may consume tokens. Probe latency is not generation speed or time to first token. Use the Test workbench to check actual model generation.
 - **Key safety**: the backend never stores API keys in plaintext and never logs them; private working state is saved only as an encrypted blob
 
 ## Quick start (local)
