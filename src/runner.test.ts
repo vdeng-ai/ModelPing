@@ -203,11 +203,11 @@ describe("stream completion semantics", () => {
       if (done) break;
       output += decoder.decode(value);
     }
-    const doneLine = output
+    const parsed = output
       .split("\n")
       .filter((line) => line.startsWith("data: "))
-      .map((line) => JSON.parse(line.slice(6)))
-      .findLast((event: any) => event.type === "done");
+      .map((line) => JSON.parse(line.slice(6)));
+    const doneLine = [...parsed].reverse().find((event: any) => event.type === "done");
     return doneLine?.result;
   }
 
