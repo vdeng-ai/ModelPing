@@ -713,6 +713,22 @@ textarea {
 .status-time {
   font-size: 14px;
 }
+.status-probe-note {
+  margin: 0 0 16px;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.status-probe-method {
+  display: none;
+}
+@media (max-width: 760px) {
+  .status-probe-method {
+    display: block;
+    margin-top: 4px;
+    font-size: 10px;
+    line-height: 1.4;
+  }
+}
 .status-row-actions > button {
   min-height: 42px;
   padding: 8px 22px;

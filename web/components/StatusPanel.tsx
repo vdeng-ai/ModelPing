@@ -287,10 +287,11 @@ export function StatusPanel({ entries, persisted, dailyRequestBudget, onDelete, 
         <h2>{t("status.title")}</h2>
         <span class="muted">{!persisted ? t("status.memoryOnly") : t("ui.statusSubtitle")}</span>
       </div>
+      <p class="status-probe-note muted">{t("status.probeExplanation")}</p>
       <div class="status-summary-grid" aria-label={t("status.title")}>
         {[
           ["ui.savedEndpoints", entries.length, "idle"],
-          ["ui.available", healthyCount, "success"],
+          ["status.reachable", healthyCount, "success"],
           ["ui.abnormal", warningCount, "fail"],
           ["ui.pending", uncheckedCount, "idle"],
         ].map(([label, count, tone], i) => (
@@ -425,6 +426,8 @@ export function StatusPanel({ entries, persisted, dailyRequestBudget, onDelete, 
               filtered.map((entry) => {
                 const ping = pings[entry.id] ?? { status: "idle" as const };
                 const result = ping.result;
+                const methodKey = result?.kind === "completion" ? "status.kindCompletion" : "status.kindModels";
+                const explanationKey = result?.kind === "completion" ? "status.completionExplanation" : "status.modelsExplanation";
                 const keyShown = revealed.has(entry.id);
                 const keyTools = (
                   <div class="status-key-tools">
@@ -481,6 +484,7 @@ export function StatusPanel({ entries, persisted, dailyRequestBudget, onDelete, 
                     </td>
                     <td class="status-result-cell">
                       <span
+                        title={result?.ok ? t(explanationKey) : undefined}
                         class={
                           "model-verdict " +
                           (ping.status === "pinging" ? "testing" : result?.ok ? "success" : result ? "fail" : "idle")
@@ -496,11 +500,12 @@ export function StatusPanel({ entries, persisted, dailyRequestBudget, onDelete, 
                           : ping.cancelled
                             ? t("ui.cancelled")
                             : result?.ok
-                              ? t("ui.available")
+                              ? t(result.kind === "completion" ? "status.completionPassed" : "status.reachable")
                               : result
                                 ? `HTTP ${result.status || "—"} ${t("ui.abnormal")}`
                                 : t("ui.pending")}
                       </span>
+                      {result ? <small class="status-probe-method muted">{t(methodKey)}</small> : null}
                       {result?.error ? (
                         <details class="status-error">
                           <summary>{t("history.failureDetails")}</summary>
@@ -508,14 +513,12 @@ export function StatusPanel({ entries, persisted, dailyRequestBudget, onDelete, 
                         </details>
                       ) : null}
                     </td>
-                    <td class="status-latency num">
+                    <td class="status-latency num" title={t("status.latencyExplanation")}>
                       <small>{t("status.colLatency")}</small>
                       {fmtMs(result?.latencyMs ?? null)}
                     </td>
-                    <td class="status-kind">
-                      {result
-                        ? t(result.kind === "models" ? "status.kindModels" : "status.kindCompletion")
-                        : t("common.dash")}
+                    <td class="status-kind" title={result?.ok ? t(explanationKey) : undefined}>
+                      {result ? t(methodKey) : t("common.dash")}
                     </td>
                     <td class="status-time muted">{ping.ts ? fmtTime(ping.ts) : t("common.dash")}</td>
                     <td class="status-row-actions">
@@ -527,7 +530,7 @@ export function StatusPanel({ entries, persisted, dailyRequestBudget, onDelete, 
                         <CopyButton value={entry.baseUrl} title={t("history.copyUrlTitle")} />
                         <span class="muted">
                           {result
-                            ? t(result.kind === "models" ? "status.kindModels" : "status.kindCompletion")
+                            ? t(methodKey)
                             : t("ui.pending")}
                         </span>
                         <CcSwitchButton
