@@ -25,6 +25,8 @@ export interface Adapter {
   extractText(json: any): string;
   // 非流式：从完整响应 JSON 解析 token 用量
   parseUsage(json: any): Usage;
+  // 非流式：解析 HTTP 成功响应中的协议级失败/未完成状态。
+  parseResponseError?(json: any): string | null;
   // 流式：解析单个 SSE `data:` 负载（已 JSON.parse）。返回 null 表示该事件无可用增量。
   parseStreamChunk(payload: any): StreamChunk | null;
   // 少数协议（如 Chat Completions）用非 JSON data 标记终止。
