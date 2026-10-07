@@ -445,7 +445,9 @@ async function* runStreamOnce(
   const finalText = truncate(text);
   const streamLatencyMs = Date.now() - start;
 
-  if (!terminal) {
+  // terminal 会在 handleEventBlock 闭包中更新；显式收窄避免 TS 将闭包外变量误判为恒为 null。
+  const finalTerminal = terminal as StreamTerminal | null;
+  if (!finalTerminal) {
     const error = "流式响应在协议完成标记前结束";
     yield { type: "error", error, status: res.status };
     yield {
@@ -458,10 +460,10 @@ async function* runStreamOnce(
     return;
   }
 
-  if (terminal.state !== "completed") {
+  if (finalTerminal.state !== "completed") {
     const error =
-      terminal.error ??
-      (terminal.state === "incomplete" ? "流式响应未完整完成" : "流式响应报告失败");
+      finalTerminal.error ??
+      (finalTerminal.state === "incomplete" ? "流式响应未完整完成" : "流式响应报告失败");
     yield { type: "error", error, status: res.status };
     yield {
       type: "done",
