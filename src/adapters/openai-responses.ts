@@ -53,6 +53,18 @@ export const openaiResponsesAdapter: Adapter = {
     };
   },
 
+  parseResponseError(json: any): string | null {
+    if (json?.status === "failed" || json?.error) {
+      const detail = json?.error?.message ?? json?.error?.code ?? json?.error;
+      return detail ? `Responses API failed: ${String(detail)}` : "Responses API reported failed status";
+    }
+    if (json?.status === "incomplete") {
+      const reason = json?.incomplete_details?.reason;
+      return reason ? `Responses API incomplete: ${String(reason)}` : "Responses API reported incomplete status";
+    }
+    return null;
+  },
+
   parseStreamChunk(payload: any): StreamChunk | null {
     const t = payload?.type;
     if (t === "response.output_text.delta" && typeof payload.delta === "string") {

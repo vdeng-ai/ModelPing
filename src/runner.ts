@@ -209,6 +209,14 @@ async function runOnce(adapter: Adapter, req: TestRequest, attempt: number, sign
     const latencyMs = Date.now() - start;
     const text = truncate(adapter.extractText(json));
     const usage = adapter.parseUsage(json);
+    const responseError = adapter.parseResponseError?.(json);
+    if (responseError) {
+      return {
+        ok: false, status: res.status, latencyMs, ttftMs: null,
+        usage, text, error: responseError, requestUrl, attempts: 1,
+        ...failureFields(req, { url, status: res.status, latencyMs, attempt, error: responseError }),
+      };
+    }
     // HTTP 200 但响应不含任何 LLM 内容（无输出文本、无 token 用量），
     // 说明该 URL 大概率不是 LLM 端点（如普通网站/代理返回了空 JSON）。
     // 不应判为通过，否则用户会误以为测试走了正确的 API 却没有结果。
@@ -302,16 +310,18 @@ async function* runStreamOnce(
   }
 
   if (!res.ok || !res.body) {
-    cleanup();
     const errBody = await readErrorBody(res);
-    const error = `HTTP ${res.status}: ${errBody}`;
+    cleanup();
+    if (signal?.aborted) return;
+    const status = timedOut ? 408 : res.status;
+    const error = timedOut ? `请求超时 (${req.timeoutMs}ms)` : `HTTP ${res.status}: ${errBody}`;
     const latencyMs = Date.now() - start;
-    yield { type: "error", error, status: res.status };
+    yield { type: "error", error, status };
     yield {
       type: "done",
       result: {
-        ok: false, status: res.status, latencyMs, ttftMs: null, usage, text: "", error, requestUrl, attempts: 1,
-        ...failureFields(req, { url, status: res.status, latencyMs, attempt, error, body: errBody }),
+        ok: false, status, latencyMs, ttftMs: null, usage, text: "", error, requestUrl, attempts: 1,
+        ...failureFields(req, { url, status, latencyMs, attempt, error, body: errBody }),
       },
     };
     return;
