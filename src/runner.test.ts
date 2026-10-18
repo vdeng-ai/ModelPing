@@ -35,6 +35,9 @@ describe("non-stream Responses failure states", () => {
     { status: "failed", expected: "failed status" },
     { status: "incomplete", incomplete_details: { reason: "max_output_tokens" }, expected: "max_output_tokens" },
     { status: "incomplete", expected: "incomplete status" },
+    { status: null, expected: "null" },
+    { status: "", expected: "status" },
+    { status: "completed", error: { message: "completion failed" }, expected: "completion failed" },
     { error: { message: "invalid request" }, expected: "invalid request" },
   ])("rejects HTTP 200 with $expected, retaining partial text and usage", async ({ expected, ...state }) => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
@@ -54,6 +57,28 @@ describe("non-stream Responses failure states", () => {
       });
       expect(result.error).toContain(expected);
       expect(result.failureLog).toContain(expected);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it.each(["cancelled", "queued", "in_progress", "unknown_status"].flatMap((status) => [
+    { status, text: "partial", tokens: false },
+    { status, text: "", tokens: true },
+    { status, text: "partial", tokens: true },
+  ]))("rejects $status with text='$text' and tokens=$tokens", async ({ status, text, tokens }) => {
+    const usage = tokens ? { inputTokens: 10, outputTokens: 1, totalTokens: 11 } : NIL;
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+      status,
+      output: [{ content: [{ type: "output_text", text }] }],
+      ...(tokens ? { usage: { input_tokens: 10, output_tokens: 1, total_tokens: 11 } } : {}),
+    }), { status: 200, headers: { "content-type": "application/json" } })));
+
+    try {
+      const result = await runTest(req({ protocol: "openai-responses" }));
+      expect(result).toMatchObject({ ok: false, status: 200, text, usage, attempts: 1 });
+      expect(result.error).toContain(status);
+      expect(result.failureLog).toContain(status);
     } finally {
       vi.unstubAllGlobals();
     }
