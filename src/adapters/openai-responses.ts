@@ -53,6 +53,23 @@ export const openaiResponsesAdapter: Adapter = {
     };
   },
 
+  parseResponseError(json: any): string | null {
+    if (json?.status === "failed" || json?.error) {
+      const detail = json?.error?.message ?? json?.error?.code ?? json?.error;
+      return detail ? `Responses API failed: ${String(detail)}` : "Responses API reported failed status";
+    }
+    if (json?.status === "incomplete") {
+      const reason = json?.incomplete_details?.reason;
+      return reason ? `Responses API incomplete: ${String(reason)}` : "Responses API reported incomplete status";
+    }
+    // 兼容省略 status 的供应商；显式状态只有 completed 可视为成功。
+    // cancelled / queued / in_progress 或未知状态即使带文本和用量也未成功完成。
+    if (json?.status !== undefined && json.status !== "completed") {
+      return `Responses API reported non-success status: ${String(json.status)}`;
+    }
+    return null;
+  },
+
   parseStreamChunk(payload: any): StreamChunk | null {
     const t = payload?.type;
     if (t === "response.output_text.delta" && typeof payload.delta === "string") {
