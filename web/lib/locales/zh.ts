@@ -1,4 +1,7 @@
+import { toolboxZh } from "./toolbox-zh.js";
+
 export const zh = {
+  toolbox: toolboxZh,
   app: {
     docTitle: "ModelPing · LLM API 测试工具",
     title: "LLM API 测试工具",
@@ -13,6 +16,7 @@ export const zh = {
     tabSettings: "设置",
     tabStatus: "状态",
     tabProviders: "服务商",
+    tabToolbox: "工具箱",
     navLabel: "主视图",
     skipToContent: "跳到主要内容",
     setupLabel: "连接与请求设置",

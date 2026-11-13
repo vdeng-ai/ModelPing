@@ -32,6 +32,7 @@
 - 批量测试（默认并发 2）、自定义模型、可调超时/重试/maxTokens/输入文本
 - 历史记录（可持久化开关、复制 baseUrl/掩码 key、导出 JSON）
 - 状态页：保存常用 provider + model，批量刷新端点延迟，支持自动刷新与 cc-switch 导入
+- **本地编解码工具箱**：11 个工具标签，涵盖 Base64 自动转换、Hex、URL、Base32、Unicode、HTML、ROT、摩斯电码、JWT 和哈希，无需提交内容到服务器
 - **密钥安全**：后端不明文存储、不打印任何 API Key；启用私有工作态时仅以加密 blob 保存
 
 ## 快速开始（本地）
@@ -57,6 +58,39 @@ npm start        # http://localhost:8787
 - **一键导入 cc-switch**：模型区的「→ cc-switch」可导入当前 provider；历史记录中测试成功的行也会出现同样按钮，可连同已验证的 model 一起导入。按钮左侧下拉可选择目标应用：Claude Code、Codex、Gemini CLI、OpenCode、OpenClaw，随后会唤起本机 `ccswitch://v1/import` 深链。
 
 这些辅助功能复用 UI 中配置的 `baseUrl`、API Key、完整 URL 模式和可选 User-Agent。API Key 只会在本次请求/深链导入动作中使用，后端不会持久化保存。
+
+## 本地编解码工具箱
+
+点击顶部导航的 **工具箱**，或在当前站点地址后添加 `#toolbox`。输入后自动转换，支持编码/解码方向切换、填入示例、清空、结果移到输入、点击输出全选以及复制结果。界面跟随应用的中英文和深浅色偏好，并支持移动端和键盘切换标签。
+
+| 工具 | 支持内容 |
+| --- | --- |
+| 快速 Base64 | 自动识别可解码为可读 UTF-8 的 Base64；也可固定编码或解码方向 |
+| Base64 | UTF-8、标准 Base64 / Base64URL、可选 `=` 补位 |
+| Hex | UTF-8 十六进制、大写/小写、无分隔/空格/冒号；解码兼容 `0x` 前缀和常见字节分隔符 |
+| URL | 单个组件、完整 URL、表单组件（空格与 `+` 互转） |
+| Base32 | RFC 4648 编解码；支持省略补位、小写输入和尾部位校验 |
+| Unicode | `\uXXXX`、`\u{…}`、`\xXX` 和常见转义；支持中文、Emoji 和代理对校验 |
+| HTML | HTML5 实体解码，特殊字符转义及全部字符的十进制/十六进制实体编码 |
+| ROT | ROT13、ROT5、ROT18、ROT47 |
+| 摩斯电码 | 英文字母、数字和常用标点；空格分隔字符，`/` 分隔单词，保留换行 |
+| JWT | Header / Payload 解析，HS256 / HS384 / HS512 本地签名及指定算法验签，`exp` / `nbf` 提示 |
+| 哈希 | MD5、SHA-1、SHA-256、SHA-384、SHA-512；十六进制或 Base64 摘要，包括空字符串 |
+
+转换在浏览器内完成，优先使用 Web Worker；Worker 不可用时回退到本地执行，不新增转换 API、轮询或远程资源请求。哈希与 HMAC 不依赖 Web Crypto，因此内网 HTTP 页面也可使用；剪贴板仍以浏览器权限为准，失败时可手动复制。
+
+只将工具、方向和格式偏好保存到 `modelping:toolbox:preferences:v1`。输入、输出和 JWT 密钥不写入 localStorage / sessionStorage，也不随 ModelPing 的私有工作态同步。不同工具的草稿仅在当前工具箱页面的内存中保留，离开工具箱或刷新后清除。单次输入限制为 1,000,000 个 UTF-16 代码单元；超限、非法字符和无效 UTF-8 都会明确报错，不静默截断或替换。
+
+使用边界：Base64 自动判断是启发式识别，有歧义时请固定方向。摩斯电码不支持中文，解码输出大写。哈希不可逆；MD5 / SHA-1 仅用于兼容性校验。JWT 签名输入为 `{"header":{"alg":"HS256","typ":"JWT"},"payload":{"sub":"demo"}}`，也可省略 `header`；HS256 / HS384 / HS512 的签名密钥分别至少需要 32 / 48 / 64 个 UTF-8 字节。其他 JWT 签名算法仅解析、不验签；不支持五段式 JWE。**解析不等于可信，HMAC 匹配也不验证发行者、受众或权限**，时间提示以本次解析时刻为准；本工具不能代替应用认证逻辑。
+
+验证命令：
+
+```bash
+npm run verify                 # 类型检查、Lint、全部单元测试、生产构建
+npm run test:toolbox:browser    # 构建后运行真实 Chromium 浏览器集成检查
+```
+
+浏览器检查优先使用本机 Chrome / Chromium，可通过 `CHROME_PATH` 指定路径；没有本机浏览器时，先运行 `npx playwright install chromium`。测试使用本地模拟 bootstrap，不连接真实供应商。截图写入 `node_modules/.cache/toolbox-browser/`。工具箱使用的 `@noble/hashes` 和 `entities` 许可证随构建一起保留，见 [第三方许可证](./web/public/assets/toolbox-licenses.txt)。
 
 ## 默认模型
 

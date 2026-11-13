@@ -5,7 +5,7 @@ interface SegmentedProps extends Omit<JSX.HTMLAttributes<HTMLDivElement>, "class
   children: ComponentChildren;
 }
 
-interface GlassButtonProps extends Omit<JSX.HTMLAttributes<HTMLButtonElement>, "class"> {
+interface GlassButtonProps extends Omit<JSX.ButtonHTMLAttributes<HTMLButtonElement>, "class"> {
   class?: string;
   active?: boolean;
   children: ComponentChildren;
@@ -24,6 +24,7 @@ export function GlassSegmentedControl({ class: className = "", children, ...prop
 export function GlassButton({ class: className = "", active = false, children, ...props }: GlassButtonProps) {
   return (
     <button
+      type="button"
       class={`ds-control ${active ? "ds-control--active active" : ""} ${className}`.trim()}
       {...props}
     >

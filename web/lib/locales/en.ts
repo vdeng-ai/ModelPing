@@ -1,4 +1,7 @@
+import { toolboxEn } from "./toolbox-en.js";
+
 export const en = {
+  toolbox: toolboxEn,
   app: {
     docTitle: "ModelPing · LLM API Tester",
     title: "LLM API Tester",
@@ -13,6 +16,7 @@ export const en = {
     tabSettings: "Settings",
     tabStatus: "Status",
     tabProviders: "Providers",
+    tabToolbox: "Toolbox",
     navLabel: "Main view",
     skipToContent: "Skip to main content",
     setupLabel: "Connection and request setup",

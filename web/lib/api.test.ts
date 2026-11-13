@@ -71,6 +71,33 @@ afterEach(() => {
 });
 
 describe("api auth failures", () => {
+  it("keeps authentication usable when session storage is denied", async () => {
+    vi.resetModules();
+    const denied = () => { throw new Error("storage denied"); };
+    vi.stubGlobal("sessionStorage", { getItem: denied, setItem: denied, removeItem: denied });
+    const fetchMock = vi.fn(() => Promise.resolve(new Response(null, { status: 204 })));
+    vi.stubGlobal("fetch", fetchMock);
+    const api = await import("./api.js");
+    api.setAppPassword("memory-only-password");
+    await api.fetchSettings();
+    expect(fetchMock.mock.calls[0]).toEqual(["/api/settings", {
+      headers: { "x-app-password": "memory-only-password" }, cache: "no-cache",
+    }]);
+    api.clearAppPassword();
+    await api.fetchSettings();
+    expect(fetchMock.mock.calls[1]).toEqual(["/api/settings", { headers: {}, cache: "no-cache" }]);
+  });
+
+  it("still reports authentication errors when clearing session storage is denied", async () => {
+    vi.resetModules();
+    const denied = () => { throw new Error("storage denied"); };
+    vi.stubGlobal("sessionStorage", { getItem: denied, setItem: denied, removeItem: denied });
+    vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(authDeniedResponse())));
+    const api = await import("./api.js");
+    api.setAppPassword("wrong");
+    await expect(api.fetchBootstrap()).rejects.toSatisfy((error: unknown) => api.isAuthError(error));
+  });
+
   it("sends the entered password without trimming it", async () => {
     const fetchMock = vi.fn(() => Promise.resolve(new Response(null, { status: 204 })));
     const api = await loadApi(fetchMock);

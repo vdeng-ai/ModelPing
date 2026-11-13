@@ -48,17 +48,24 @@ export async function copy(text: string): Promise<boolean> {
   } catch {
     /* fall through */
   }
+  let ta: HTMLTextAreaElement | null = null;
+  let focused: HTMLElement | null = null;
   try {
-    const ta = document.createElement("textarea");
+    focused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    ta = document.createElement("textarea");
     ta.value = text;
     ta.style.position = "fixed";
     ta.style.opacity = "0";
+    ta.tabIndex = -1;
+    ta.setAttribute("aria-hidden", "true");
     document.body.appendChild(ta);
     ta.select();
-    const ok = document.execCommand("copy");
-    document.body.removeChild(ta);
-    return ok;
+    return document.execCommand("copy");
   } catch {
     return false;
+  } finally {
+    // A denied/throwing clipboard must not leave sensitive content in the DOM.
+    ta?.remove();
+    if (focused?.isConnected) focused.focus({ preventScroll: true });
   }
 }

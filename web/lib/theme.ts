@@ -5,11 +5,17 @@
 export type ThemePref = "dark" | "light" | "system";
 
 const KEY = "llm-test:theme";
+let memoryPref: ThemePref = "system";
 const mql = typeof matchMedia !== "undefined" ? matchMedia("(prefers-color-scheme: dark)") : null;
 
 export function getThemePref(): ThemePref {
-  const v = localStorage.getItem(KEY);
-  return v === "dark" || v === "light" || v === "system" ? v : "system";
+  try {
+    const v = localStorage.getItem(KEY);
+    memoryPref = v === "dark" || v === "light" || v === "system" ? v : "system";
+  } catch {
+    // Restricted storage must not prevent the app (or local toolbox) from opening.
+  }
+  return memoryPref;
 }
 
 // 把偏好解析为实际主题（dark/light）。
@@ -25,7 +31,8 @@ function apply(pref: ThemePref): void {
 
 // 设置偏好并立即生效。
 export function setThemePref(pref: ThemePref): void {
-  localStorage.setItem(KEY, pref);
+  memoryPref = pref;
+  try { localStorage.setItem(KEY, pref); } catch { /* Session-only preference. */ }
   apply(pref);
 }
 

@@ -23,11 +23,12 @@ function failedDualResult(error: string, status = 0): DualTestResult {
 }
 
 // 访问口令（可选）。若后端启用 APP_PASSWORD，前端把口令存内存 + sessionStorage。
-let appPassword: string | null = sessionStorage.getItem("app_password");
+let appPassword: string | null = null;
+try { appPassword = sessionStorage.getItem("app_password"); } catch { /* Storage can be disabled. */ }
 
 export function setAppPassword(pw: string) {
   appPassword = pw;
-  sessionStorage.setItem("app_password", pw);
+  try { sessionStorage.setItem("app_password", pw); } catch { /* Keep the password in memory only. */ }
 }
 
 export class AuthError extends Error {
@@ -43,7 +44,7 @@ export function isAuthError(error: unknown): error is AuthError {
 
 export function clearAppPassword() {
   appPassword = null;
-  sessionStorage.removeItem("app_password");
+  try { sessionStorage.removeItem("app_password"); } catch { /* In-memory auth is still cleared. */ }
 }
 
 function authHeaders(): Record<string, string> {

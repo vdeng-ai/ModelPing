@@ -32,6 +32,7 @@ Features:
 - Batch testing (default concurrency 2), custom models, adjustable timeout/retries/maxTokens/input text
 - History (toggleable persistence, copy baseUrl/masked key, export JSON)
 - Status page: save common provider + model entries, batch-refresh endpoint latency, auto-refresh, and import to cc-switch
+- **Local encoding toolbox**: 11 tool tabs covering automatic Base64 conversion, Hex, URL, Base32, Unicode, HTML, ROT, Morse, JWT and hashes, without sending conversion content to the server
 - **Key safety**: the backend never stores API keys in plaintext and never logs them; private working state is saved only as an encrypted blob
 
 ## Quick start (local)
@@ -57,6 +58,39 @@ After entering a provider `baseUrl` and API key in the connection panel, ModelPi
 - **Import to cc-switch**: use the **→ cc-switch** button in the model area to import the current provider, or use the same button in successful history rows to import a tested provider + model pair. The target app dropdown supports Claude Code, Codex, Gemini CLI, OpenCode, and OpenClaw, then opens the local `ccswitch://v1/import` deep link.
 
 These helpers use the same `baseUrl`, API key, full-URL mode, and optional User-Agent configured in the UI. API keys are only forwarded for the request/deep link action and are not persisted by the backend.
+
+## Local encoding and decoding toolbox
+
+Open **Toolbox** in the top navigation, or append `#toolbox` to the current site's address. Conversion runs as you type, with explicit encode/decode modes, examples, clear, move-result-to-input, click-to-select output and clipboard copying. The toolbox follows the app's language and theme, supports mobile layouts and provides keyboard-operated tabs.
+
+| Tool | Supported features |
+| --- | --- |
+| Quick Base64 | Automatically decode Base64 that produces readable UTF-8, or select a direction explicitly |
+| Base64 | UTF-8, standard Base64 / Base64URL and optional `=` padding |
+| Hex | UTF-8 hexadecimal, letter case and none/space/colon separators; decode `0x` prefixes and common byte separators |
+| URL | Component, full URL and form-component modes (space / `+` conversion) |
+| Base32 | RFC 4648, including omitted padding, lowercase input and unused-bit validation |
+| Unicode | `\uXXXX`, `\u{…}`, `\xXX` and common escapes, including multilingual text, emoji and surrogate validation |
+| HTML | HTML5 entity decoding, special-character escaping and decimal/hex entities for all characters |
+| ROT | ROT13, ROT5, ROT18 and ROT47 |
+| Morse | Latin letters, digits and common punctuation; spaces separate characters, `/` separates words, line breaks are preserved |
+| JWT | Inspect Header / Payload, sign and verify HS256 / HS384 / HS512 with an explicitly selected algorithm, display `exp` / `nbf` status |
+| Hash | MD5, SHA-1, SHA-256, SHA-384 and SHA-512; hexadecimal or Base64 digests, including empty-string hashing |
+
+Conversion stays in the browser, using a Web Worker when available and a local fallback otherwise. No conversion API, polling or remote resources are added. Hashing and HMAC do not require Web Crypto, so they also work on local-network HTTP pages. Clipboard access remains subject to browser permissions, with manual copying available on failure.
+
+Only the selected tool, directions and format preferences are saved under `modelping:toolbox:preferences:v1`. Input, output and JWT secrets are never written to localStorage / sessionStorage or synced with ModelPing's private working state. Per-tool drafts stay in memory while the toolbox is open and are cleared when leaving the toolbox or reloading. Input is limited to 1,000,000 UTF-16 code units; oversized input, invalid alphabets and invalid UTF-8 produce errors instead of silent truncation or replacement.
+
+Limitations: automatic Base64 detection is a heuristic; select an explicit direction for ambiguous text. Morse does not support non-Latin text and decodes to uppercase. Hashes are not reversible; MD5 / SHA-1 are legacy checksums, not security primitives. JWT signing accepts `{"header":{"alg":"HS256","typ":"JWT"},"payload":{"sub":"demo"}}`, with an optional `header`; HS256 / HS384 / HS512 signing keys must contain at least 32 / 48 / 64 UTF-8 bytes respectively. Other JWT signing algorithms can be inspected, but not verified; five-part JWE is not supported. **Decoding does not establish trust, and an HMAC match does not validate issuer, audience or permissions.** Time claims are evaluated at conversion time. This toolbox is not a substitute for application authentication.
+
+Verification:
+
+```bash
+npm run verify                 # Types, lint, all unit tests and production build
+npm run test:toolbox:browser    # Build and run real Chromium integration checks
+```
+
+Browser checks prefer a locally installed Chrome / Chromium; set `CHROME_PATH` to override the executable. Otherwise, install Playwright's browser with `npx playwright install chromium`. Tests use a local mock bootstrap and never contact real model providers. Screenshots are written to `node_modules/.cache/toolbox-browser/`. Licenses for the toolbox's `@noble/hashes` and `entities` dependencies are included in the build; see [third-party licenses](./web/public/assets/toolbox-licenses.txt).
 
 ## Default models
 

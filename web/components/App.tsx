@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "preact/hooks";
-import { Activity, FlaskConical, History, ServerCog } from "lucide-preact";
+import { lazy, Suspense } from "preact/compat";
+import { Activity, Binary, FlaskConical, History, ServerCog } from "lucide-preact";
 import type { ConfigState, Defaults, HistoryEntry, PresetsResponse, PrivateState, ProviderPreset, StatusEntry } from "../lib/types.js";
 import { emptyPrivateState, fetchBootstrap, fetchPresets, isAuthError, savePrivateState, saveSettings, setAppPassword } from "../lib/api.js";
 import { MAX_PRIVATE_HISTORY } from "../../src/private-state.js";
@@ -34,6 +35,9 @@ import {
 import { statusEntryKey } from "../lib/status-entries.js";
 import { removeProviderModelsByLabel, upsertProviderFromConn, upsertProviderModel } from "../lib/provider-upsert.js";
 import { appRouteFromHash, hashForAppRoute, type AppRoute } from "../lib/navigation.js";
+
+// Load the toolbox and its worker only when requested; the model tester stays lean.
+const ToolboxPanel = lazy(() => import("./ToolboxPanel.js"));
 
 let statusSeq = 0;
 const nextStatusId = () => `s${Date.now()}-${++statusSeq}`;
@@ -712,6 +716,15 @@ export function App() {
               <ServerCog size={17} aria-hidden="true" />
               {t("app.tabProviders")}
             </button>
+            <button
+              type="button"
+              class={"nav-item " + (route === "toolbox" ? "active" : "")}
+              aria-current={route === "toolbox" ? "page" : undefined}
+              onClick={() => navigateTo("toolbox")}
+            >
+              <Binary size={17} aria-hidden="true" />
+              {t("app.tabToolbox")}
+            </button>
           </nav>
 
           <div class="app-utilities">
@@ -722,14 +735,14 @@ export function App() {
       </header>
 
       <main id="main-content" class="app-main" ref={mainRef} tabIndex={-1}>
-        {loadErr ? (
+        {loadErr && route !== "toolbox" ? (
           <section class="panel">
             <div class="status-text fail">{t("app.loadFailed", { msg: loadErr })}</div>
             <div class="actions"><button onClick={init}>{t("app.retry")}</button></div>
           </section>
         ) : null}
 
-        {!loadErr && !bootstrapped ? (
+        {!loadErr && !bootstrapped && route !== "toolbox" ? (
           <section class="panel" aria-busy="true" aria-label={t("app.loading")}>
             <div class="skeleton-stack">
               <div class="skeleton-bar" />
@@ -739,14 +752,18 @@ export function App() {
           </section>
         ) : null}
 
-        {securityWarn ? (
+        {securityWarn && route !== "toolbox" ? (
           <section class="security-warning" role="status">
             <strong>{t("app.securityWarningTitle")}</strong>
             <span>{t("app.securityWarningBody")}</span>
           </section>
         ) : null}
 
-        {!loadErr && bootstrapped && testRoute ? (
+        {route === "toolbox" ? (
+          <Suspense fallback={<section class="panel" role="status" aria-busy="true">{t("app.loading")}</section>}>
+            <ToolboxPanel />
+          </Suspense>
+        ) : !loadErr && bootstrapped && testRoute ? (
           <div class="test-workspace">
             <aside class="workspace-sidebar" aria-label={t("app.setupLabel")}>
               <ConnectionPanel
