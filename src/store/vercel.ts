@@ -26,6 +26,8 @@ export class VercelBlobStore implements SettingsStore {
       token: this.token,
       contentType: "application/json",
       addRandomSuffix: false,
+      // Blob SDK >= 1 requires explicit overwrites for our fixed settings paths.
+      allowOverwrite: true,
     });
   }
 }

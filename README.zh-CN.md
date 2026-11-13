@@ -274,8 +274,13 @@ web/
 | `npm run build:cf`  | 构建 Cloudflare Workers 静态资源          |
 | `npm start`         | 运行已构建的 Node 服务                    |
 | `npm run typecheck` | 类型检查                                  |
+| `npm run audit:prod` | 审计生产依赖；任意级别告警均视为失败       |
 | `npm run deploy:cf` | 构建并部署到 Cloudflare                   |
 | `vercel`            | 部署到 Vercel（`vercel --prod` 上生产）   |
+
+CI 会在 `npm run verify` 之外单独运行 `npm run audit:prod`。此命令检查部署时的生产依赖，不包含开发/构建工具链；完整检查使用 `npm audit`。请使用 `npm ci` 按已提交的锁文件安装。
+
+`@vercel/blob` 有意固定为 `2.4.0`：2026 年 11 月复核时，`2.9.0` 会经 `@vercel/oidc` / `@vercel/cli-config` 引入存在告警的 `zod`。固定版本的锁文件使用已修复的 `undici`，且不引入上述依赖链。修改此固定版本前，应重新审计并运行 Blob 读写/覆盖测试，不要强制覆盖不兼容的传递依赖。固定路径的设置保存已显式设置 `allowOverwrite: true`，兼容 Blob SDK >= 1。
 
 ## 开源声明
 

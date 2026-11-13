@@ -17,4 +17,6 @@ jobs:
           cache: npm
 
       - run: npm ci
+      - name: Audit production dependencies
+        run: npm run audit:prod
       - run: npm run verify

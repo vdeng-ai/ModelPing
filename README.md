@@ -271,8 +271,13 @@ web/
 | `npm run build:cf`  | Build frontend assets for Cloudflare Workers          |
 | `npm start`         | Run the built Node server                        |
 | `npm run typecheck` | Type checking                                    |
+| `npm run audit:prod` | Audit production dependencies; fail on any reported severity |
 | `npm run deploy:cf` | Build and deploy to Cloudflare                   |
 | `vercel`            | Deploy to Vercel (`vercel --prod` for production)|
+
+CI runs `npm run audit:prod` separately from `npm run verify`. This checks the deployed dependency tree, not the development/build toolchain; use `npm audit` for the full tree. Install from the committed lockfile with `npm ci`.
+
+`@vercel/blob` is intentionally pinned to `2.4.0`: the November 2026 audit of `2.9.0` introduced an affected `zod` through `@vercel/oidc` / `@vercel/cli-config`. The pinned SDK resolves to patched `undici` in the lockfile without that chain. Recheck both the audit and Blob read/overwrite tests before changing this pin; do not force incompatible transitive dependencies. Fixed-path settings writes explicitly set `allowOverwrite: true` for Blob SDK >= 1 compatibility.
 
 ## License & credits
 
