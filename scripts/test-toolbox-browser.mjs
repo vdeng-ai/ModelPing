@@ -205,14 +205,23 @@ try {
     assert.equal(await page.evaluate(() => document.activeElement.id), "toolbox-tab-hash");
     await choose(page, "快速 Base64");
     await button(page, "清空").click();
-    await button(page, "EN").click();
+    await page.getByRole("combobox", { name: "语言", exact: true }).selectOption("en");
     await page.getByRole("heading", { name: "Encoding & Decoding Toolbox" }).waitFor();
     for (const width of [1440, 768, 390, 320]) {
       await page.setViewportSize({ width, height: 1100 });
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `Horizontal overflow at ${width}px`);
+      if (width <= 760) {
+        const navigation = await page.locator(".primary-nav .nav-item").evaluateAll((items) => items.map((item) => {
+          const rect = item.getBoundingClientRect();
+          return { top: rect.top, left: rect.left, right: rect.right };
+        }));
+        assert.equal(navigation.length, 4);
+        assert.ok(navigation.every((item) => Math.abs(item.top - navigation[0].top) < 1), "All four mobile navigation items must share one row");
+        assert.ok(navigation.every((item) => item.left >= 0 && item.right <= width + 1), "Mobile navigation must fit the viewport");
+      }
       if (width === 1440 || width === 390) await page.screenshot({ path: join(artifacts, `toolbox-en-light-${width}.png`), fullPage: true });
     }
-    await button(page, "中").click();
+    await page.getByRole("combobox", { name: "Language", exact: true }).selectOption("zh");
     await button(page, "暗黑").click();
     assert.equal(await page.locator("html").getAttribute("data-theme"), "dark");
     await page.setViewportSize({ width: 390, height: 1000 });
@@ -248,7 +257,7 @@ try {
   await check("existing navigation and browser back/forward still work", async () => {
     await button(page, "测试").click();
     await page.getByRole("tab", { name: /模型/ }).waitFor();
-    await button(page, "服务商").click();
+    await button(page, "供应商").click();
     assert.ok(page.url().endsWith("#providers"));
     await page.goBack();
     assert.ok(page.url().endsWith("#test/models"));

@@ -1,39 +1,52 @@
-/** Cloudflare Workers free-tier soft cap used for client-side status auto-refresh guards. */
-export const FREE_WORKER_SOFT_CAP = 100_000;
+/** Cloudflare Workers Free daily request ceiling. */
+export const CLOUDFLARE_FREE_DAILY_REQUEST_LIMIT = 100_000;
 
-/** Estimated Worker requests/day if every entry is pinged once per intervalSec. */
-export function dailyPingRequests(entryCount: number, intervalSec: number): number {
+/** ModelPing default share reserved for Status auto-refresh; leave headroom for manual API calls. */
+export const DEFAULT_MODELPING_DAILY_BUDGET = 60_000;
+
+/** Keep in sync with src/ping.ts MAX_PING_BATCH_SIZE. */
+export const PING_BATCH_SIZE = 10;
+
+/** Estimated Worker requests/day when Status entries are packed into ping batches. */
+export function dailyPingRequests(
+  entryCount: number,
+  intervalSec: number,
+  batchSize = PING_BATCH_SIZE,
+): number {
   if (!intervalSec || entryCount <= 0) return 0;
-  return Math.ceil((entryCount * 86400) / intervalSec);
+  const batchesPerRefresh = Math.ceil(entryCount / Math.max(1, batchSize));
+  return Math.ceil((batchesPerRefresh * 86400) / intervalSec);
 }
 
-/** Max entries that stay under the free-tier soft cap for a given interval. */
-export function maxEntriesForInterval(intervalSec: number, cap = FREE_WORKER_SOFT_CAP): number {
+/** Max entries that fit under a request budget for a given interval. */
+export function maxEntriesForInterval(
+  intervalSec: number,
+  cap = DEFAULT_MODELPING_DAILY_BUDGET,
+  batchSize = PING_BATCH_SIZE,
+): number {
   if (!intervalSec) return Number.POSITIVE_INFINITY;
-  return Math.floor((cap * intervalSec) / 86400);
+  const maxBatches = Math.floor((cap * intervalSec) / 86400);
+  return Math.max(0, maxBatches) * Math.max(1, batchSize);
 }
 
-/** True when the interval would exceed the free-tier soft cap. */
 export function isOverFreeCap(
   entryCount: number,
   intervalSec: number,
-  cap = FREE_WORKER_SOFT_CAP,
+  cap = DEFAULT_MODELPING_DAILY_BUDGET,
+  batchSize = PING_BATCH_SIZE,
 ): boolean {
-  return dailyPingRequests(entryCount, intervalSec) > cap;
+  return dailyPingRequests(entryCount, intervalSec, batchSize) > cap;
 }
 
-/**
- * Pick the shortest allowed interval from options that stays under the cap.
- * Returns 0 (Off) when none of the positive options are safe.
- */
 export function safestInterval(
   entryCount: number,
   options: readonly number[],
-  cap = FREE_WORKER_SOFT_CAP,
+  cap = DEFAULT_MODELPING_DAILY_BUDGET,
+  batchSize = PING_BATCH_SIZE,
 ): number {
   const positive = options.filter((sec) => sec > 0).sort((a, b) => a - b);
   for (const sec of positive) {
-    if (!isOverFreeCap(entryCount, sec, cap)) return sec;
+    if (!isOverFreeCap(entryCount, sec, cap, batchSize)) return sec;
   }
   return 0;
 }

@@ -42,7 +42,20 @@ export const openaiChatAdapter: Adapter = {
     };
   },
 
+  isStreamDoneData(data: string): boolean {
+    return data === "[DONE]";
+  },
+
   parseStreamChunk(payload: any): StreamChunk | null {
+    if (payload?.error) {
+      const detail = payload.error?.message ?? payload.error?.code ?? payload.error?.type ?? payload.error;
+      return {
+        terminal: {
+          state: "failed",
+          error: `Chat Completions stream error: ${String(detail)}`,
+        },
+      };
+    }
     const chunk: StreamChunk = {};
     const delta = payload?.choices?.[0]?.delta?.content;
     if (typeof delta === "string" && delta.length) chunk.text = delta;

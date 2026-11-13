@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
-import type { TestRequest, Usage } from "./types.js";
-import { redactSecrets, sanitizeUrl, mergeUsage, isUnsupportedProtocol, retryable, runTest, runTestStream } from "./runner.js";
+import type { StreamEvent, TestRequest, Usage } from "./types.js";
+import { classifyFailure, redactSecrets, sanitizeUrl, mergeUsage, isUnsupportedProtocol, retryable, runTest, runTestStream } from "./runner.js";
 
 function req(over: Partial<TestRequest> = {}): TestRequest {
   return {
@@ -19,6 +19,86 @@ function req(over: Partial<TestRequest> = {}): TestRequest {
 }
 
 const NIL: Usage = { inputTokens: null, outputTokens: null, totalTokens: null };
+
+async function collectStreamEvents(stream: ReadableStream<Uint8Array>): Promise<StreamEvent[]> {
+  const output = await new Response(stream).text();
+  return output
+    .split("\n")
+    .filter((line) => line.startsWith("data: "))
+    .map((line) => JSON.parse(line.slice(6)));
+}
+
+describe("non-stream Responses failure states", () => {
+  it.each([
+    { status: "failed", error: { message: "upstream failed" }, expected: "upstream failed" },
+    { status: "failed", error: { code: "server_error" }, expected: "server_error" },
+    { status: "failed", expected: "failed status" },
+    { status: "incomplete", incomplete_details: { reason: "max_output_tokens" }, expected: "max_output_tokens" },
+    { status: "incomplete", expected: "incomplete status" },
+    { status: null, expected: "null" },
+    { status: "", expected: "status" },
+    { status: "completed", error: { message: "completion failed" }, expected: "completion failed" },
+    { error: { message: "invalid request" }, expected: "invalid request" },
+  ])("rejects HTTP 200 with $expected, retaining partial text and usage", async ({ expected, ...state }) => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+      ...state,
+      output: [{ content: [{ type: "output_text", text: "partial" }] }],
+      usage: { input_tokens: 10, output_tokens: 1, total_tokens: 11 },
+    }), { status: 200, headers: { "content-type": "application/json" } })));
+
+    try {
+      const result = await runTest(req({ protocol: "openai-responses" }));
+      expect(result).toMatchObject({
+        ok: false,
+        status: 200,
+        text: "partial",
+        usage: { inputTokens: 10, outputTokens: 1, totalTokens: 11 },
+        attempts: 1,
+      });
+      expect(result.error).toContain(expected);
+      expect(result.failureLog).toContain(expected);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it.each(["cancelled", "queued", "in_progress", "unknown_status"].flatMap((status) => [
+    { status, text: "partial", tokens: false },
+    { status, text: "", tokens: true },
+    { status, text: "partial", tokens: true },
+  ]))("rejects $status with text='$text' and tokens=$tokens", async ({ status, text, tokens }) => {
+    const usage = tokens ? { inputTokens: 10, outputTokens: 1, totalTokens: 11 } : NIL;
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+      status,
+      output: [{ content: [{ type: "output_text", text }] }],
+      ...(tokens ? { usage: { input_tokens: 10, output_tokens: 1, total_tokens: 11 } } : {}),
+    }), { status: 200, headers: { "content-type": "application/json" } })));
+
+    try {
+      const result = await runTest(req({ protocol: "openai-responses" }));
+      expect(result).toMatchObject({ ok: false, status: 200, text, usage, attempts: 1 });
+      expect(result.error).toContain(status);
+      expect(result.failureLog).toContain(status);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it.each(["completed", undefined])("accepts successful Responses with status %s", async (status) => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+      status,
+      error: null,
+      output: [{ content: [{ type: "output_text", text: "ok" }] }],
+      usage: { input_tokens: 10, output_tokens: 1, total_tokens: 11 },
+    }), { status: 200, headers: { "content-type": "application/json" } })));
+
+    try {
+      expect(await runTest(req({ protocol: "openai-responses" }))).toMatchObject({ ok: true, text: "ok", error: null });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});
 
 describe("redactSecrets", () => {
   it("redacts the exact apiKey wherever it appears", () => {
@@ -84,23 +164,45 @@ describe("mergeUsage", () => {
   it("derives total when input+output known but total missing", () => {
     expect(mergeUsage(NIL, { inputTokens: 10, outputTokens: 20 }).totalTokens).toBe(30);
   });
+
+  it("recomputes a derived total as output tokens increase", () => {
+    const first = mergeUsage(NIL, { inputTokens: 10, outputTokens: 1 });
+    expect(first).toEqual({ inputTokens: 10, outputTokens: 1, totalTokens: 11 });
+
+    const second = mergeUsage(first, { outputTokens: 5 });
+    expect(second).toEqual({ inputTokens: 10, outputTokens: 5, totalTokens: 15 });
+  });
 });
 
-describe("isUnsupportedProtocol", () => {
-  it("treats 404/405/501 as unsupported", () => {
-    expect(isUnsupportedProtocol(404)).toBe(true);
-    expect(isUnsupportedProtocol(405)).toBe(true);
-    expect(isUnsupportedProtocol(501)).toBe(true);
+describe("failure classification", () => {
+  it("only treats a 404 as unsupported when the body identifies an endpoint/route problem", () => {
+    expect(classifyFailure(404, "route not found")).toBe("unsupported_protocol");
+    expect(isUnsupportedProtocol(404, "route not found")).toBe(true);
+    expect(classifyFailure(404, "Not Found")).toBe("request_failed");
+    expect(isUnsupportedProtocol(404, "Not Found")).toBe(false);
+    expect(classifyFailure(405)).toBe("unsupported_protocol");
+    expect(classifyFailure(501)).toBe("unsupported_protocol");
   });
 
-  it("matches body phrases on 400/422", () => {
+  it("distinguishes missing models from unsupported endpoints", () => {
+    expect(classifyFailure(404, '{"error":{"code":"model_not_found","message":"Model foo not found"}}')).toBe(
+      "model_not_found",
+    );
+    expect(isUnsupportedProtocol(404, "Model foo not found")).toBe(false);
+  });
+
+  it("distinguishes permission failures even when a provider hides them behind 404", () => {
+    expect(classifyFailure(404, "You do not have access to model foo")).toBe("permission_denied");
+    expect(classifyFailure(403, "Forbidden")).toBe("permission_denied");
+  });
+
+  it("matches endpoint phrases on 400/422", () => {
     expect(isUnsupportedProtocol(400, "Unsupported protocol")).toBe(true);
     expect(isUnsupportedProtocol(422, "route not found")).toBe(true);
     expect(isUnsupportedProtocol(400, "invalid api key")).toBe(false);
   });
 
-  it("ignores other statuses", () => {
-    expect(isUnsupportedProtocol(401, "unsupported endpoint")).toBe(false);
+  it("ignores unrelated successful responses", () => {
     expect(isUnsupportedProtocol(200)).toBe(false);
   });
 });
@@ -115,6 +217,215 @@ describe("retryable", () => {
     expect(retryable(400)).toBe(false);
     expect(retryable(401)).toBe(false);
     expect(retryable(404)).toBe(false);
+  });
+});
+
+describe("stream probe", () => {
+  it("stops the upstream body after the first delta", async () => {
+    let cancelled = false;
+    const encoder = new TextEncoder();
+    const upstream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encoder.encode('data: {"choices":[{"delta":{"content":"first"}}]}\n\n'));
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(upstream, {
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
+    })));
+
+    try {
+      const reader = runTestStream(req({ stream: true }), undefined, { stopAfterFirstDelta: true }).getReader();
+      const decoder = new TextDecoder();
+      let output = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        output += decoder.decode(value);
+      }
+
+      expect(output).toContain('"type":"delta"');
+      expect(output).toContain('"type":"done"');
+      expect(output).toContain("first");
+      expect(cancelled).toBe(true);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});
+
+describe("stream completion semantics", () => {
+  async function finalResultFor(events: string, protocol: TestRequest["protocol"] = "openai-chat") {
+    const encoder = new TextEncoder();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(encoder.encode(events));
+              controller.close();
+            },
+          }),
+          { status: 200, headers: { "content-type": "text/event-stream" } },
+        ),
+      ),
+    );
+
+    const reader = runTestStream(req({ protocol, stream: true })).getReader();
+    const decoder = new TextDecoder();
+    let output = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      output += decoder.decode(value);
+    }
+    const parsed = output
+      .split("\n")
+      .filter((line) => line.startsWith("data: "))
+      .map((line) => JSON.parse(line.slice(6)));
+    const doneLine = [...parsed].reverse().find((event: any) => event.type === "done");
+    return doneLine?.result;
+  }
+
+  it("fails when Chat Completions emits text but closes before [DONE]", async () => {
+    try {
+      const result = await finalResultFor('data: {"choices":[{"delta":{"content":"partial"}}]}\n\n');
+      expect(result).toMatchObject({
+        ok: false,
+        status: 200,
+        text: "partial",
+        failureKind: "request_failed",
+      });
+      expect(result.error).toContain("完成标记");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("succeeds only after the Chat Completions [DONE] marker", async () => {
+    try {
+      const result = await finalResultFor(
+        'data: {"choices":[{"delta":{"content":"ok"}}]}\n\ndata: [DONE]\n\n',
+      );
+      expect(result).toMatchObject({ ok: true, status: 200, text: "ok" });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("treats response.failed as failure even after Responses emitted text", async () => {
+    try {
+      const result = await finalResultFor(
+        'data: {"type":"response.output_text.delta","delta":"partial"}\n\n' +
+          'data: {"type":"response.failed","response":{"error":{"message":"upstream failed"}}}\n\n',
+        "openai-responses",
+      );
+      expect(result).toMatchObject({ ok: false, status: 200, text: "partial", failureKind: "request_failed" });
+      expect(result.error).toContain("upstream failed");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it.each([
+    { prefix: 'data: {"choices":[{"delta":{"content":"partial"}}]}\n\n', error: { message: "upstream failed" }, expected: "upstream failed" },
+    { prefix: "", error: { code: "server_error" }, expected: "server_error" },
+    { prefix: "", error: "gateway failed", expected: "gateway failed" },
+  ])("rejects Chat stream error $expected even when followed by [DONE]", async ({ prefix, error, expected }) => {
+    try {
+      const result = await finalResultFor(prefix + `data: ${JSON.stringify({ error })}\n\ndata: [DONE]\n\n`);
+      expect(result).toMatchObject({ ok: false, status: 200, text: prefix ? "partial" : "" });
+      expect(result.error).toContain(expected);
+      expect(result.failureLog).toContain(expected);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("treats response.incomplete as failure", async () => {
+    try {
+      const result = await finalResultFor(
+        'data: {"type":"response.incomplete","response":{"incomplete_details":{"reason":"max_output_tokens"}}}\n\n',
+        "openai-responses",
+      );
+      expect(result).toMatchObject({ ok: false, status: 200 });
+      expect(result.error).toContain("max_output_tokens");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});
+
+describe("stream HTTP error body deadlines", () => {
+  it("times out while reading a stalled HTTP 500 body", async () => {
+    vi.useFakeTimers();
+    const capture: { signal?: AbortSignal } = {};
+    vi.stubGlobal("fetch", vi.fn((_input: unknown, init?: RequestInit) => {
+      capture.signal = init?.signal ?? undefined;
+      return Promise.resolve(new Response(new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode('{"error":'));
+          init?.signal?.addEventListener("abort", () => controller.error(new DOMException("Aborted", "AbortError")), { once: true });
+        },
+      }), { status: 500 }));
+    }));
+
+    try {
+      const running = collectStreamEvents(runTestStream(req({ stream: true, timeoutMs: 50 })));
+      await vi.advanceTimersByTimeAsync(50);
+      const events = await running;
+      expect(events.find((event) => event.type === "done")?.result).toMatchObject({ ok: false, status: 408, attempts: 1 });
+      expect(events.find((event) => event.type === "error")?.error).toContain("超时");
+      expect(capture.signal?.aborted).toBe(true);
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.unstubAllGlobals();
+      vi.useRealTimers();
+    }
+  });
+
+  it("cancels a stalled HTTP error body without returning a timeout result", async () => {
+    const capture: { signal?: AbortSignal } = {};
+    vi.stubGlobal("fetch", vi.fn((_input: unknown, init?: RequestInit) => {
+      capture.signal = init?.signal ?? undefined;
+      return Promise.resolve(new Response(new ReadableStream<Uint8Array>({
+        start(controller) {
+          init?.signal?.addEventListener("abort", () => controller.error(new DOMException("Aborted", "AbortError")), { once: true });
+        },
+      }), { status: 500 }));
+    }));
+    const controller = new AbortController();
+
+    try {
+      const running = collectStreamEvents(runTestStream(req({ stream: true }), controller.signal));
+      await Promise.resolve();
+      controller.abort();
+      expect(await running).toEqual([]);
+      expect(capture.signal?.aborted).toBe(true);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("preserves the HTTP status and diagnostics when the error body arrives in time", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("fetch", vi.fn(async () => new Response('{"error":"bad gateway"}', { status: 502 })));
+
+    try {
+      const events = await collectStreamEvents(runTestStream(req({ stream: true, timeoutMs: 50 })));
+      const result = events.find((event) => event.type === "done")?.result;
+      expect(result).toMatchObject({ ok: false, status: 502 });
+      expect(result?.error).toContain("bad gateway");
+      expect(result?.failureLog).toContain("bad gateway");
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.unstubAllGlobals();
+      vi.useRealTimers();
+    }
   });
 });
 

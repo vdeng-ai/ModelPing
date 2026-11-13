@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from "preact/hooks";
-import { Eye, EyeOff, ListPlus, Save, WalletCards } from "lucide-preact";
+import { ChevronRight, Eye, EyeOff, Link, ListPlus, Save, WalletCards } from "lucide-preact";
 import type { Balance, ProviderPreset } from "../lib/types.js";
 import { CUSTOM_PROVIDER_ID } from "../lib/presets.js";
 import { fetchBalance, fetchModels } from "../lib/api.js";
@@ -7,6 +7,7 @@ import { sortByDisplayText } from "../lib/alphabetical-sort.js";
 import { CopyButton } from "./CopyButton.js";
 import { ModelPickerModal } from "./ModelPickerModal.js";
 import { PromptModal } from "./PromptModal.js";
+import { useMediaQuery } from "./useMediaQuery.js";
 import { useI18n, translate, type Lang } from "../lib/i18n.js";
 
 export interface ConnValue {
@@ -67,6 +68,7 @@ export function ConnectionPanel({
   onToast,
 }: Props) {
   const { t, lang } = useI18n();
+  const mobile = useMediaQuery("(max-width: 760px)");
   const [showKey, setShowKey] = useState(false);
   const [balanceBusy, setBalanceBusy] = useState(false);
   const [balanceText, setBalanceText] = useState<string | null>(null);
@@ -79,17 +81,19 @@ export function ConnectionPanel({
   const canAddProvider = Boolean(value.baseUrl.trim());
   const isCustom = value.providerId === CUSTOM_PROVIDER_ID;
   const selectedProvider = !isCustom ? providers.find((p) => p.id === value.providerId) : undefined;
-  const sortedProviders = useMemo(
-    () => sortByDisplayText(providers, (provider) => provider.name),
-    [providers],
-  );
+  const sortedProviders = useMemo(() => sortByDisplayText(providers, (provider) => provider.name), [providers]);
 
   const onQueryBalance = async () => {
     if (!canLookup || balanceBusy) return;
     setBalanceBusy(true);
     setBalanceText(t("conn.querying"));
     try {
-      const b = await fetchBalance({ baseUrl: value.baseUrl, isFullUrl: value.isFullUrl, apiKey: value.apiKey, userAgent });
+      const b = await fetchBalance({
+        baseUrl: value.baseUrl,
+        isFullUrl: value.isFullUrl,
+        apiKey: value.apiKey,
+        userAgent,
+      });
       setBalanceText(fmtBalance(b, lang));
     } catch (e: any) {
       setBalanceText(t("conn.queryFailed", { msg: e?.message ?? e }));
@@ -102,7 +106,12 @@ export function ConnectionPanel({
     if (!canLookup || modelsBusy) return;
     setModelsBusy(true);
     try {
-      const { models } = await fetchModels({ baseUrl: value.baseUrl, isFullUrl: value.isFullUrl, apiKey: value.apiKey, userAgent });
+      const { models } = await fetchModels({
+        baseUrl: value.baseUrl,
+        isFullUrl: value.isFullUrl,
+        apiKey: value.apiKey,
+        userAgent,
+      });
       if (!models.length) {
         onToast(t("conn.noModelsFetched"));
         return;
@@ -175,212 +184,248 @@ export function ConnectionPanel({
   };
 
   return (
-    <section class="panel connection-panel">
-      <div class="panel-title-row">
-        <div>
-          <span class="section-index">01</span>
-          <h2>{t("conn.title")}</h2>
-        </div>
-        <button
-          type="button"
-          class="icon-button"
-          title={t("conn.addToProviderTitle")}
-          aria-label={t("conn.addToProvider")}
-          disabled={!canAddProvider}
-          onClick={submitAddToProvider}
-        >
-          <Save size={16} aria-hidden="true" />
-        </button>
-      </div>
-
-      <div class="field">
-        <label for="connection-provider">{t("conn.provider")}</label>
-        <select id="connection-provider" value={value.providerId} onChange={(e) => onProvider((e.target as HTMLSelectElement).value)}>
-          <option value={CUSTOM_PROVIDER_ID}>{t("common.custom")}</option>
-          {sortedProviders.map((p) => <option value={p.id}>{p.name}</option>)}
-        </select>
-      </div>
-
-      <details class="disclosure quick-import">
-        <summary>{t("conn.quickImport")}</summary>
-        <div class="disclosure-body">
-          <label class="sr-only" for="connection-quick-import">{t("conn.quickImport")}</label>
-          <input
-            id="connection-quick-import"
-            class="mono"
-            type="text"
-            placeholder={t("conn.quickImportPlaceholder")}
-            onInput={(e) => tryQuickImport((e.target as HTMLInputElement).value, e.target as HTMLInputElement)}
-          />
-        </div>
-      </details>
-
-      <div class="row mt-12">
-        <div class="field grow">
-          <label for="connection-base-url">{t("conn.baseUrl")}</label>
-          <div class="key-wrap">
-            <input
-              id="connection-base-url"
-              class="mono"
-              value={value.baseUrl}
-              placeholder="https://api.example.com/v1"
-              onInput={(e) => onChange({ ...value, baseUrl: (e.target as HTMLInputElement).value })}
-            />
-            <CopyButton value={value.baseUrl} title={t("conn.copyBaseUrl")} />
+    <details class="panel connection-panel setup-disclosure" open={!mobile}>
+      <summary class="setup-summary">
+        <Link size={20} aria-hidden="true" />
+        <strong>
+          {t("conn.title")}: {providers.find((p) => p.id === value.providerId)?.name ?? t("common.custom")}
+        </strong>
+        <span class="connection-edit">
+          {t("ui.edit")} <ChevronRight size={16} />
+        </span>
+        <small>{value.baseUrl || t("conn.baseUrl")}</small>
+      </summary>
+      <div class="setup-body">
+        <div class="panel-title-row">
+          <div>
+            <span class="section-index">01</span>
+            <h2>{t("conn.title")}</h2>
           </div>
-          <div class="field-tools">
-            <label class="toggle">
+          <button
+            type="button"
+            class="icon-button"
+            title={t("conn.addToProviderTitle")}
+            aria-label={t("conn.addToProvider")}
+            disabled={!canAddProvider}
+            onClick={submitAddToProvider}
+          >
+            <Save size={16} aria-hidden="true" />
+          </button>
+        </div>
+
+        <div class="field">
+          <label for="connection-provider">{t("conn.provider")}</label>
+          <select
+            id="connection-provider"
+            value={value.providerId}
+            onChange={(e) => onProvider((e.target as HTMLSelectElement).value)}
+          >
+            <option value={CUSTOM_PROVIDER_ID}>{t("ui.customCompatible")}</option>
+            {sortedProviders.map((p) => (
+              <option value={p.id}>{p.name}</option>
+            ))}
+          </select>
+        </div>
+
+        <div class="row mt-12">
+          <div class="field grow">
+            <label for="connection-base-url">{t("conn.baseUrl")}</label>
+            <div class="key-wrap">
               <input
-                type="checkbox"
-                checked={Boolean(value.isFullUrl)}
-                onChange={(e) => onChange({ ...value, isFullUrl: (e.target as HTMLInputElement).checked })}
+                id="connection-base-url"
+                class="mono"
+                value={value.baseUrl}
+                placeholder="https://api.example.com/v1"
+                onInput={(e) => onChange({ ...value, baseUrl: (e.target as HTMLInputElement).value })}
               />
-              {t("conn.fullUrl")}
-            </label>
+              <span class="base-url-copy">
+                <CopyButton value={value.baseUrl} title={t("conn.copyBaseUrl")} />
+              </span>
+            </div>
+            <div class="field-tools">
+              <label class="toggle">
+                <input
+                  type="checkbox"
+                  checked={Boolean(value.isFullUrl)}
+                  onChange={(e) => onChange({ ...value, isFullUrl: (e.target as HTMLInputElement).checked })}
+                />
+                {t("conn.fullUrl")}
+              </label>
+            </div>
           </div>
         </div>
-      </div>
 
-      <div class="row mt-12">
-        <div class="field grow">
-          <label for="connection-api-key">API Key</label>
-          <div class="key-wrap">
-            <input
-              id="connection-api-key"
-              class="mono"
-              type={showKey ? "text" : "password"}
-              value={value.apiKey}
-              placeholder={t("conn.apiKeyPlaceholder")}
-              autocomplete="off"
-              onInput={(e) => onChange({ ...value, apiKey: (e.target as HTMLInputElement).value })}
-            />
-            <button class="icon-button" aria-label={showKey ? t("conn.hide") : t("conn.show")} title={showKey ? t("conn.hide") : t("conn.show")} onClick={() => setShowKey((s) => !s)}>
-              {showKey ? <EyeOff size={16} aria-hidden="true" /> : <Eye size={16} aria-hidden="true" />}
-            </button>
-            <CopyButton value={value.apiKey} title={t("conn.copyKey")} />
-          </div>
-          <div class="field-tools key-field-tools">
-            <div class="field-tools-row">
+        <div class="row mt-12">
+          <div class="field grow">
+            <label for="connection-api-key">API Key</label>
+            <div class="key-wrap">
+              <input
+                id="connection-api-key"
+                class="mono"
+                type={showKey ? "text" : "password"}
+                value={value.apiKey}
+                placeholder={t("conn.apiKeyPlaceholder")}
+                autocomplete="off"
+                onInput={(e) => onChange({ ...value, apiKey: (e.target as HTMLInputElement).value })}
+              />
               <button
-                class="compact-button"
-                title={t("conn.b64Title")}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  try {
-                    const decoded = new TextDecoder().decode(
-                      Uint8Array.from(atob(value.apiKey), (c) => c.charCodeAt(0)),
-                    );
-                    onChange({ ...value, apiKey: decoded });
-                  } catch {
-                    onToast(t("conn.decodeFailed"), { tone: "error" });
-                  }
-                }}
+                class="icon-button"
+                aria-label={showKey ? t("conn.hide") : t("conn.show")}
+                title={showKey ? t("conn.hide") : t("conn.show")}
+                onClick={() => setShowKey((s) => !s)}
               >
-                B64
+                {showKey ? <EyeOff size={16} aria-hidden="true" /> : <Eye size={16} aria-hidden="true" />}
               </button>
-              <button
-                class="compact-button"
-                title={t("conn.hexTitle")}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  try {
-                    const bytes = value.apiKey
-                      .trim()
-                      .split(/\s+/)
-                      .filter(Boolean)
-                      .map((h) => {
-                        if (!/^[0-9a-fA-F]{1,2}$/.test(h)) throw new Error("bad hex");
-                        return parseInt(h, 16);
-                      });
-                    if (bytes.length === 0) {
+              <CopyButton value={value.apiKey} title={t("conn.copyKey")} />
+            </div>
+            <div class="field-tools key-field-tools">
+              <div class="field-tools-row">
+                <button
+                  class="compact-button"
+                  title={t("conn.b64Title")}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    try {
+                      const decoded = new TextDecoder().decode(
+                        Uint8Array.from(atob(value.apiKey), (c) => c.charCodeAt(0)),
+                      );
+                      onChange({ ...value, apiKey: decoded });
+                    } catch {
                       onToast(t("conn.decodeFailed"), { tone: "error" });
-                      return;
                     }
-                    const decoded = new TextDecoder().decode(Uint8Array.from(bytes));
-                    onChange({ ...value, apiKey: decoded });
-                  } catch {
-                    onToast(t("conn.decodeFailed"), { tone: "error" });
-                  }
-                }}
-              >
-                Hex
-              </button>
-              <button
-                class="compact-button"
-                title={t("conn.reverseTitle")}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onChange({ ...value, apiKey: Array.from(value.apiKey).reverse().join("") });
-                }}
-              >
-                {t("conn.reverse")}
-              </button>
+                  }}
+                >
+                  Base64
+                </button>
+                <button
+                  class="compact-button"
+                  title={t("conn.hexTitle")}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    try {
+                      const bytes = value.apiKey
+                        .trim()
+                        .split(/\s+/)
+                        .filter(Boolean)
+                        .map((h) => {
+                          if (!/^[0-9a-fA-F]{1,2}$/.test(h)) throw new Error("bad hex");
+                          return parseInt(h, 16);
+                        });
+                      if (bytes.length === 0) {
+                        onToast(t("conn.decodeFailed"), { tone: "error" });
+                        return;
+                      }
+                      const decoded = new TextDecoder().decode(Uint8Array.from(bytes));
+                      onChange({ ...value, apiKey: decoded });
+                    } catch {
+                      onToast(t("conn.decodeFailed"), { tone: "error" });
+                    }
+                  }}
+                >
+                  Hex
+                </button>
+                <button
+                  class="compact-button"
+                  title={t("conn.reverseTitle")}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onChange({ ...value, apiKey: Array.from(value.apiKey).reverse().join("") });
+                  }}
+                >
+                  {t("conn.reverse")}
+                </button>
+              </div>
+              <details class="disclosure quick-import">
+                <summary>{t("ui.moreConnection")}</summary>
+                <div class="disclosure-body">
+                  <CopyButton value={value.baseUrl} title={t("conn.copyBaseUrl")} showLabel />
+                  <label class="sr-only" for="connection-quick-import">
+                    {t("conn.quickImport")}
+                  </label>
+                  <input
+                    id="connection-quick-import"
+                    class="mono"
+                    type="text"
+                    placeholder={t("conn.quickImportPlaceholder")}
+                    onInput={(e) => tryQuickImport((e.target as HTMLInputElement).value, e.target as HTMLInputElement)}
+                  />
+                </div>
+              </details>
+              <div class="field-tools-row lookup-tools-row">
+                <button
+                  ref={fetchModelsButtonRef}
+                  class="compact-button secondary"
+                  title={t("conn.fetchModelsTitle")}
+                  disabled={!canLookup || modelsBusy}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onFetchModels();
+                  }}
+                >
+                  <ListPlus size={15} aria-hidden="true" />
+                  {modelsBusy ? t("conn.fetchingModels") : t("conn.fetchModels")}
+                </button>{" "}
+                <button
+                  class="compact-button"
+                  title={t("conn.queryBalanceTitle")}
+                  disabled={!canLookup || balanceBusy}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onQueryBalance();
+                  }}
+                >
+                  <WalletCards size={15} aria-hidden="true" />
+                  {t("conn.queryBalance")}
+                </button>
+              </div>
             </div>
-            <div class="field-tools-row lookup-tools-row">
-              <button
-                class="compact-button"
-                title={t("conn.queryBalanceTitle")}
-                disabled={!canLookup || balanceBusy}
-                onClick={(e) => { e.stopPropagation(); onQueryBalance(); }}
-              >
-                <WalletCards size={15} aria-hidden="true" />
-                {t("conn.queryBalance")}
-              </button>
-              <button
-                ref={fetchModelsButtonRef}
-                class="compact-button secondary"
-                title={t("conn.fetchModelsTitle")}
-                disabled={!canLookup || modelsBusy}
-                onClick={(e) => { e.stopPropagation(); onFetchModels(); }}
-              >
-                <ListPlus size={15} aria-hidden="true" />
-                {modelsBusy ? t("conn.fetchingModels") : t("conn.fetchModels")}
-              </button>
-            </div>
+            {balanceText ? <div class="balance-line">{balanceText}</div> : null}
           </div>
-          {balanceText ? <div class="balance-line">{balanceText}</div> : null}
         </div>
+
+        {pickerModels ? (
+          <ModelPickerModal
+            models={pickerModels}
+            onConfirm={(ids) => {
+              onAddModels(ids);
+              onToast(t("conn.addedModels", { count: ids.length }));
+            }}
+            onClose={closeModelPicker}
+          />
+        ) : null}
+
+        {providerPrompt ? (
+          <PromptModal
+            title={t("conn.addToProvider")}
+            confirmLabel={t("conn.addToProviderConfirm")}
+            fields={[
+              {
+                key: "name",
+                label: t("conn.addToProviderName"),
+                placeholder: t("conn.addToProviderNamePlaceholder"),
+                required: true,
+              },
+              {
+                key: "id",
+                label: t("conn.addToProviderId"),
+                placeholder: t("conn.addToProviderIdPlaceholder"),
+                mono: true,
+              },
+            ]}
+            onClose={() => setProviderPrompt(false)}
+            onConfirm={({ name, id }) => {
+              onAddToProvider({
+                name,
+                id: id || undefined,
+                baseUrl: value.baseUrl,
+                isFullUrl: value.isFullUrl,
+                models: selectedModels,
+              });
+              setProviderPrompt(false);
+            }}
+          />
+        ) : null}
       </div>
-
-      {pickerModels ? (
-        <ModelPickerModal
-          models={pickerModels}
-          onConfirm={(ids) => { onAddModels(ids); onToast(t("conn.addedModels", { count: ids.length })); }}
-          onClose={closeModelPicker}
-        />
-      ) : null}
-
-      {providerPrompt ? (
-        <PromptModal
-          title={t("conn.addToProvider")}
-          confirmLabel={t("conn.addToProviderConfirm")}
-          fields={[
-            {
-              key: "name",
-              label: t("conn.addToProviderName"),
-              placeholder: t("conn.addToProviderNamePlaceholder"),
-              required: true,
-            },
-            {
-              key: "id",
-              label: t("conn.addToProviderId"),
-              placeholder: t("conn.addToProviderIdPlaceholder"),
-              mono: true,
-            },
-          ]}
-          onClose={() => setProviderPrompt(false)}
-          onConfirm={({ name, id }) => {
-            onAddToProvider({
-              name,
-              id: id || undefined,
-              baseUrl: value.baseUrl,
-              isFullUrl: value.isFullUrl,
-              models: selectedModels,
-            });
-            setProviderPrompt(false);
-          }}
-        />
-      ) : null}
-    </section>
+    </details>
   );
 }

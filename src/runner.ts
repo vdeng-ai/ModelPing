@@ -1,5 +1,5 @@
-import type { TestRequest, TestResult, Usage, StreamEvent } from "./types.js";
-import { getAdapter, type Adapter, type StreamChunk } from "./adapters/index.js";
+import type { FailureKind, TestRequest, TestResult, Usage, StreamEvent } from "./types.js";
+import { getAdapter, type Adapter, type StreamChunk, type StreamTerminal } from "./adapters/index.js";
 import { EMPTY_USAGE } from "./adapters/base.js";
 import { withUserAgent } from "./user-agent.js";
 import { drainSseBlocks, extractSseData } from "./sse.js";
@@ -22,8 +22,11 @@ export function mergeUsage(acc: Usage, next: Partial<Usage> | undefined): Usage 
   const inputTokens = pick(acc.inputTokens, next.inputTokens);
   const outputTokens = pick(acc.outputTokens, next.outputTokens);
   let totalTokens = pick(acc.totalTokens, next.totalTokens);
-  if (totalTokens == null && inputTokens != null && outputTokens != null) {
-    totalTokens = inputTokens + outputTokens;
+  if (inputTokens != null && outputTokens != null) {
+    const derivedTotal = inputTokens + outputTokens;
+    // 上游未持续提供 total 时，input/output 的增长必须同步反映到 total。
+    // 若上游给过更大的显式 total，则保留它，避免把供应商特有计数压低。
+    totalTokens = totalTokens == null ? derivedTotal : Math.max(totalTokens, derivedTotal);
   }
   return { inputTokens, outputTokens, totalTokens };
 }
@@ -57,22 +60,54 @@ export function sanitizeUrl(raw: string, req: TestRequest): string {
   }
 }
 
-export function isUnsupportedProtocol(status: number, bodyOrError = ""): boolean {
-  if (status === 404 || status === 405 || status === 501) return true;
-  if (status !== 400 && status !== 422) return false;
-
+export function classifyFailure(status: number, bodyOrError = ""): FailureKind {
   const t = bodyOrError.toLowerCase();
-  return [
-    /unsupported\s+(api\s+)?protocol/,
-    /unsupported\s+endpoint/,
-    /endpoint\s+.*not\s+(found|supported|exist)/,
-    /(no|unknown|unrecognized)\s+(route|endpoint|url|path)/,
-    /(invalid|unknown|unrecognized)\s+(endpoint|url|path)/,
-    /method\s+.*not\s+(allowed|supported)/,
-    /cannot\s+(post|put|get|patch|delete)\b/,
-    /route\s+.*not\s+found/,
-    /path\s+.*not\s+found/,
+
+  const permissionDenied =
+    status === 401 ||
+    status === 403 ||
+    [
+      /\bunauthorized\b/,
+      /\bforbidden\b/,
+      /permission\s+denied/,
+      /access\s+denied/,
+      /not\s+authorized/,
+      /not\s+permitted/,
+      /insufficient\s+permissions?/,
+      /(?:do\s+not|don't|does\s+not|doesn't)\s+have\s+access/,
+    ].some((re) => re.test(t));
+  if (permissionDenied) return "permission_denied";
+
+  const modelNotFound = [
+    /\bmodel[_\s-]*(?:not[_\s-]*found|does\s+not\s+exist|unknown|invalid|unavailable)\b/,
+    /\bmodel\b.*\b(not\s+found|does\s+not\s+exist|unknown|invalid|unavailable)\b/,
+    /\b(not\s+found|does\s+not\s+exist|unknown)\b.*\bmodel\b/,
+    /\bno\s+such\s+model\b/,
   ].some((re) => re.test(t));
+  if (modelNotFound) return "model_not_found";
+
+  if (status === 405 || status === 501) return "unsupported_protocol";
+  if (status === 400 || status === 404 || status === 422) {
+    const endpointUnsupported = [
+      /unsupported\s+(api\s+)?protocol/,
+      /unsupported\s+endpoint/,
+      /endpoint\s+.*not\s+(found|supported|exist)/,
+      /(no|unknown|unrecognized)\s+(route|endpoint|url|path)/,
+      /(invalid|unknown|unrecognized)\s+(endpoint|url|path)/,
+      /method\s+.*not\s+(allowed|supported)/,
+      /cannot\s+(post|put|get|patch|delete)\b/,
+      /route\s+.*not\s+found/,
+      /path\s+.*not\s+found/,
+      /404\s+page\s+not\s+found/,
+    ].some((re) => re.test(t));
+    if (endpointUnsupported) return "unsupported_protocol";
+  }
+
+  return "request_failed";
+}
+
+export function isUnsupportedProtocol(status: number, bodyOrError = ""): boolean {
+  return classifyFailure(status, bodyOrError) === "unsupported_protocol";
 }
 
 function failureFields(
@@ -89,8 +124,9 @@ function failureFields(
   },
 ): Pick<TestResult, "failureKind" | "failureLog"> {
   const body = params.body ?? "";
-  if (isUnsupportedProtocol(params.status, `${params.error}\n${body}`)) {
-    return { failureKind: "unsupported_protocol", failureLog: null };
+  const failureKind = classifyFailure(params.status, `${params.error}\n${body}`);
+  if (failureKind === "unsupported_protocol") {
+    return { failureKind, failureLog: null };
   }
 
   const lines = [
@@ -109,7 +145,7 @@ function failureFields(
   if (body) lines.push(`responseBody:\n${body.slice(0, MAX_ERROR_BODY)}`);
 
   return {
-    failureKind: "request_failed",
+    failureKind,
     failureLog: truncateForLog(redactSecrets(lines.join("\n"), req)),
   };
 }
@@ -173,6 +209,14 @@ async function runOnce(adapter: Adapter, req: TestRequest, attempt: number, sign
     const latencyMs = Date.now() - start;
     const text = truncate(adapter.extractText(json));
     const usage = adapter.parseUsage(json);
+    const responseError = adapter.parseResponseError?.(json);
+    if (responseError) {
+      return {
+        ok: false, status: res.status, latencyMs, ttftMs: null,
+        usage, text, error: responseError, requestUrl, attempts: 1,
+        ...failureFields(req, { url, status: res.status, latencyMs, attempt, error: responseError }),
+      };
+    }
     // HTTP 200 但响应不含任何 LLM 内容（无输出文本、无 token 用量），
     // 说明该 URL 大概率不是 LLM 端点（如普通网站/代理返回了空 JSON）。
     // 不应判为通过，否则用户会误以为测试走了正确的 API 却没有结果。
@@ -202,7 +246,13 @@ async function runOnce(adapter: Adapter, req: TestRequest, attempt: number, sign
 }
 
 // ---------- 流式（内部生成器，逐事件 yield，最终 yield done） ----------
-async function* runStreamOnce(adapter: Adapter, req: TestRequest, attempt: number, signal?: AbortSignal): AsyncGenerator<StreamEvent> {
+async function* runStreamOnce(
+  adapter: Adapter,
+  req: TestRequest,
+  attempt: number,
+  signal?: AbortSignal,
+  stopAfterFirstDelta = false,
+): AsyncGenerator<StreamEvent> {
   const url = adapter.buildUrl(req);
   const requestUrl = sanitizeUrl(url, req);
   const headers = withUserAgent({ ...adapter.buildHeaders(req), accept: "text/event-stream" }, req.userAgent);
@@ -211,6 +261,7 @@ async function* runStreamOnce(adapter: Adapter, req: TestRequest, attempt: numbe
   let ttftMs: number | null = null;
   let usage: Usage = { ...EMPTY_USAGE };
   let text = "";
+  let terminal: StreamTerminal | null = null;
 
   // 流式专用的超时控制：连接 + 每次读取之间各自计时（idle 超时）。
   // 上游发完响应头后若挂住不再发数据，idle 计时器到点即 abort，避免读循环无限阻塞。
@@ -259,16 +310,18 @@ async function* runStreamOnce(adapter: Adapter, req: TestRequest, attempt: numbe
   }
 
   if (!res.ok || !res.body) {
-    cleanup();
     const errBody = await readErrorBody(res);
-    const error = `HTTP ${res.status}: ${errBody}`;
+    cleanup();
+    if (signal?.aborted) return;
+    const status = timedOut ? 408 : res.status;
+    const error = timedOut ? `请求超时 (${req.timeoutMs}ms)` : `HTTP ${res.status}: ${errBody}`;
     const latencyMs = Date.now() - start;
-    yield { type: "error", error, status: res.status };
+    yield { type: "error", error, status };
     yield {
       type: "done",
       result: {
-        ok: false, status: res.status, latencyMs, ttftMs: null, usage, text: "", error, requestUrl, attempts: 1,
-        ...failureFields(req, { url, status: res.status, latencyMs, attempt, error, body: errBody }),
+        ok: false, status, latencyMs, ttftMs: null, usage, text: "", error, requestUrl, attempts: 1,
+        ...failureFields(req, { url, status, latencyMs, attempt, error, body: errBody }),
       },
     };
     return;
@@ -282,7 +335,12 @@ async function* runStreamOnce(adapter: Adapter, req: TestRequest, attempt: numbe
   const handleEventBlock = (block: string): StreamEvent[] => {
     const events: StreamEvent[] = [];
     const data = extractSseData(block);
-    if (data === null || data === "[DONE]") return events;
+    if (data === null) return events;
+    if (adapter.isStreamDoneData?.(data)) {
+      terminal = { state: "completed" };
+      return events;
+    }
+    if (data === "[DONE]") return events; // 仅声明支持该终止标记的协议才能据此判成功。
 
     let payload: any;
     try {
@@ -304,11 +362,12 @@ async function* runStreamOnce(adapter: Adapter, req: TestRequest, attempt: numbe
       usage = mergeUsage(usage, chunk.usage);
       events.push({ type: "usage", usage });
     }
+    if (chunk.terminal) terminal = chunk.terminal;
     return events;
   };
 
   try {
-    while (true) {
+    readLoop: while (true) {
       armTimer(); // 每次读取前重置 idle 计时器；读到数据或正常结束即解除。
       const { done, value } = await reader.read();
       if (done) {
@@ -321,11 +380,59 @@ async function* runStreamOnce(adapter: Adapter, req: TestRequest, attempt: numbe
       const { blocks, rest } = drainSseBlocks(buf);
       buf = rest;
       for (const block of blocks) {
-        for (const ev of handleEventBlock(block)) yield ev;
+        for (const ev of handleEventBlock(block)) {
+          yield ev;
+          if (stopAfterFirstDelta && ev.type === "delta") {
+            await reader.cancel().catch(() => undefined);
+            cleanup();
+            yield {
+              type: "done",
+              result: {
+                ok: true,
+                status: res.status,
+                latencyMs: Date.now() - start,
+                ttftMs,
+                usage,
+                text: truncate(text),
+                error: null,
+                requestUrl,
+                attempts: 1,
+              },
+            };
+            return;
+          }
+        }
+        if (terminal) {
+          await reader.cancel().catch(() => undefined);
+          cleanup();
+          break readLoop;
+        }
       }
     }
-    // 处理残留缓冲
-    if (buf.trim()) for (const ev of handleEventBlock(buf)) yield ev;
+    // 处理残留缓冲；只有在上游自然结束前尚未看到终态时才需要。
+    if (!terminal && buf.trim()) {
+      for (const ev of handleEventBlock(buf)) {
+        yield ev;
+        if (stopAfterFirstDelta && ev.type === "delta") {
+          cleanup();
+          yield {
+            type: "done",
+            result: {
+              ok: true,
+              status: res.status,
+              latencyMs: Date.now() - start,
+              ttftMs,
+              usage,
+              text: truncate(text),
+              error: null,
+              requestUrl,
+              attempts: 1,
+            },
+          };
+          return;
+        }
+      }
+    }
   } catch (e: any) {
     cleanup();
     if (signal?.aborted) return;
@@ -347,6 +454,37 @@ async function* runStreamOnce(adapter: Adapter, req: TestRequest, attempt: numbe
   cleanup();
   const finalText = truncate(text);
   const streamLatencyMs = Date.now() - start;
+
+  // terminal 会在 handleEventBlock 闭包中更新；显式收窄避免 TS 将闭包外变量误判为恒为 null。
+  const finalTerminal = terminal as StreamTerminal | null;
+  if (!finalTerminal) {
+    const error = "流式响应在协议完成标记前结束";
+    yield { type: "error", error, status: res.status };
+    yield {
+      type: "done",
+      result: {
+        ok: false, status: res.status, latencyMs: streamLatencyMs, ttftMs, usage, text: finalText, error, requestUrl, attempts: 1,
+        ...failureFields(req, { url, status: res.status, latencyMs: streamLatencyMs, attempt, error, ttftMs, partialText: text }),
+      },
+    };
+    return;
+  }
+
+  if (finalTerminal.state !== "completed") {
+    const error =
+      finalTerminal.error ??
+      (finalTerminal.state === "incomplete" ? "流式响应未完整完成" : "流式响应报告失败");
+    yield { type: "error", error, status: res.status };
+    yield {
+      type: "done",
+      result: {
+        ok: false, status: res.status, latencyMs: streamLatencyMs, ttftMs, usage, text: finalText, error, requestUrl, attempts: 1,
+        ...failureFields(req, { url, status: res.status, latencyMs: streamLatencyMs, attempt, error, ttftMs, partialText: text }),
+      },
+    };
+    return;
+  }
+
   // 流式正常结束但无任何 LLM 内容（无输出文本、无 token 用量），
   // 说明该 URL 大概率不是 LLM 端点。与非流式 runOnce 保持一致判定。
   if (!finalText && usage.inputTokens == null && usage.outputTokens == null && usage.totalTokens == null) {
@@ -389,9 +527,14 @@ export async function runTest(req: TestRequest, signal?: AbortSignal): Promise<T
 
 // ---------- 对外：流式（含重试，整轮失败才重试） ----------
 // 返回一个 SSE 字符串的 ReadableStream，供 Hono c.body 直接返回。
-export function runTestStream(req: TestRequest, signal?: AbortSignal): ReadableStream<Uint8Array> {
+export function runTestStream(
+  req: TestRequest,
+  signal?: AbortSignal,
+  options: { stopAfterFirstDelta?: boolean } = {},
+): ReadableStream<Uint8Array> {
   const adapter = getAdapter(req.protocol);
   const encoder = new TextEncoder();
+  const stopAfterFirstDelta = options.stopAfterFirstDelta === true;
 
   return new ReadableStream<Uint8Array>({
     async start(controller) {
@@ -408,7 +551,7 @@ export function runTestStream(req: TestRequest, signal?: AbortSignal): ReadableS
         let finalResult: TestResult | null = null;
         let producedDelta = false;
 
-        for await (const ev of runStreamOnce(adapter, req, attempt, signal)) {
+        for await (const ev of runStreamOnce(adapter, req, attempt, signal, stopAfterFirstDelta)) {
           if (ev.type === "done") {
             finalResult = ev.result;
             finalResult.attempts = attempt;

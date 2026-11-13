@@ -7,5 +7,6 @@ import "./design-system/motion.css";
 import "./design-system/components.css";
 import "./design-system/brand.css";
 import "./design-system/layout.css";
+import "./design-system/workbench.css";
 
 render(<App />, document.getElementById("app")!);

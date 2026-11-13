@@ -8,7 +8,30 @@ A lightweight, zero-config web tool to quickly check whether an LLM API is reach
 
 > One-click Cloudflare deployment clones the repository, configures Workers Builds, and provisions resources declared by Wrangler. Before exposing the Worker publicly, set strong `APP_PASSWORD` and `PRIVATE_STATE_SECRET` values during deployment setup.
 
-![Screenshot](./web/public/screenshot.png)
+![Model testing workbench in English](./docs/screenshots/workbench-en.png)
+
+*English interface with illustrative endpoints and responses. No real API keys are shown.*
+
+<details>
+<summary>More screenshots: history, status, providers, and mobile</summary>
+
+**Session history and failure diagnostics**
+
+![English session history with expanded failure diagnostics](./docs/screenshots/history-en.png)
+
+**Endpoint status**
+
+![English endpoint status dashboard](./docs/screenshots/status-en.png)
+
+**Provider configuration**
+
+![English provider configuration with unsaved changes](./docs/screenshots/providers-en.png)
+
+**Mobile workbench**
+
+<img src="./docs/screenshots/mobile-en.png" alt="English mobile model testing workbench" width="393" />
+
+</details>
 
 Supported protocols:
 
@@ -31,7 +54,9 @@ Features:
 - Per-row status lights in the model table: gray (pending) → blue (testing) → green (pass) / red (fail)
 - Batch testing (default concurrency 2), custom models, adjustable timeout/retries/maxTokens/input text
 - History (toggleable persistence, copy baseUrl/masked key, export JSON)
-- Status page: save common provider + model entries, batch-refresh endpoint latency, auto-refresh, and import to cc-switch
+- Status page: save common provider + model entries, batch-refresh endpoint latency, auto-refresh with multi-tab leader election, and import to cc-switch
+  - Green **Reachable** means the model-list endpoint responded successfully; models sharing a connection may share this result. It does not verify a particular model's existence, permissions, or generation.
+  - **Minimal generation passed** means only the fallback generation request succeeded; fallback requests may consume tokens. Probe latency is not generation speed or time to first token. Use the Test workbench to check actual model generation.
 - **Local encoding toolbox**: 11 tool tabs covering automatic Base64 conversion, Hex, URL, Base32, Unicode, HTML, ROT, Morse, JWT and hashes, without sending conversion content to the server
 - **Key safety**: the backend never stores API keys in plaintext and never logs them; private working state is saved only as an encrypted blob
 
@@ -170,11 +195,12 @@ binding = "SETTINGS_KV"
 id = "<your-kv-namespace-id>"
 ```
 
-Static assets are served via `[assets]` with SPA fallback. `wrangler.toml` enables `assets_navigation_prefers_asset_serving`, so browser navigation to frontend routes is served by Assets and does not consume Worker requests. Only `/api/*` calls invoke the Worker.
+Static assets are served via `[assets]` with SPA fallback. `run_worker_first = ["/api/*"]` explicitly routes only API calls through the Worker; frontend routes and assets are served directly by Workers Static Assets without invoking the Worker script.
 
 Free-tier defaults are intentionally conservative:
 
 - `PRIVATE_STATE_SCOPE=config`: KV stores presets, last connection, test parameters, and Status entries, but not test history.
+- `DAILY_REQUEST_BUDGET=60000`: Status auto-refresh reserves only 60% of the 100k/day Worker request ceiling. Status checks are packed into batches of 10 and same-connection `/models` probes are deduplicated.
 - `BLOCK_PRIVATE_HOSTS=1`: Workers lacks the Docker egress firewall, so public deployments get app-level private-address blocking by default.
 - `APP_PASSWORD` and `PRIVATE_STATE_SECRET` must be Workers secrets, not `wrangler.toml` values.
 
@@ -220,8 +246,9 @@ Use `STORAGE_DRIVER` to force a driver, and `SETTINGS_FILE` to override the file
 | `CORS_ORIGIN`           | Optional CORS allowed origins (comma-separated, `*` = open to all); no ACAO header if unset (same-origin) |
 | `STORAGE_DRIVER`        | Force a driver: `file` / `cf-kv` / `vercel` / `none`                         |
 | `SETTINGS_FILE`         | Presets path for the file driver; defaults to `./web/public/presets.json`    |
-| `PRIVATE_STATE_SECRET`  | Encryption secret for private working state; optional globally, required by the bundled Docker compose; falls back to `STATUS_SECRET`, then `APP_PASSWORD` |
+| `PRIVATE_STATE_SECRET`  | Dedicated high-entropy encryption secret for private working state; uses the lower-CPU v2 format. Falls back to PBKDF2-protected `STATUS_SECRET`, then `APP_PASSWORD` |
 | `PRIVATE_STATE_SCOPE`   | Private-state persistence scope: `full` (default), `config` (conn/config/status only; no history), or `none` |
+| `DAILY_REQUEST_BUDGET`  | Status auto-refresh Worker request soft budget/day; Cloudflare config defaults to `60000` |
 | `PRIVATE_STATE_FILE`    | File-driver path for encrypted private working state; defaults to `./data/private-state.enc` |
 | `STATUS_SECRET`         | Optional legacy secret; used only as a private-state fallback                |
 | `BLOB_READ_WRITE_TOKEN` | Vercel Blob token (injected automatically once Blob is added)                |
@@ -248,7 +275,7 @@ src/
   models-fetch.ts     Fetch provider model list (picks /models endpoint by baseUrl shape)
   presets-schema.ts   Presets validation (pure function shared by frontend & backend)
   app.ts              Framework-agnostic Hono app (validation / password / CORS / allowlist / routes / persistence)
-  env.ts              Shared runtime env/store injection for Node / Workers / Vercel
+  env.ts              Shared runtime env/store injection for Node / Vercel (Worker uses cf-kv directly)
   node.ts             Node entry (@hono/node-server + static assets)
   worker.ts           Cloudflare Workers entry (ASSETS binding)
   store/              Persistence drivers: types / file / cf-kv / vercel / index (auto-selected by platform)

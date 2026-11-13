@@ -5,6 +5,7 @@ import { timingSafeEqual } from "hono/utils/buffer";
 import type {
   DualTestResult,
   LookupRequest,
+  PingBatchEntry,
   PingRequest,
   PresetsResponse,
   PrivateState,
@@ -20,7 +21,7 @@ import { normalizePresets, FALLBACK_DEFAULTS } from "./presets-schema.js";
 import type { SettingsStore } from "./store/index.js";
 import { fetchModels, modelsTargetUrls } from "./models-fetch.js";
 import { fetchBalance, balanceTargetUrl } from "./balance.js";
-import { pingEndpoint, pingTargetUrls } from "./ping.js";
+import { MAX_PING_BATCH_SIZE, pingBatch, pingEndpoint, pingTargetUrls } from "./ping.js";
 import { encrypt, decrypt } from "./crypto.js";
 import { applyPrivateStateScope, emptyPrivateState, normalizePrivateState, type PrivateStateScope } from "./private-state.js";
 import { normalizeUserAgent } from "./user-agent.js";
@@ -50,14 +51,40 @@ export interface Env {
   PRIVATE_STATE_SECRET?: string;
   // 私有工作态持久化范围：full=全部；config=连接/参数/状态页，不保存历史；none=关闭。
   PRIVATE_STATE_SCOPE?: string;
+  // Status 自动刷新每天最多预算多少次 Worker 请求；Cloudflare 默认 60k，给其他 API 留余量。
+  DAILY_REQUEST_BUDGET?: string;
 }
 
 type AppContext = Context<{ Bindings: Env }>;
 const ROW_PROTOCOL_CONCURRENCY = 2;
+const ROW_STREAM_PROBE_MAX_TOKENS = 8;
+export const MAX_ROW_PROTOCOLS = 2;
+export const MAX_TEST_RETRIES = 10;
+export const MAX_JSON_BODY_BYTES = 256 * 1024;
+const MAX_BASE_URL_LENGTH = 2048;
+const MAX_API_KEY_LENGTH = 8192;
+const MAX_MODEL_LENGTH = 512;
+const MAX_INPUT_LENGTH = 64 * 1024;
+const MAX_USER_AGENT_LENGTH = 1024;
+const MAX_BATCH_ID_LENGTH = 128;
+
+interface PrivateStateSecretInfo {
+  value: string;
+  fastKdf: boolean;
+}
+
+function privateStateSecretInfo(env?: Env): PrivateStateSecretInfo | null {
+  const dedicated = (env?.PRIVATE_STATE_SECRET ?? "").trim();
+  if (dedicated) return { value: dedicated, fastKdf: true };
+  const legacy = (env?.STATUS_SECRET ?? "").trim();
+  if (legacy) return { value: legacy, fastKdf: false };
+  const password = (env?.APP_PASSWORD ?? "").trim();
+  if (password) return { value: password, fastKdf: false };
+  return null;
+}
 
 function privateStateSecret(env?: Env): string | null {
-  const s = (env?.PRIVATE_STATE_SECRET || env?.STATUS_SECRET || env?.APP_PASSWORD || "").trim();
-  return s || null;
+  return privateStateSecretInfo(env)?.value ?? null;
 }
 
 // BLOCK_PRIVATE_HOSTS 是否开启。
@@ -71,6 +98,12 @@ function privateStateScope(env?: Env): PrivateStateScope {
   if (v === "none") return "none";
   if (v === "config") return "config";
   return "full";
+}
+
+function dailyRequestBudget(env?: Env): number {
+  const n = Number(env?.DAILY_REQUEST_BUDGET);
+  if (!Number.isFinite(n)) return 60_000;
+  return Math.min(100_000, Math.max(1_000, Math.trunc(n)));
 }
 
 function healthPayload(env?: Env) {
@@ -92,6 +125,10 @@ function healthPayload(env?: Env) {
       privateState: privateStateEnabled,
       privateStateScope: privateStateEnabled ? scope : "none",
     },
+    limits: {
+      dailyRequestBudget: dailyRequestBudget(env),
+      pingBatchSize: MAX_PING_BATCH_SIZE,
+    },
   };
 }
 
@@ -108,13 +145,20 @@ function httpBaseUrlError(baseUrl: string): string | null {
   }
 }
 
-async function runDualTest(req: TestRequest, signal?: AbortSignal): Promise<DualTestResult> {
+async function runDualTest(
+  req: TestRequest,
+  signal?: AbortSignal,
+  streamProbe = false,
+): Promise<DualTestResult> {
   let gotDelta = false;
   let streamTtftMs: number | null = null;
   let streamResult: TestResult | null = null;
 
   const streamPromise = (async () => {
-    const stream = runTestStream({ ...req, stream: true }, signal);
+    const streamReq = streamProbe
+      ? { ...req, stream: true, maxTokens: Math.min(req.maxTokens, ROW_STREAM_PROBE_MAX_TOKENS) }
+      : { ...req, stream: true };
+    const stream = runTestStream(streamReq, signal, { stopAfterFirstDelta: streamProbe });
     const reader = stream.getReader();
     const decoder = new TextDecoder();
     let buf = "";
@@ -179,7 +223,7 @@ async function runRowTest(req: RowTestRequest, signal?: AbortSignal): Promise<Ro
     while (!signal?.aborted) {
       const protocol = protocols[cursor++];
       if (!protocol) return;
-      results[protocol] = await runDualTest({ ...base, protocol, stream: false }, signal);
+      results[protocol] = await runDualTest({ ...base, protocol, stream: false }, signal, true);
     }
   });
   await Promise.all(workers);
@@ -190,10 +234,20 @@ async function runRowTest(req: RowTestRequest, signal?: AbortSignal): Promise<Ro
 function normalize(raw: any): { req?: TestRequest; error?: string } {
   const body = asBodyObject(raw);
   if (!body) return { error: "请求体非法" };
-  const baseUrl = String(body.baseUrl ?? "").trim();
+  const baseUrlRaw = String(body.baseUrl ?? "");
   const apiKey = String(body.apiKey ?? "");
-  const model = String(body.model ?? "").trim();
+  const modelRaw = String(body.model ?? "");
   const rawProtocol = String(body.protocol ?? "").trim();
+  const inputRaw = typeof body.input === "string" && body.input.length ? body.input : FALLBACK_DEFAULTS.input;
+  const userAgentRaw = typeof body.userAgent === "string" ? body.userAgent : "";
+  if (baseUrlRaw.length > MAX_BASE_URL_LENGTH) return { error: "baseUrl 过长" };
+  if (apiKey.length > MAX_API_KEY_LENGTH) return { error: "apiKey 过长" };
+  if (modelRaw.length > MAX_MODEL_LENGTH) return { error: "model 过长" };
+  if (inputRaw.length > MAX_INPUT_LENGTH) return { error: "input 过长" };
+  if (userAgentRaw.length > MAX_USER_AGENT_LENGTH) return { error: "User-Agent 过长" };
+
+  const baseUrl = baseUrlRaw.trim();
+  const model = modelRaw.trim();
   const protocol = protocolOf(rawProtocol);
   if (!baseUrl) return { error: "缺少 baseUrl" };
   if (!model) return { error: "缺少 model" };
@@ -215,12 +269,12 @@ function normalize(raw: any): { req?: TestRequest; error?: string } {
     isFullUrl: Boolean(body.isFullUrl),
     apiKey,
     model,
-    input: typeof body.input === "string" && body.input.length ? body.input : FALLBACK_DEFAULTS.input,
+    input: inputRaw,
     stream: Boolean(body.stream ?? false),
     timeoutMs: toInt(body.timeoutMs, FALLBACK_DEFAULTS.timeoutMs, 1000, 600000),
-    maxRetries: toInt(body.maxRetries, FALLBACK_DEFAULTS.maxRetries, 0, 10),
+    maxRetries: toInt(body.maxRetries, FALLBACK_DEFAULTS.maxRetries, 0, MAX_TEST_RETRIES),
     maxTokens: toInt(body.maxTokens, FALLBACK_DEFAULTS.maxTokens, 1, 200000),
-    userAgent: normalizeUserAgent(body.userAgent) ?? "",
+    userAgent: normalizeUserAgent(userAgentRaw) ?? "",
   };
   return { req };
 }
@@ -234,7 +288,7 @@ function normalizeRow(raw: any): { req?: RowTestRequest; error?: string } {
       .filter((value): value is Protocol => Boolean(value)),
   )];
   if (!protocols.length) return { error: "缺少 protocols" };
-  if (protocols.length > 2) return { error: "单行聚合探测最多支持 2 个协议" };
+  if (protocols.length > MAX_ROW_PROTOCOLS) return { error: `单行聚合探测最多支持 ${MAX_ROW_PROTOCOLS} 个协议` };
 
   const normalized = normalize({ ...body, protocol: protocols[0], stream: false });
   if (normalized.error || !normalized.req) return { error: normalized.error };
@@ -269,8 +323,30 @@ function hostAllowed(baseUrl: string, allowed?: string): boolean {
 }
 
 async function readJsonBody(c: AppContext): Promise<{ raw: unknown } | { response: Response }> {
+  const contentLength = Number(c.req.header("content-length") ?? "");
+  if (Number.isFinite(contentLength) && contentLength > MAX_JSON_BODY_BYTES) {
+    return { response: c.json({ error: "请求体过大" }, 413) };
+  }
+
   try {
-    return { raw: await c.req.json() };
+    const body = c.req.raw.body;
+    if (!body) return { response: c.json({ error: "请求体须为 JSON" }, 400) };
+    const reader = body.getReader();
+    const decoder = new TextDecoder();
+    let bytes = 0;
+    let text = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      bytes += value.byteLength;
+      if (bytes > MAX_JSON_BODY_BYTES) {
+        await reader.cancel().catch(() => undefined);
+        return { response: c.json({ error: "请求体过大" }, 413) };
+      }
+      text += decoder.decode(value, { stream: true });
+    }
+    text += decoder.decode();
+    return { raw: JSON.parse(text) };
   } catch {
     return { response: c.json({ error: "请求体须为 JSON" }, 400) };
   }
@@ -321,13 +397,18 @@ function targetPolicyError(targets: Iterable<string | null | undefined>, env?: E
 function normalizeLookup(raw: any): { req?: LookupRequest; error?: string } {
   const body = asBodyObject(raw);
   if (!body) return { error: "请求体非法" };
-  const baseUrl = String(body.baseUrl ?? "").trim();
+  const baseUrlRaw = String(body.baseUrl ?? "");
   const apiKey = String(body.apiKey ?? "");
+  const userAgentRaw = typeof body.userAgent === "string" ? body.userAgent : "";
+  if (baseUrlRaw.length > MAX_BASE_URL_LENGTH) return { error: "baseUrl 过长" };
+  if (apiKey.length > MAX_API_KEY_LENGTH) return { error: "apiKey 过长" };
+  if (userAgentRaw.length > MAX_USER_AGENT_LENGTH) return { error: "User-Agent 过长" };
+  const baseUrl = baseUrlRaw.trim();
   if (!baseUrl) return { error: "缺少 baseUrl" };
   if (!apiKey) return { error: "缺少 apiKey" };
   const baseUrlError = httpBaseUrlError(baseUrl);
   if (baseUrlError) return { error: baseUrlError };
-  return { req: { baseUrl, isFullUrl: Boolean(body.isFullUrl), apiKey, userAgent: normalizeUserAgent(body.userAgent) } };
+  return { req: { baseUrl, isFullUrl: Boolean(body.isFullUrl), apiKey, userAgent: normalizeUserAgent(userAgentRaw) } };
 }
 
 // 校验测速请求体（baseUrl + apiKey + protocol + model）。
@@ -336,10 +417,38 @@ function normalizePing(raw: any): { req?: PingRequest; error?: string } {
   if (lookup.error || !lookup.req) return { error: lookup.error };
   const body = asBodyObject(raw);
   const protocol = protocolOf(body?.protocol);
-  const model = String(body?.model ?? "").trim();
+  const modelRaw = String(body?.model ?? "");
+  if (modelRaw.length > MAX_MODEL_LENGTH) return { error: "model 过长" };
+  const model = modelRaw.trim();
   if (!protocol) return { error: "protocol 非法" };
   if (!model) return { error: "缺少 model" };
   return { req: { ...lookup.req, protocol, model } };
+}
+
+function normalizePingBatch(raw: unknown): { entries?: PingBatchEntry[]; error?: string } {
+  const body = asBodyObject(raw);
+  const list = body?.entries;
+  if (!Array.isArray(list) || list.length === 0) return { error: "entries 须为非空数组" };
+  if (list.length > MAX_PING_BATCH_SIZE) {
+    return { error: `批量测速最多支持 ${MAX_PING_BATCH_SIZE} 个条目` };
+  }
+
+  const ids = new Set<string>();
+  const entries: PingBatchEntry[] = [];
+  for (const item of list) {
+    const obj = asBodyObject(item);
+    const idRaw = String(obj?.id ?? "");
+    if (idRaw.length > MAX_BATCH_ID_LENGTH) return { error: "批量测速 id 过长" };
+    const id = idRaw.trim();
+    if (!id) return { error: "批量测速条目缺少 id" };
+    if (ids.has(id)) return { error: "批量测速 id 不可重复" };
+    ids.add(id);
+
+    const normalized = normalizePing(item);
+    if (normalized.error || !normalized.req) return { error: normalized.error ?? "批量测速参数错误" };
+    entries.push({ id, ...normalized.req });
+  }
+  return { entries };
 }
 
 // 轻量校验状态列表：保留形状合法的条目，丢弃非法项。落盘前用于 PUT。
@@ -442,7 +551,8 @@ export function createApp() {
   app.put("/api/private-state", async (c) => {
     const scope = privateStateScope(c.env);
     const store = c.env?.privateStore;
-    const secret = privateStateSecret(c.env);
+    const secretInfo = privateStateSecretInfo(c.env);
+    const secret = secretInfo?.value ?? null;
     if (!store || !secret || scope === "none") return c.json({ error: "服务端未配置私有工作态持久化（需 store + PRIVATE_STATE_SECRET/STATUS_SECRET/APP_PASSWORD）" }, 501);
     const parsed = await readJsonBody(c);
     if ("response" in parsed) return parsed.response;
@@ -454,7 +564,7 @@ export function createApp() {
     }
     state = applyPrivateStateScope(state, scope);
     state.updatedAt = Date.now();
-    await store.put(await encrypt(JSON.stringify(state), secret));
+    await store.put(await encrypt(JSON.stringify(state), secret, { fastKdf: secretInfo?.fastKdf === true }));
     return c.json({ ok: true });
   });
 
@@ -565,6 +675,26 @@ export function createApp() {
       return c.json(await fetchBalance(req));
     } catch (e: any) {
       return c.json({ error: e?.message ?? "查询余额失败" }, 502);
+    }
+  });
+
+  // Status 批量测速：一个 Worker 请求聚合最多 10 个条目，并按连接身份去重 /models 探测。
+  app.post("/api/ping-batch", async (c) => {
+    const parsed = await readJsonBody(c);
+    if ("response" in parsed) return parsed.response;
+    const { entries, error } = normalizePingBatch(parsed.raw);
+    if (error || !entries) return c.json({ error: error ?? "参数错误" }, 400);
+
+    const targets = entries.flatMap((entry) => pingTargetUrls(entry));
+    const targetError = targetPolicyError(targets, c.env);
+    if (targetError) return c.json({ error: targetError }, 403);
+    try {
+      return c.json(await pingBatch(entries, c.req.raw.signal));
+    } catch (e: any) {
+      if (c.req.raw.signal.aborted || e?.name === "AbortError") {
+        return new Response(null, { status: 499 });
+      }
+      return c.json({ error: e?.message ?? "批量测速失败" }, 502);
     }
   });
 

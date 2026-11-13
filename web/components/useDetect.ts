@@ -28,8 +28,14 @@ export interface DetectDeps {
 
 function failedTestResult(error: string, status = 0): TestResult {
   return {
-    ok: false, status, latencyMs: 0, ttftMs: null, usage: EMPTY_USAGE,
-    text: "", error, attempts: 0,
+    ok: false,
+    status,
+    latencyMs: 0,
+    ttftMs: null,
+    usage: EMPTY_USAGE,
+    text: "",
+    error,
+    attempts: 0,
   };
 }
 
@@ -52,11 +58,11 @@ export function useDetect(deps: DetectDeps) {
 
   // 更新单个协议探针（按 行 key + 协议）。
   const patchProbe = (rowKey: string, protocol: Protocol, patch: Partial<ProtocolProbe>) => {
-    setRowsRef.current((rs) => rs.map((r) =>
-      r.key === rowKey
-        ? { ...r, probes: { ...r.probes, [protocol]: { ...r.probes[protocol], ...patch } } }
-        : r,
-    ));
+    setRowsRef.current((rs) =>
+      rs.map((r) =>
+        r.key === rowKey ? { ...r, probes: { ...r.probes, [protocol]: { ...r.probes[protocol], ...patch } } } : r,
+      ),
+    );
   };
 
   // 自动检测单行：按模型族挑协议，非流式 + 流式独立并行探测。返回是否有任一协议通过。
@@ -65,24 +71,34 @@ export function useDetect(deps: DetectDeps) {
     const c = connRef.current;
     const cfg = configRef.current;
 
-    const model = c.providerId === CUSTOM_PROVIDER_ID ? row.label : row.modelByProvider[c.providerId] ?? row.label;
+    const model = c.providerId === CUSTOM_PROVIDER_ID ? row.label : (row.modelByProvider[c.providerId] ?? row.label);
     // 按 provider + 模型族挑选要测的协议；未选中的协议标记为「跳过」，不发请求、不写历史。
     const toTest = protocolsForProvider(c.providerId, `${row.label} ${model}`);
     const skipped = PROTOCOLS.filter((p) => !toTest.includes(p));
 
     if (!c.baseUrl || !c.apiKey) {
       const errResult: TestResult = {
-        ok: false, status: 0, latencyMs: 0, ttftMs: null, usage: EMPTY_USAGE,
-        text: "", error: t("conn.fillFirst"), attempts: 0,
+        ok: false,
+        status: 0,
+        latencyMs: 0,
+        ttftMs: null,
+        usage: EMPTY_USAGE,
+        text: "",
+        error: t("conn.fillFirst"),
+        attempts: 0,
       };
-      for (const p of toTest) patchProbe(row.key, p, { status: "fail", result: errResult, streamVerdict: null, streamTtftMs: null });
-      for (const p of skipped) patchProbe(row.key, p, { status: "skipped", result: null, streamVerdict: null, streamTtftMs: null });
+      for (const p of toTest)
+        patchProbe(row.key, p, { status: "fail", result: errResult, streamVerdict: null, streamTtftMs: null });
+      for (const p of skipped)
+        patchProbe(row.key, p, { status: "skipped", result: null, streamVerdict: null, streamTtftMs: null });
       return false;
     }
 
     // 重置探针：待测协议进入测试中，其余标记跳过。
-    for (const p of toTest) patchProbe(row.key, p, { status: "testing", result: null, streamVerdict: null, streamTtftMs: null });
-    for (const p of skipped) patchProbe(row.key, p, { status: "skipped", result: null, streamVerdict: null, streamTtftMs: null });
+    for (const p of toTest)
+      patchProbe(row.key, p, { status: "testing", result: null, streamVerdict: null, streamTtftMs: null });
+    for (const p of skipped)
+      patchProbe(row.key, p, { status: "skipped", result: null, streamVerdict: null, streamTtftMs: null });
 
     const provider = providers.find((p) => p.id === c.providerId);
     const providerName = provider?.name ?? (c.providerId === CUSTOM_PROVIDER_ID ? t("common.custom") : c.providerId);
@@ -138,6 +154,7 @@ export function useDetect(deps: DetectDeps) {
           model,
           modelLabel: row.label,
           streamVerdict,
+          streamTtftMs,
           result,
         };
         addHistoryEntry(entry);
@@ -148,8 +165,14 @@ export function useDetect(deps: DetectDeps) {
       if (signal?.aborted) return false; // 取消时不更新，由 resetTestingProbes 处理
       for (const proto of toTest) {
         const errResult: TestResult = {
-          ok: false, status: 0, latencyMs: 0, ttftMs: null, usage: EMPTY_USAGE,
-          text: "", error: e?.message ?? String(e), attempts: 0,
+          ok: false,
+          status: 0,
+          latencyMs: 0,
+          ttftMs: null,
+          usage: EMPTY_USAGE,
+          text: "",
+          error: e?.message ?? String(e),
+          attempts: 0,
         };
         patchProbe(row.key, proto, {
           status: "fail",
@@ -165,17 +188,19 @@ export function useDetect(deps: DetectDeps) {
 
   // 并发池执行一批行的自动检测。
   const resetTestingProbes = () => {
-    setRowsRef.current((rows) => rows.map((row) => {
-      let changed = false;
-      const probes = { ...row.probes };
-      for (const protocol of PROTOCOLS) {
-        if (probes[protocol].status === "testing") {
-          probes[protocol] = { protocol, status: "idle", result: null, streamVerdict: null, streamTtftMs: null };
-          changed = true;
+    setRowsRef.current((rows) =>
+      rows.map((row) => {
+        let changed = false;
+        const probes = { ...row.probes };
+        for (const protocol of PROTOCOLS) {
+          if (probes[protocol].status === "testing") {
+            probes[protocol] = { protocol, status: "idle", result: null, streamVerdict: null, streamTtftMs: null };
+            changed = true;
+          }
         }
-      }
-      return changed ? { ...row, probes } : row;
-    }));
+        return changed ? { ...row, probes } : row;
+      }),
+    );
   };
 
   const cancelBatch = () => batchControllerRef.current?.abort();

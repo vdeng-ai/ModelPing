@@ -70,6 +70,18 @@ export const anthropicAdapter: Adapter = {
       if (u) chunk.usage = { inputTokens: null, outputTokens: num(u.output_tokens), totalTokens: null };
     }
 
-    return chunk.text || chunk.usage ? chunk : null;
+    if (payload?.type === "message_stop") {
+      chunk.terminal = { state: "completed" };
+    }
+
+    if (payload?.type === "error") {
+      const detail = payload?.error?.message ?? payload?.error?.type ?? payload?.error;
+      chunk.terminal = {
+        state: "failed",
+        error: detail ? `Anthropic stream error: ${String(detail)}` : "Anthropic stream error",
+      };
+    }
+
+    return chunk.text || chunk.usage || chunk.terminal ? chunk : null;
   },
 };

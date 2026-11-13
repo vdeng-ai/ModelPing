@@ -1,19 +1,37 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import { lazy, Suspense } from "preact/compat";
 import { Activity, Binary, FlaskConical, History, ServerCog } from "lucide-preact";
-import type { ConfigState, Defaults, HistoryEntry, PresetsResponse, PrivateState, ProviderPreset, StatusEntry } from "../lib/types.js";
-import { emptyPrivateState, fetchBootstrap, fetchPresets, isAuthError, savePrivateState, saveSettings, setAppPassword } from "../lib/api.js";
+import type {
+  ConfigState,
+  Defaults,
+  HistoryEntry,
+  PresetsResponse,
+  PrivateState,
+  ProviderPreset,
+  StatusEntry,
+} from "../lib/types.js";
+import {
+  emptyPrivateState,
+  fetchBootstrap,
+  fetchPresets,
+  isAuthError,
+  savePrivateState,
+  saveSettings,
+  setAppPassword,
+} from "../lib/api.js";
 import { MAX_PRIVATE_HISTORY } from "../../src/private-state.js";
 import {
   CUSTOM_PROVIDER_ID,
   FALLBACK_DEFAULTS,
   normalizeConcurrency,
   normalizePresets,
-  loadLocalPresets, saveLocalPresets,
+  loadLocalPresets,
+  saveLocalPresets,
 } from "../lib/presets.js";
 import { initTheme } from "../lib/theme.js";
 import { ConnectionPanel, type ConnValue, type AddToProviderDraft } from "./ConnectionPanel.js";
 import { ConfigPanel } from "./ConfigPanel.js";
+import { CubeMark } from "./CubeMark.js";
 import { ModelTable } from "./ModelTable.js";
 import { HistoryPanel } from "./HistoryPanel.js";
 import { ConfirmModal } from "./ConfirmModal.js";
@@ -24,7 +42,13 @@ import { StatusPanel } from "./StatusPanel.js";
 import { initLang, useI18n } from "../lib/i18n.js";
 import { useDetect } from "./useDetect.js";
 import { migrateLegacyPrivateState } from "../lib/storage.js";
-import { appendCustomModelRows, buildRows, selectRowsForProvider, upsertCustomModelRows, type ModelRow } from "../lib/model-rows.js";
+import {
+  appendCustomModelRows,
+  buildRows,
+  selectRowsForProvider,
+  upsertCustomModelRows,
+  type ModelRow,
+} from "../lib/model-rows.js";
 import {
   hasLegacyPrivateState,
   mergePrivateState,
@@ -35,6 +59,7 @@ import {
 import { statusEntryKey } from "../lib/status-entries.js";
 import { removeProviderModelsByLabel, upsertProviderFromConn, upsertProviderModel } from "../lib/provider-upsert.js";
 import { appRouteFromHash, hashForAppRoute, type AppRoute } from "../lib/navigation.js";
+import { DEFAULT_MODELPING_DAILY_BUDGET } from "../lib/status-budget.js";
 
 // Load the toolbox and its worker only when requested; the model tester stays lean.
 const ToolboxPanel = lazy(() => import("./ToolboxPanel.js"));
@@ -49,8 +74,26 @@ export function App() {
   const [providers, setProviders] = useState<ProviderPreset[]>([]);
   const [presetDefaults, setPresetDefaults] = useState<Defaults>(FALLBACK_DEFAULTS);
   const [route, setRoute] = useState<AppRoute>(() => appRouteFromHash(window.location.hash));
-  const [conn, setConn] = useState<ConnValue>({ providerId: CUSTOM_PROVIDER_ID, baseUrl: "", isFullUrl: false, apiKey: "" });
-  const [config, setConfig] = useState<ConfigState>({ input: "", timeoutMs: 30000, maxRetries: 1, maxTokens: 512, userAgent: "", concurrency: 2 });
+  const [providerDirty, setProviderDirty] = useState(false);
+  const providerDirtyRef = useRef(false);
+  providerDirtyRef.current = providerDirty;
+  const [pendingRoute, setPendingRoute] = useState<AppRoute | null>(null);
+  const routeRef = useRef(route);
+  routeRef.current = route;
+  const [conn, setConn] = useState<ConnValue>({
+    providerId: CUSTOM_PROVIDER_ID,
+    baseUrl: "",
+    isFullUrl: false,
+    apiKey: "",
+  });
+  const [config, setConfig] = useState<ConfigState>({
+    input: "",
+    timeoutMs: 30000,
+    maxRetries: 1,
+    maxTokens: 512,
+    userAgent: "",
+    concurrency: 2,
+  });
   const [rows, setRows] = useState<ModelRow[]>([]);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [statusEntries, setStatusEntries] = useState<StatusEntry[]>([]);
@@ -65,6 +108,7 @@ export function App() {
   const [loadErr, setLoadErr] = useState<string | null>(null);
   const [bootstrapped, setBootstrapped] = useState(false);
   const [securityWarn, setSecurityWarn] = useState(false);
+  const [dailyRequestBudget, setDailyRequestBudget] = useState(DEFAULT_MODELPING_DAILY_BUDGET);
 
   // 口令门：need=后端要求口令，authed=已通过。
   const [needPassword, setNeedPassword] = useState(false);
@@ -86,6 +130,10 @@ export function App() {
   const defaultInputRef = useRef(t("config.defaultInput"));
 
   const navigateTo = (next: AppRoute) => {
+    if (providerDirtyRef.current && next !== routeRef.current) {
+      setPendingRoute(next);
+      return;
+    }
     const hash = hashForAppRoute(next);
     if (window.location.hash === hash) {
       setRoute(next);
@@ -212,6 +260,11 @@ export function App() {
   useEffect(() => {
     const syncRoute = () => {
       const next = appRouteFromHash(window.location.hash);
+      if (providerDirtyRef.current && next !== routeRef.current) {
+        window.history.replaceState(null, "", hashForAppRoute(routeRef.current));
+        setPendingRoute(next);
+        return;
+      }
       setRoute(next);
       const canonical = hashForAppRoute(next);
       if (window.location.hash !== canonical) {
@@ -221,6 +274,17 @@ export function App() {
     syncRoute();
     window.addEventListener("hashchange", syncRoute);
     return () => window.removeEventListener("hashchange", syncRoute);
+  }, []);
+
+  useEffect(() => {
+    const guard = (event: BeforeUnloadEvent) => {
+      if (providerDirtyRef.current) {
+        event.preventDefault();
+        event.returnValue = "";
+      }
+    };
+    window.addEventListener("beforeunload", guard);
+    return () => window.removeEventListener("beforeunload", guard);
   }, []);
 
   useEffect(() => {
@@ -234,6 +298,7 @@ export function App() {
       const bootstrap = await fetchBootstrap();
       const health = bootstrap.health;
       const security = health.security;
+      setDailyRequestBudget(health.limits?.dailyRequestBudget ?? DEFAULT_MODELPING_DAILY_BUDGET);
       const scope = health.persistence?.privateState ? health.persistence.privateStateScope : "none";
       privateStateScopeRef.current = scope;
       setSecurityWarn(Boolean(security && !isLocalOrigin() && (!security.hasPassword || security.shouldWarnOpenProxy)));
@@ -245,7 +310,7 @@ export function App() {
       serverPersistRef.current = Boolean(health.persistence?.settings);
       // 静态默认兜底。
       const localPresets = loadLocalPresets();
-      const activePresets = serverPresets ?? localPresets ?? await fetchPresets();
+      const activePresets = serverPresets ?? localPresets ?? (await fetchPresets());
       const privateState = bootstrap.privateState;
       const privateCanPersist = privateState !== null;
       privatePersistRef.current = privateCanPersist;
@@ -302,7 +367,7 @@ export function App() {
       if (isAuthError(e)) {
         setNeedPassword(true);
         setAuthed(false);
-        setPwError(pwInput ? e?.message ?? t("app.pwInvalid") : null);
+        setPwError(pwInput ? (e?.message ?? t("app.pwInvalid")) : null);
         setLoadErr(null);
         return;
       }
@@ -354,7 +419,9 @@ export function App() {
   const onConnChange = (v: ConnValue) => {
     const providerChanged = v.providerId !== conn.providerId;
     setConn(v);
-    persistPrivateState({ conn: { providerId: v.providerId, baseUrl: v.baseUrl, isFullUrl: Boolean(v.isFullUrl), apiKey: v.apiKey } });
+    persistPrivateState({
+      conn: { providerId: v.providerId, baseUrl: v.baseUrl, isFullUrl: Boolean(v.isFullUrl), apiKey: v.apiKey },
+    });
     if (providerChanged) setRows((rs) => selectRowsForProvider(rs, v.providerId));
   };
 
@@ -370,7 +437,9 @@ export function App() {
     saveLocalPresets(presets);
     if (serverPersistRef.current) {
       saveSettings(presets)
-        .then((ok) => { if (!ok) serverPersistRef.current = false; })
+        .then((ok) => {
+          if (!ok) serverPersistRef.current = false;
+        })
         .catch((e) => showToast(t("app.toastServerSaveFailed", { msg: e?.message ?? e }), { tone: "error" }));
     }
   };
@@ -394,7 +463,14 @@ export function App() {
           apiKey: currentConn.apiKey,
         };
         setConn(nextConn);
-        persistPrivateState({ conn: { providerId: nextConn.providerId, baseUrl: nextConn.baseUrl, isFullUrl: Boolean(nextConn.isFullUrl), apiKey: nextConn.apiKey } });
+        persistPrivateState({
+          conn: {
+            providerId: nextConn.providerId,
+            baseUrl: nextConn.baseUrl,
+            isFullUrl: Boolean(nextConn.isFullUrl),
+            apiKey: nextConn.apiKey,
+          },
+        });
       }
     } else if (currentConn.providerId !== CUSTOM_PROVIDER_ID) {
       const selected = presets.providers.find((p) => p.id === currentConn.providerId);
@@ -402,7 +478,14 @@ export function App() {
         ? { ...currentConn, baseUrl: selected.baseUrl, isFullUrl: Boolean(selected.isFullUrl) }
         : { providerId: CUSTOM_PROVIDER_ID, baseUrl: "", isFullUrl: false, apiKey: currentConn.apiKey };
       setConn(nextConn);
-      persistPrivateState({ conn: { providerId: nextConn.providerId, baseUrl: nextConn.baseUrl, isFullUrl: Boolean(nextConn.isFullUrl), apiKey: nextConn.apiKey } });
+      persistPrivateState({
+        conn: {
+          providerId: nextConn.providerId,
+          baseUrl: nextConn.baseUrl,
+          isFullUrl: Boolean(nextConn.isFullUrl),
+          apiKey: nextConn.apiKey,
+        },
+      });
     }
 
     const nextRows = appendCustomModelRows(
@@ -426,8 +509,10 @@ export function App() {
     try {
       const { providers: nextProviders, providerId } = upsertProviderFromConn(providersRef.current, draft);
       const normalized = normalizePresets({ providers: nextProviders, defaults: presetDefaultsRef.current });
-      const created = !draft.providerId || draft.providerId === CUSTOM_PROVIDER_ID
-        || !providersRef.current.some((p) => p.id === draft.providerId);
+      const created =
+        !draft.providerId ||
+        draft.providerId === CUSTOM_PROVIDER_ID ||
+        !providersRef.current.some((p) => p.id === draft.providerId);
       const name = normalized.providers.find((p) => p.id === providerId)?.name ?? draft.name;
       applyPresets(
         normalized,
@@ -446,7 +531,8 @@ export function App() {
 
   const onTestSelected = () => runBatch(rows.filter((r) => r.checked));
 
-  const onToggle = (key: string, checked: boolean) => setRows((rs) => rs.map((r) => (r.key === key ? { ...r, checked } : r)));
+  const onToggle = (key: string, checked: boolean) =>
+    setRows((rs) => rs.map((r) => (r.key === key ? { ...r, checked } : r)));
   const onToggleAll = (checked: boolean) => setRows((rs) => rs.map((r) => ({ ...r, checked })));
   const onToggleGroup = (keys: string[], checked: boolean) => {
     const groupKeys = new Set(keys);
@@ -624,7 +710,13 @@ export function App() {
                 <stop offset="1" stop-color="var(--brand-to)" />
               </linearGradient>
             </defs>
-            <path d="M14.5 40C18 47 24.4 51.5 32 51.5S46 47 49.5 40" fill="none" stroke="url(#pw-ping)" stroke-width="6.5" stroke-linecap="round" />
+            <path
+              d="M14.5 40C18 47 24.4 51.5 32 51.5S46 47 49.5 40"
+              fill="none"
+              stroke="url(#pw-ping)"
+              stroke-width="6.5"
+              stroke-linecap="round"
+            />
             <circle cx="32" cy="30" r="16" fill="none" stroke="url(#pw-ping)" stroke-width="3" />
             <circle cx="32" cy="23.5" r="4" fill="var(--brand-to)" />
             <circle cx="25.5" cy="34.5" r="4" fill="var(--brand-from)" />
@@ -644,9 +736,15 @@ export function App() {
                 setPwInput((e.target as HTMLInputElement).value);
                 if (pwError) setPwError(null);
               }}
-              onKeyDown={(e) => { if (e.key === "Enter" && !pwSubmitting) submitPassword(); }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !pwSubmitting) submitPassword();
+              }}
             />
-            {pwError ? <div class="hint fail" role="alert">{pwError}</div> : null}
+            {pwError ? (
+              <div class="hint fail" role="alert">
+                {pwError}
+              </div>
+            ) : null}
           </div>
           <div class="actions">
             <button class="primary" onClick={submitPassword} disabled={pwSubmitting}>
@@ -661,8 +759,10 @@ export function App() {
   const testRoute = route === "test-models" || route === "test-history";
 
   return (
-    <div class="app-shell">
-      <a class="skip-link" href="#main-content">{t("app.skipToContent")}</a>
+    <div class={"app-shell " + (route.startsWith("test") ? "test-shell" : "settings-shell")}>
+      <a class="skip-link" href="#main-content">
+        {t("app.skipToContent")}
+      </a>
       <header class="app-header">
         <div class="app-header-inner">
           <div class="brand-lockup">
@@ -674,7 +774,13 @@ export function App() {
                     <stop offset="1" stop-color="var(--brand-to)" />
                   </linearGradient>
                 </defs>
-                <path d="M14.5 40C18 47 24.4 51.5 32 51.5S46 47 49.5 40" fill="none" stroke="url(#brand-ping)" stroke-width="6.5" stroke-linecap="round" />
+                <path
+                  d="M14.5 40C18 47 24.4 51.5 32 51.5S46 47 49.5 40"
+                  fill="none"
+                  stroke="url(#brand-ping)"
+                  stroke-width="6.5"
+                  stroke-linecap="round"
+                />
                 <circle cx="32" cy="30" r="16" fill="none" stroke="url(#brand-ping)" stroke-width="3" />
                 <circle cx="32" cy="23.5" r="4" fill="var(--brand-to)" />
                 <circle cx="25.5" cy="34.5" r="4" fill="var(--brand-from)" />
@@ -683,7 +789,7 @@ export function App() {
             </span>
             <span class="brand-copy">
               <strong>ModelPing</strong>
-              <span>{t("app.title")}</span>
+              <span>LLM API Tester</span>
             </span>
           </div>
 
@@ -705,7 +811,6 @@ export function App() {
             >
               <Activity size={17} aria-hidden="true" />
               {t("app.tabStatus")}
-              {statusEntries.length ? <span class="nav-count">{statusEntries.length}</span> : null}
             </button>
             <button
               type="button"
@@ -738,7 +843,9 @@ export function App() {
         {loadErr && route !== "toolbox" ? (
           <section class="panel">
             <div class="status-text fail">{t("app.loadFailed", { msg: loadErr })}</div>
-            <div class="actions"><button onClick={init}>{t("app.retry")}</button></div>
+            <div class="actions">
+              <button onClick={init}>{t("app.retry")}</button>
+            </div>
           </section>
         ) : null}
 
@@ -764,7 +871,7 @@ export function App() {
             <ToolboxPanel />
           </Suspense>
         ) : !loadErr && bootstrapped && testRoute ? (
-          <div class="test-workspace">
+          <div class={"test-workspace" + (route === "test-history" ? " history-workspace" : "")}>
             <aside class="workspace-sidebar" aria-label={t("app.setupLabel")}>
               <ConnectionPanel
                 providers={providers}
@@ -779,6 +886,11 @@ export function App() {
               <ConfigPanel value={config} onChange={onConfigChange} />
             </aside>
             <section class="workspace-content" aria-label={t("app.workspaceLabel")}>
+              {route === "test-models" ? (
+                <div class="workbench-intro">
+                  <h2>{t("ui.modelTest")}</h2>
+                </div>
+              ) : null}
               <div class="workspace-tabs" role="tablist" aria-label={t("app.workspaceLabel")}>
                 <button
                   type="button"
@@ -787,7 +899,7 @@ export function App() {
                   class={route === "test-models" ? "active" : ""}
                   onClick={() => navigateTo("test-models")}
                 >
-                  <FlaskConical size={16} aria-hidden="true" />
+                  <CubeMark size={20} filled={route === "test-models"} />
                   {t("app.workspaceModels")}
                   <span class="tab-count">{rows.length}</span>
                 </button>
@@ -800,12 +912,13 @@ export function App() {
                 >
                   <History size={16} aria-hidden="true" />
                   {t("app.workspaceHistory")}
-                  <span class="tab-count">{history.length}</span>
+                  {route === "test-history" ? <span class="tab-count">{history.length}</span> : null}
                 </button>
               </div>
               {route === "test-models" ? (
                 <ModelTable
                   rows={rows}
+                  providers={providers}
                   busy={busy}
                   progress={progress}
                   conn={conn}
@@ -836,6 +949,7 @@ export function App() {
           <StatusPanel
             entries={statusEntries}
             persisted={statusPersisted}
+            dailyRequestBudget={dailyRequestBudget}
             onDelete={onDeleteStatus}
             onGotoTest={onGotoStatusTest}
             onLaunched={showToast}
@@ -847,11 +961,36 @@ export function App() {
             busy={busy}
             onChange={onPresetProvidersChange}
             onImport={onImportPresets}
+            onDirtyChange={setProviderDirty}
+            onSaved={() => showToast(t("ui.saved"), { tone: "success" })}
           />
         ) : null}
 
-        {toast ? <div class={"toast" + (toastTone === "error" ? " error" : "") + (toastTone === "success" ? " success" : "")} role="status" aria-live="polite">{toast}</div> : null}
+        {toast ? (
+          <div
+            class={"toast" + (toastTone === "error" ? " error" : "") + (toastTone === "success" ? " success" : "")}
+            role="status"
+            aria-live="polite"
+          >
+            {toast}
+          </div>
+        ) : null}
       </main>
+      {pendingRoute ? (
+        <ConfirmModal
+          title={t("ui.discardTitle")}
+          description={t("ui.discardBody")}
+          confirmLabel={t("ui.discardConfirm")}
+          onClose={() => setPendingRoute(null)}
+          onConfirm={() => {
+            const next = pendingRoute;
+            setPendingRoute(null);
+            providerDirtyRef.current = false;
+            setProviderDirty(false);
+            navigateTo(next);
+          }}
+        />
+      ) : null}
       {pendingPresetModelDelete ? (
         <ConfirmModal
           title={t("models.deletePresetTitle", { model: pendingPresetModelDelete.label })}

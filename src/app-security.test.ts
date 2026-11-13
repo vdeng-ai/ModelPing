@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createApp, type Env } from "./app.js";
+import { MAX_JSON_BODY_BYTES, createApp, type Env } from "./app.js";
 
 function jsonReq(path: string, body: unknown): Request {
   return new Request(`http://x.test${path}`, {
@@ -77,6 +77,34 @@ describe("api target safety policy", () => {
 
     expect(res.status).toBe(403);
     await expect(res.json()).resolves.toEqual({ error: "目标主机不在允许列表内" });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects oversized JSON bodies before parsing or upstream fetch", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const app = createApp();
+    const res = await app.fetch(jsonReq("/api/test", {
+      ...testPayload,
+      input: "x".repeat(MAX_JSON_BODY_BYTES),
+    }));
+
+    expect(res.status).toBe(413);
+    await expect(res.json()).resolves.toEqual({ error: "请求体过大" });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects oversized model identifiers before upstream fetch", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const app = createApp();
+    const res = await app.fetch(jsonReq("/api/test", {
+      ...testPayload,
+      model: "m".repeat(513),
+    }));
+
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toEqual({ error: "model 过长" });
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
