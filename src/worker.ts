@@ -21,6 +21,7 @@ function buildWorkerAppEnv(raw: WorkerEnv): Env {
   const useKv = driver !== "none" && Boolean(raw.SETTINGS_KV);
   const store = useKv ? new CfKvStore(raw.SETTINGS_KV as any, "presets") : undefined;
   const privateStore = useKv ? new CfKvStore(raw.SETTINGS_KV as any, "private") : undefined;
+  const catalogStore = useKv ? new CfKvStore(raw.SETTINGS_KV as any, "model-catalog") : undefined;
 
   return {
     APP_PASSWORD: raw.APP_PASSWORD,
@@ -33,6 +34,7 @@ function buildWorkerAppEnv(raw: WorkerEnv): Env {
     DAILY_REQUEST_BUDGET: raw.DAILY_REQUEST_BUDGET,
     store,
     privateStore,
+    catalogStore,
   };
 }
 

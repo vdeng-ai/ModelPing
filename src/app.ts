@@ -27,6 +27,7 @@ import { applyPrivateStateScope, emptyPrivateState, normalizePrivateState, type 
 import { normalizeUserAgent } from "./user-agent.js";
 import { isPrivateUrl } from "./ssrf.js";
 import { protocolOf } from "./protocols.js";
+import { normalizeExternalCatalog } from "./model-catalog.js";
 import { drainSseBlocks, extractSseData } from "./sse.js";
 
 // 框架无关的 Hono app。node.ts / worker.ts 共用。
@@ -43,6 +44,8 @@ export interface Env {
   BLOCK_PRIVATE_HOSTS?: string;
   // 设置持久化存储（presets）。由各入口按部署平台注入；未注入时走前端纯本地模式。
   store?: SettingsStore;
+  // Global public model catalog snapshot. Cloudflare reuses SETTINGS_KV under a separate key.
+  catalogStore?: SettingsStore;
   // 私有工作态持久化存储（含历史/连接/参数/状态，加密落盘）。各入口用 createStore(env,"private") 注入。
   privateStore?: SettingsStore;
   // 旧状态页密钥源；仅作为 private-state 的兼容 fallback。
@@ -510,6 +513,41 @@ export function createApp() {
     const raw = await store.get();
     if (!raw) return c.body(null, 204);
     return c.body(raw, 200, { "content-type": "application/json", "cache-control": "no-store" });
+  });
+
+  // Global model catalog is fetched only by an explicit user action. GET reads the last
+  // snapshot; POST performs one bounded refresh against public catalog sources.
+  app.get("/api/model-catalog", async (c) => {
+    const store = c.env?.catalogStore;
+    if (!store) return c.json({ available: false, providers: [], updatedAt: null }, 200, { "cache-control": "no-store" });
+    const raw = await store.get();
+    if (!raw) return c.json({ available: true, providers: [], updatedAt: null }, 200, { "cache-control": "no-store" });
+    try {
+      return c.json({ available: true, ...JSON.parse(raw) }, 200, { "cache-control": "no-store" });
+    } catch {
+      return c.json({ available: true, providers: [], updatedAt: null, warning: "Stored model catalog is invalid" }, 200, { "cache-control": "no-store" });
+    }
+  });
+
+  app.post("/api/model-catalog/sync", async (c) => {
+    const store = c.env?.catalogStore;
+    if (!store) return c.json({ error: "Model catalog storage is not configured" }, 501);
+    try {
+      const response = await fetch("https://models.dev/api.json?type=all", {
+        headers: { accept: "application/json" },
+        signal: AbortSignal.timeout(12_000),
+      });
+      if (!response.ok) return c.json({ error: `Models.dev returned HTTP ${response.status}` }, 502);
+      const raw: unknown = await response.json();
+      const providers = normalizeExternalCatalog(raw);
+
+      if (!providers.length) throw new Error("No providers were found in the catalog response");
+      const snapshot = { version: 1, updatedAt: new Date().toISOString(), source: "models.dev", providers };
+      await store.put(JSON.stringify(snapshot));
+      return c.json({ available: true, ...snapshot }, 200, { "cache-control": "no-store" });
+    } catch (error: any) {
+      return c.json({ error: error?.message ?? "Model catalog sync failed" }, 502);
+    }
   });
 
   app.put("/api/settings", async (c) => {

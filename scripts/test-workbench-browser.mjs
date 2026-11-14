@@ -81,6 +81,19 @@ const server = createServer(async (req, res) => {
       requests.push({ pathname, method: req.method, input });
       res.setHeader("content-type", "application/json");
       if (pathname === "/api/bootstrap") return res.end(JSON.stringify(fixture));
+      if (pathname === "/api/model-catalog" && req.method === "GET") return res.end(JSON.stringify({
+        available: true,
+        updatedAt: "2026-11-14T00:00:00.000Z",
+        source: "models.dev",
+        providers: [{ id: "openai", name: "OpenAI", baseUrl: "https://api.openai.com/v1", docs: "", models: [
+          { id: "gpt-new", label: "GPT New", releaseDate: "2026-11-01", context: 128000, modalities: ["text"] },
+          { id: "gpt-existing", label: "GPT Existing", releaseDate: null, context: null, modalities: [] },
+        ] }],
+      }));
+      if (pathname === "/api/model-catalog/sync" && req.method === "POST") return res.end(JSON.stringify({
+        available: true, updatedAt: "2026-11-14T00:00:00.000Z", source: "models.dev",
+        providers: [{ id: "openai", name: "OpenAI", baseUrl: "https://api.openai.com/v1", docs: "", models: [{ id: "gpt-new", label: "GPT New", releaseDate: null, context: 128000, modalities: ["text"] }] }],
+      }));
       if (pathname === "/api/ping-batch")
         return res.end(
           JSON.stringify({
@@ -203,7 +216,7 @@ try {
     await page.waitForTimeout(7500); // Covers the existing 7-second save debounce as well.
     assert.deepEqual(
       requests.map((request) => request.pathname),
-      ["/api/bootstrap"],
+      ["/api/bootstrap", "/api/model-catalog"],
     );
   });
 
@@ -338,6 +351,21 @@ try {
     assert.equal(await page.locator("dialog[open]").count(), 0);
     assert.ok(await trigger.evaluate((element) => document.activeElement === element));
     assert.equal(count("/api/test-row"), 3, "Adding a model must not run it");
+  });
+
+  await check("model catalog is read from cache; sync is manual and selected models join presets", async () => {
+    await navigate("供应商");
+    await page.locator(".model-catalog-panel").locator("summary").click();
+    await page.getByRole("button", { name: "检查并更新目录" }).waitFor();
+    assert.equal(count("/api/model-catalog/sync"), 0, "Opening the catalog must not trigger external sync");
+    await page.getByRole("button", { name: "检查并更新目录" }).click();
+    await page.getByText("GPT New", { exact: true }).waitFor();
+    assert.equal(count("/api/model-catalog/sync"), 1);
+    await page.locator(".model-catalog-controls select").nth(0).selectOption("openai");
+    await page.locator(".model-catalog-item input").first().check();
+    await page.getByRole("button", { name: "加入供应商预设" }).click();
+    await page.getByText("已加入 1 个模型").waitFor();
+    assert.equal(count("/api/model-catalog/sync"), 1, "Adding models must not refetch the catalog");
   });
 
   await check("all five pages fit 320/390/768/1440 pixels in light and dark themes", async () => {

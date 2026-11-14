@@ -542,6 +542,16 @@ export function App() {
     applyPresets({ providers: nextProviders, defaults: presetDefaults }, t("app.toastProvidersSaved"));
   };
 
+  const onAddCatalogModels = (providerId: string, models: { id: string; label: string }[]) => {
+    const next = providersRef.current.map((provider) => {
+      if (provider.id !== providerId) return provider;
+      const existing = new Set(provider.models.map((model) => model.id));
+      return { ...provider, models: [...provider.models, ...models.filter((model) => !existing.has(model.id))] };
+    });
+    onPresetProvidersChange(next);
+    showToast(t("catalog.added", { count: models.length }), { tone: "success" });
+  };
+
   const onImportPresets = (presets: PresetsResponse) => {
     applyPresets(presets, t("app.toastImported"));
   };
@@ -956,6 +966,7 @@ export function App() {
             onImport={onImportPresets}
             onDirtyChange={setProviderDirty}
             onSaved={() => showToast(t("ui.saved"), { tone: "success" })}
+            onAddCatalogModels={onAddCatalogModels}
           />
         ) : null}
 

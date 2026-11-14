@@ -1,4 +1,6 @@
 import type { Balance, DualTestResult, ModelsResult, PingBatchEntry, PingBatchResult, PingResult, PresetsResponse, PrivateState, RowTestResult, StreamEvent, TestResult, Usage } from "./types.js";
+import type { CatalogProvider } from "../../src/model-catalog.js";
+export type { CatalogProvider } from "../../src/model-catalog.js";
 import { normalizePresets } from "./presets.js";
 import { drainSseBlocks, extractSseData } from "../../src/sse.js";
 import {
@@ -205,6 +207,35 @@ export async function fetchModels(payload: LookupPayload): Promise<ModelsResult>
     throw new Error(await parseErrorMessage(res));
   }
   return res.json();
+}
+
+export interface ModelCatalog {
+  available: boolean;
+  version?: number;
+  updatedAt: string | null;
+  source?: string;
+  providers: CatalogProvider[];
+}
+
+let modelCatalogCache: ModelCatalog | null = null;
+export async function fetchModelCatalog(): Promise<ModelCatalog> {
+  if (modelCatalogCache) return modelCatalogCache;
+  const res = await fetch("/api/model-catalog", { headers: authHeaders(), cache: "no-store" });
+  if (!res.ok) throw new Error(await parseErrorMessage(res));
+  modelCatalogCache = await res.json();
+  return modelCatalogCache!;
+}
+
+export async function syncModelCatalog(): Promise<ModelCatalog> {
+  const res = await fetch("/api/model-catalog/sync", {
+    method: "POST",
+    headers: { "content-type": "application/json", ...authHeaders() },
+    body: "{}",
+  });
+  if (res.status === 401) throw await authErrorFromResponse(res);
+  if (!res.ok) throw new Error(await parseErrorMessage(res, `HTTP ${res.status}`));
+  modelCatalogCache = await res.json();
+  return modelCatalogCache!;
 }
 
 // 端点延迟测速（不消耗 token，经后端代理）。

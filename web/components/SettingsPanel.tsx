@@ -7,6 +7,7 @@ import { CubeMark } from "./CubeMark.js";
 import { ActionMenu } from "./ActionMenu.js";
 import { ConfirmModal } from "./ConfirmModal.js";
 import { useI18n } from "../lib/i18n.js";
+import { ModelCatalogPanel } from "./ModelCatalogPanel.js";
 
 interface Props {
   providers: ProviderPreset[];
@@ -16,6 +17,7 @@ interface Props {
   onImport: (presets: PresetsResponse) => void;
   onDirtyChange?: (dirty: boolean) => void;
   onSaved?: () => void;
+  onAddCatalogModels: (providerId: string, models: { id: string; label: string }[]) => void;
 }
 
 const cloneProvider = (p: ProviderPreset): ProviderPreset => ({
@@ -44,7 +46,7 @@ function downloadJson(presets: PresetsResponse) {
   URL.revokeObjectURL(url);
 }
 
-export function SettingsPanel({ providers, defaults, busy, onChange, onImport, onDirtyChange, onSaved }: Props) {
+export function SettingsPanel({ providers, defaults, busy, onChange, onImport, onDirtyChange, onSaved, onAddCatalogModels }: Props) {
   const { t, lang } = useI18n();
   const mobile = useMediaQuery("(max-width: 760px)");
   const [selectedId, setSelectedId] = useState(providers[0]?.id ?? "");
@@ -150,6 +152,7 @@ export function SettingsPanel({ providers, defaults, busy, onChange, onImport, o
   const filtered = providers.filter((p) => `${p.id} ${p.name}`.toLowerCase().includes(query.trim().toLowerCase()));
   return (
     <section class="panel settings-panel">
+      <ModelCatalogPanel providers={providers} busy={busy} disableAdd={dirty} onAdd={onAddCatalogModels} />
       <div class="settings-page-toolbar">
         <span class="spacer" />
         {importControl}
