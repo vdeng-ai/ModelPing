@@ -117,7 +117,6 @@ try {
   const workers = [];
   page.on("worker", (worker) => workers.push(worker.url()));
   await page.goto(`${origin}/#test/models`);
-  await page.getByRole("button", { name: "工具箱", exact: true }).click();
   await input(page).waitFor();
 
   await check("11 tools, live Base64 auto detection and explicit overrides", async () => {
@@ -264,12 +263,12 @@ try {
     await choose(page, "快速 Base64");
     await button(page, "清空").click();
     await page.getByRole("combobox", { name: "语言", exact: true }).selectOption("en");
-    await page.getByRole("heading", { name: "Local toolbox" }).waitFor();
+    await page.getByRole("heading", { name: "Credential Decode + API Test" }).waitFor();
     for (const width of [1440, 768, 390, 320]) {
       await page.setViewportSize({ width, height: 1100 });
       assert.ok(
         await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1),
-        `Horizontal overflow at ${width}px`,
+        `Horizontal overflow at ${width}px: ${JSON.stringify(await page.evaluate(() => [...document.querySelectorAll("body *")].map((el) => ({ tag: el.tagName, cls: typeof el.className === "string" ? el.className : "", right: Math.round(el.getBoundingClientRect().right), left: Math.round(el.getBoundingClientRect().left), width: Math.round(el.getBoundingClientRect().width) })).filter((x) => x.right > innerWidth + 1 || x.left < -1).sort((a,b) => b.right-a.right).slice(0,8)))}`,
       );
       if (width <= 760) {
         const navigation = await page.locator(".primary-nav .nav-item").evaluateAll((items) =>
@@ -315,7 +314,6 @@ try {
   await check("preferences survive reload but content and secret do not", async () => {
     await choose(page, "JWT");
     await page.reload();
-    await page.getByRole("button", { name: /^(工具箱|Toolbox)$/ }).click();
     await page.locator("#toolbox-secret").waitFor();
     assert.equal(await input(page).inputValue(), "");
     assert.equal(await page.locator("#toolbox-secret").inputValue(), "");
@@ -327,13 +325,12 @@ try {
 
   await check("existing navigation and browser back/forward still work", async () => {
     await page.getByRole("link", { name: "测试", exact: true }).click();
-    await page.getByRole("heading", { name: "模型工作台", exact: true }).waitFor();
+    await page.getByRole("heading", { name: "凭据解码 + API 测试", exact: true }).waitFor();
     await page.getByRole("link", { name: "供应商与模型", exact: true }).click();
     assert.ok(page.url().endsWith("#providers"));
     await page.goBack();
     assert.ok(page.url().endsWith("#test/models"));
     await page.getByRole("link", { name: "测试", exact: true }).click();
-    await page.getByRole("button", { name: "工具箱", exact: true }).click();
     await input(page).waitFor();
     assert.ok(page.url().endsWith("#test/models"));
     assert.equal(await input(page).inputValue(), "");
@@ -383,7 +380,6 @@ try {
     const exceptions = [];
     target.on("pageerror", (error) => exceptions.push(error.message));
     await target.goto(`${origin}/#test/models`);
-    await target.getByRole("button", { name: /^(工具箱|Toolbox)$/ }).click();
     await input(target).fill("hello");
     await waitOutput(target, "aGVsbG8=");
     await target
@@ -402,7 +398,6 @@ try {
     );
     const target = await offline.newPage();
     await target.goto(`${origin}/#test/models`);
-    await target.getByRole("button", { name: /^(工具箱|Toolbox)$/ }).click();
     await input(target).fill("hello");
     await waitOutput(target, "aGVsbG8=");
     await offline.close();

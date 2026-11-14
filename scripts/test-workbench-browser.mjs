@@ -236,7 +236,6 @@ try {
     assert.equal(await page.locator("dialog[open]").count(), 0);
     assert.equal(await trigger.evaluate((element) => document.activeElement === element), true);
     await page.goBack();
-    await page.getByRole("button", { name: "模型测试", exact: true }).click();
     await page.locator(".model-panel").waitFor();
     await page.locator("#main-content").focus();
     await page.getByRole("searchbox", { name: "搜索模型" }).focus();
@@ -374,7 +373,6 @@ try {
   });
 
   await check("decoded API keys transfer directly from Toolbox into the connection form", async () => {
-    await page.getByRole("button", { name: "工具箱", exact: true }).click();
     await page.getByRole("tab", { name: "Base64", exact: true }).click();
     await page.getByRole("button", { name: "解码", exact: true }).click();
     await page.locator("#toolbox-input").fill("c2stdGVzdA==");

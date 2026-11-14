@@ -42,7 +42,6 @@ export function AppNavigation({
             <span>API WORKSPACE</span>
           </span>
         </a>
-        <span class="nav-section-label">{t("workbench.workspace")}</span>
         <nav class="primary-nav" aria-label={t("app.navLabel")}>
           {NAV_ITEMS.map(({ route: target, label, icon: Icon }) => (
             <a
@@ -76,7 +75,6 @@ export function AppNavigation({
             <LangToggle />
             <ThemeToggle />
           </div>
-          <span class="nav-footnote">{t("workbench.localNavigation")}</span>
         </div>
       </div>
     </header>

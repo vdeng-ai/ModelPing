@@ -74,7 +74,6 @@ type StatusDraft = Omit<StatusEntry, "id">;
 export function App() {
   const { t, lang } = useI18n();
   const [commandsOpen, setCommandsOpen] = useState(false);
-  const [testView, setTestView] = useState<"models" | "toolbox">("models");
   const [density, setDensity] = useState(readDensity);
   const online = useOnline();
   const [providers, setProviders] = useState<ProviderPreset[]>([]);
@@ -143,7 +142,6 @@ export function App() {
     const hash = hashForAppRoute(next);
     if (window.location.hash === hash) {
       setRoute(next);
-      if (next === "test-models") setTestView("models");
       return;
     }
     window.location.hash = hash;
@@ -808,7 +806,7 @@ export function App() {
   const testRoute = route === "test-models";
   const pageKey = (
     {
-      "test-models": testView === "toolbox" ? "toolbox" : "test",
+      "test-models": "test",
       "test-history": "history",
       status: "status",
       providers: "providers",
@@ -842,7 +840,7 @@ export function App() {
           <div class="page-heading-actions">
             <span hidden={route === "status"} class={"runtime-badge" + (busy ? " running" : "")}>
               <span aria-hidden="true" />
-              {t(busy ? "workbench.running" : testView === "toolbox" ? "workbench.localOnly" : "workbench.manual")}
+              {t(busy ? "workbench.running" : "workbench.manual")}
             </span>
             <button
               class="icon-button subtle density-toggle"
@@ -902,22 +900,19 @@ export function App() {
         ) : null}
 
         {testRoute ? (
-          <div class="test-view-switch" role="group" aria-label={t("app.tabTest")}>
-            <button type="button" class={testView === "models" ? "active" : ""} aria-pressed={testView === "models"} onClick={() => setTestView("models")}>{t("workbench.modelTesting")}</button>
-            <button type="button" class={testView === "toolbox" ? "active" : ""} aria-pressed={testView === "toolbox"} onClick={() => setTestView("toolbox")}>{t("app.tabToolbox")}</button>
-          </div>
-        ) : null}
-        {testRoute && testView === "toolbox" ? (
-          <Suspense fallback={<section class="panel" role="status" aria-busy="true">{t("app.loading")}</section>}>
-            <ToolboxPanel onUseValue={(kind, value) => {
-              onConnChange({ ...connRef.current, providerId: CUSTOM_PROVIDER_ID, ...(kind === "apiKey" ? { apiKey: value } : { baseUrl: value }) });
-              setTestView("models");
-              showToast(t(kind === "apiKey" ? "toolbox.apiKeyTransferred" : "toolbox.baseUrlTransferred"), { tone: "success" });
-            }} />
-          </Suspense>
-        ) : !loadErr && bootstrapped && testRoute && testView === "models" ? (
-          <div class="test-workspace">
-            <aside class="workspace-sidebar" aria-label={t("app.setupLabel")}>
+          <div class="integrated-workspace">
+            <section class="credential-column" aria-label={t("toolbox.title")}>
+              <div class="integrated-section-heading"><h2>{t("workbench.credentialDecodeTitle")}</h2><p>{t("workbench.credentialDecodeDescription")}</p></div>
+              <Suspense fallback={<section class="panel" role="status" aria-busy="true">{t("app.loading")}</section>}>
+                <ToolboxPanel onUseValue={(kind, value) => {
+                  onConnChange({ ...connRef.current, providerId: CUSTOM_PROVIDER_ID, ...(kind === "apiKey" ? { apiKey: value } : { baseUrl: value }) });
+                  showToast(t(kind === "apiKey" ? "toolbox.apiKeyTransferred" : "toolbox.baseUrlTransferred"), { tone: "success" });
+                }} />
+              </Suspense>
+            </section>
+            <section class="api-test-column" aria-label={t("app.workspaceLabel")}>
+              {bootstrapped && !loadErr ? <>
+              <div class="integrated-section-heading"><h2>{t("workbench.apiTestTitle")}</h2><p>{t("workbench.apiTestDescription")}</p></div>
               <ConnectionPanel
                 providers={providers}
                 value={conn}
@@ -929,9 +924,7 @@ export function App() {
                 onToast={showToast}
                 onAddCatalogModels={onAddCatalogModels}
               />
-              <ConfigPanel value={config} onChange={onConfigChange} />
-            </aside>
-            <section class="workspace-content" aria-label={t("app.workspaceLabel")}>
+              <details class="advanced-request-settings"><summary>{t("config.advanced")}</summary><ConfigPanel value={config} onChange={onConfigChange} /></details>
               <ModelTable
                 rows={rows}
                 providers={providers}
@@ -956,6 +949,7 @@ export function App() {
                 onAddToStatus={onAddToStatus}
                 onLaunched={showToast}
               />
+              </> : <section class="panel"><h2>{t("workbench.apiTestTitle")}</h2><p class="muted">{t("app.loadFailed", { msg: loadErr || t("app.loading") })}</p></section>}
             </section>
           </div>
         ) : !loadErr && bootstrapped && route === "test-history" ? (

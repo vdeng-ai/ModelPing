@@ -1,20 +1,24 @@
-/* Application shell: one navigation tree, rail on desktop, dock on mobile. */
+/* Application shell: compact top navigation, no permanent side rail. */
 .app-shell {
   min-height: 100dvh;
 }
 .app-header {
-  position: fixed;
-  inset: 0 auto 0 0;
-  width: var(--rail-width);
-  border-right: 1px solid var(--ds-separator);
+  position: sticky;
+  inset: 0 0 auto;
+  width: 100%;
+  border-bottom: 1px solid var(--ds-separator);
   background: var(--ds-surface);
   z-index: 40;
 }
 .app-header-inner {
-  height: 100%;
+  min-height: 68px;
   display: flex;
-  flex-direction: column;
-  padding: 30px 16px 20px;
+  flex-direction: row;
+  align-items: center;
+  gap: clamp(18px, 3vw, 48px);
+  max-width: 1720px;
+  margin-inline: auto;
+  padding: 10px clamp(18px, 3vw, 48px);
 }
 .brand-lockup {
   display: flex;
@@ -22,7 +26,8 @@
   gap: 10px;
   color: var(--ds-label);
   text-decoration: none;
-  padding: 0 4px;
+  padding: 0;
+  flex: 0 0 auto;
 }
 .brand-logo {
   width: 38px;
@@ -54,23 +59,22 @@
   color: var(--ds-label-secondary);
 }
 .nav-section-label {
-  font-size: 11px;
-  color: var(--ds-label-secondary);
-  letter-spacing: 0.1em;
-  padding: 40px 12px 12px;
+  display: none;
 }
 .primary-nav {
-  display: grid;
+  display: flex;
+  align-items: center;
   gap: 6px;
+  flex: 1;
 }
 .nav-item {
   display: flex;
   align-items: center;
   gap: 12px;
-  min-height: 44px;
-  padding: 11px 12px;
+  min-height: 40px;
+  padding: 9px 13px;
   border: 1px solid transparent;
-  border-radius: 8px;
+  border-radius: var(--ds-radius-md);
   font-size: 13px;
   font-weight: 500;
   text-decoration: none;
@@ -88,43 +92,37 @@
   border-color: color-mix(in srgb, var(--ds-accent) 20%, transparent);
 }
 .nav-item.active::after {
-  content: "";
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: currentColor;
-  margin-left: auto;
+  display: none;
 }
 .nav-item svg {
   flex-shrink: 0;
 }
 .nav-bottom {
-  margin-top: auto;
-  padding-top: 28px;
-  display: grid;
-  gap: 18px;
+  margin: 0 0 0 auto;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 .command-trigger {
-  justify-content: flex-start;
-  padding: 8px;
+  justify-content: center;
+  padding: 8px 10px;
   color: var(--ds-label-secondary);
   font-size: 12px;
 }
 .command-trigger span {
-  flex: 1;
-  text-align: left;
+  display: none;
 }
 .command-trigger kbd {
-  font-size: 10px;
-  padding: 1px 3px;
+  display: none;
 }
 .app-utilities {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 10px;
   align-items: center;
-  padding-top: 18px;
-  border-top: 1px solid var(--ds-separator);
+  padding: 0;
+  border: 0;
 }
 .lang-select {
   display: inline-flex;
@@ -156,13 +154,11 @@
   display: none;
 }
 .nav-footnote {
-  font-size: 11px;
-  color: var(--ds-label-secondary);
-  padding-left: 4px;
+  display: none;
 }
 .app-main {
-  margin-left: var(--rail-width);
-  padding: 38px clamp(20px, 2.4vw, 44px) 48px;
+  margin-left: 0;
+  padding: 30px clamp(18px, 3vw, 48px) 48px;
   min-width: 0;
 }
 .app-main:focus {
@@ -242,6 +238,18 @@
   gap: 20px;
   align-items: start;
 }
+.integrated-workspace { display:grid; grid-template-columns:minmax(320px,.92fr) minmax(0,1.35fr); gap:18px; align-items:start; }
+.credential-column,.api-test-column { min-width:0; display:grid; gap:10px; }
+.integrated-section-heading h2 { margin:0; font-size:17px; font-weight:650; }
+.integrated-section-heading p { margin:4px 0 0; color:var(--ds-label-secondary); font-size:12px; }
+.credential-column .toolbox-workspace { max-width:none; gap:10px; }
+.credential-column .toolbox-privacy { padding:8px 10px; font-size:11px; }
+.credential-column .toolbox-privacy > svg { width:15px; height:15px; }
+.credential-column .toolbox-workbench { padding:14px; gap:12px; }
+.credential-column .toolbox-field textarea { min-height:170px; }
+.api-test-column > .connection-panel,.api-test-column > .panel { min-width:0; }
+.advanced-request-settings > summary { cursor:pointer; color:var(--ds-label-secondary); font-size:12px; padding:8px 2px; }
+.advanced-request-settings[open] { display:grid; gap:8px; }
 .workspace-sidebar {
   display: grid;
   gap: 16px;
@@ -351,279 +359,60 @@
 .config-main-grid input {
   font-family: var(--ds-font-mono);
 }
-@media (min-width: 1700px) {
-  :root {
-    --rail-width: 224px;
-  }
-  .test-workspace {
-    grid-template-columns: 308px minmax(0, 1fr);
-    gap: 24px;
-  }
+@media (min-width: 761px) {
+  .integrated-workspace { grid-template-columns:minmax(300px,.88fr) minmax(0,1.42fr); }
 }
-@media (min-width: 761px) and (max-width: 1179px) {
-  :root {
-    --rail-width: 76px;
-  }
-  .app-header-inner {
-    padding: 24px 10px;
-  }
-  .brand-lockup {
-    padding: 0;
-    justify-content: center;
-  }
-  .brand-copy,
-  .nav-section-label,
-  .nav-footnote,
-  .command-trigger span,
-  .command-trigger kbd {
-    display: none;
-  }
-  .primary-nav {
-    margin-top: 32px;
-  }
-  .nav-item {
-    flex-direction: column;
-    justify-content: center;
-    gap: 5px;
-    padding: 9px 2px;
-    font-size: 10px;
-  }
-  .nav-item.active::after {
-    display: none;
-  }
-  .command-trigger {
-    justify-content: center;
-  }
-  .app-utilities {
-    justify-content: center;
-  }
-  .lang-select > svg {
-    display: none;
-  }
-  .lang-select select {
-    width: 52px;
-    font-size: 11px;
-    padding: 4px 0;
-  }
-  .theme-toggle {
-    flex-direction: column;
-    width: 38px;
-  }
-  .app-main {
-    padding: 28px 20px;
-  }
-  .test-workspace {
-    grid-template-columns: 256px minmax(0, 1fr);
-    gap: 16px;
-  }
-  .setup-body {
-    padding: 16px;
-  }
-  .page-heading-actions .runtime-badge {
-    display: none;
-  }
+@media (max-width: 1100px) and (min-width: 761px) {
+  .app-header-inner { gap:8px; padding-inline:12px; }
+  .brand-copy > span { display:none; }
+  .primary-nav { gap:2px; }
+  .nav-item { padding-inline:6px; font-size:11px; gap:5px; }
+  .nav-bottom { gap:6px; }
+  .app-utilities { gap:4px; }
+  .lang-select select { width:48px; padding-inline:2px; }
+  .theme-toggle { width:auto; }
+  .theme-toggle .seg { min-height:28px; padding:4px; }
+  .integrated-workspace { grid-template-columns:minmax(270px,.85fr) minmax(0,1.15fr); gap:12px; }
 }
 @media (max-width: 760px) {
-  html {
-    scroll-padding-block: 80px 170px;
-  }
-  .app-header {
-    inset: 0 0 auto;
-    width: auto;
-    height: 64px;
-    border-right: 0;
-    border-bottom: 1px solid var(--ds-separator);
-  }
-  .app-header-inner {
-    height: 64px;
-    padding: 10px 16px;
-    flex-direction: row;
-    align-items: center;
-    justify-content: space-between;
-  }
-  .brand-logo {
-    width: 32px;
-    height: 32px;
-    border-radius: 9px;
-  }
-  .brand-copy strong {
-    font-size: 19px;
-  }
-  .brand-copy > span,
-  .nav-section-label,
-  .nav-footnote,
-  .command-trigger {
-    display: none;
-  }
-  .primary-nav {
-    position: fixed;
-    inset: auto 0 0;
-    display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-    gap: 2px;
-    border-top: 1px solid var(--ds-separator);
-    background: var(--ds-surface);
-    padding: 8px 8px calc(8px + env(safe-area-inset-bottom));
-    z-index: 40;
-  }
-  .nav-item {
-    flex-direction: column;
-    justify-content: center;
-    padding: 6px 2px;
-    gap: 5px;
-    min-height: 52px;
-    font-size: 11px;
-    line-height: 1.3;
-    text-align: center;
-    white-space: nowrap;
-  }
-  .nav-item.active::after {
-    display: none;
-  }
-  .nav-bottom {
-    display: flex;
-    padding: 0;
-    margin: 0;
-  }
-  .app-utilities {
-    border: 0;
-    padding: 0;
-    gap: 4px;
-    flex-wrap: nowrap;
-  }
-  .app-utilities .lang-select > svg {
-    display: none;
-  }
-  .lang-select select {
-    font-size: 12px;
-    width: 76px;
-    padding: 6px;
-  }
-  .app-utilities .icon-button {
-    min-width: 34px;
-    width: 34px;
-    padding: 6px;
-  }
-  .app-main {
-    margin-left: 0;
-    padding: 86px 16px calc(110px + env(safe-area-inset-bottom));
-  }
-  .page-heading {
-    align-items: flex-start;
-    margin-bottom: 22px;
-    gap: 8px;
-  }
-  .page-heading h1 {
-    font-size: 25px;
-  }
-  .page-eyebrow,
-  .page-heading-actions .runtime-badge {
-    display: none;
-  }
-  .page-description {
-    font-size: 12px;
-    max-width: 32ch;
-    line-height: 1.7;
-  }
-  .page-heading-actions {
-    gap: 0;
-  }
-  .page-heading-actions .icon-button {
-    min-width: 34px;
-    width: 34px;
-    padding: 6px;
-  }
-  .mobile-command {
-    display: inline-flex;
-  }
-  .test-workspace {
-    display: flex;
-    flex-direction: column;
-    gap: 18px;
-  }
-  .workspace-sidebar,
-  .workspace-content {
-    width: 100%;
-  }
-  .workspace-sidebar {
-    gap: 10px;
-  }
-  .setup-summary {
-    display: grid;
-    grid-template-columns: 22px minmax(0, 1fr) auto;
-    align-items: center;
-    gap: 6px 10px;
-    padding: 14px 16px;
-    list-style: none;
-    color: var(--ds-label);
-  }
-  .setup-summary::-webkit-details-marker {
-    display: none;
-  }
-  .setup-summary strong {
-    font-size: 13px;
-    font-weight: 600;
-  }
-  .setup-summary small {
-    font-size: 11px;
-    color: var(--ds-label-secondary);
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
-    grid-column: 2;
-  }
-  .connection-edit {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    font-size: 11px;
-    color: var(--ds-accent);
-  }
-  .config-edit {
-    grid-column: 3;
-    grid-row: 1;
-  }
-  .setup-disclosure[open] .setup-summary {
-    border-bottom: 1px solid var(--ds-separator);
-  }
-  .setup-body {
-    padding: 16px;
-  }
-  .setup-body .panel-title-row {
-    display: none;
-  }
-  .connection-panel .setup-body .panel-title-row {
-    display: flex;
-    justify-content: flex-end;
-    margin: -5px 0 4px;
-  }
-  .connection-panel .panel-title-row > div {
-    display: none;
-  }
-  .config-main-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-  .config-main-grid > :last-child {
-    grid-column: auto;
-  }
+  html { scroll-padding-block:76px 24px; }
+  .app-header { height:auto; }
+  .app-header-inner { min-height:60px; padding:8px 12px; gap:8px; flex-wrap:wrap; }
+  .brand-logo { width:30px; height:30px; }
+  .brand-copy strong { font-size:18px; }
+  .brand-copy > span,.command-trigger { display:none; }
+  .primary-nav { order:3; flex:1 0 100%; justify-content:space-between; gap:2px; overflow-x:auto; }
+  .nav-item { min-height:34px; padding:6px 8px; font-size:11px; gap:5px; white-space:nowrap; }
+  .nav-item svg { width:15px; height:15px; }
+  .nav-bottom { margin-left:auto; }
+  .app-utilities { gap:4px; }
+  .lang-select > svg { display:none; }
+  .lang-select select { width:60px; padding:4px; font-size:11px; }
+  .app-main { padding:18px 12px 32px; }
+  .page-heading { margin-bottom:16px; gap:8px; align-items:flex-start; }
+  .page-eyebrow { display:none; }
+  .page-heading h1 { font-size:22px; }
+  .page-description { margin-top:5px; font-size:12px; line-height:1.55; }
+  .page-heading-actions .runtime-badge { display:none; }
+  .mobile-command { display:inline-flex; }
+  .integrated-workspace { display:flex; flex-direction:column; gap:16px; }
+  .credential-column,.api-test-column { width:100%; }
+  .credential-column .toolbox-workbench { padding:12px; }
+  .credential-column .toolbox-field textarea { min-height:120px; }
+  .setup-summary { display:grid; grid-template-columns:22px minmax(0,1fr) auto; align-items:center; gap:6px 10px; padding:14px 16px; list-style:none; color:var(--ds-label); }
+  .setup-summary::-webkit-details-marker { display:none; }
+  .setup-summary strong { font-size:13px; font-weight:600; }
+  .setup-summary small { font-size:11px; color:var(--ds-label-secondary); overflow:hidden; white-space:nowrap; text-overflow:ellipsis; grid-column:2; }
+  .setup-disclosure[open] .setup-summary { border-bottom:1px solid var(--ds-separator); }
+  .setup-body { padding:14px; }
+  .setup-body .panel-title-row { display:none; }
+  .connection-panel .setup-body .panel-title-row { display:flex; justify-content:flex-end; margin:-5px 0 4px; }
+  .connection-panel .panel-title-row > div { display:none; }
+  .config-main-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
 }
 @media (max-width: 360px) {
-  .app-header-inner {
-    padding-inline: 10px;
-  }
-  .brand-copy strong {
-    font-size: 17px;
-  }
-  .brand-lockup {
-    gap: 7px;
-  }
-  .app-main {
-    padding-inline: 12px;
-  }
-  .lang-select select {
-    width: 64px;
-  }
-  .nav-item {
-    font-size: 10px;
-  }
+  .app-header-inner { padding-inline:8px; }
+  .brand-copy strong { font-size:16px; }
+  .nav-item { font-size:10px; padding-inline:5px; }
+  .app-main { padding-inline:9px; }
 }

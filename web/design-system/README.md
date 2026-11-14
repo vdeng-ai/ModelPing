@@ -9,7 +9,7 @@ editing and running a network test are visibly separate operations.
 | ------------------------------------------ | ------------------------------------------------------------------------------------------------------- |
 | `tokens.css`                               | Primitive palette/type/spacing, light and dark semantic aliases, component contracts.                   |
 | `../styles.css`                            | Base elements, controls, fields, empty states, native dialogs, notifications, accessibility and motion. |
-| `layout.css`                               | Application rail/mobile dock, page headings and connection/request setup.                               |
+| `layout.css`                               | Top navigation, unified credential/API workspace, page headings and connection/request setup.          |
 | `workbench.css`                            | Model groups, responsive result tables, status checks and provider editing.                             |
 | `../components/ToolboxPanel.css`           | Lazy-loaded, local-only toolbox layout.                                                                 |
 | `../components/design-system/Controls.tsx` | Small segmented-control primitives.                                                                     |
@@ -23,8 +23,12 @@ colors. `--row-padding` is the density contract; density changes never enter pri
 
 ## Interaction contract
 
-- One navigation tree with real hash links and `aria-current`. Desktop rail becomes a
-  five-item mobile dock; browser back/forward and guarded unsaved changes remain intact.
+- One four-item top navigation with real hash links and `aria-current`; there is no
+  permanent side rail. Browser back/forward and guarded unsaved changes remain intact.
+- The primary workspace keeps credential decoding and API testing visible together.
+  Decoded API keys and base URLs flow directly into the connection form; the global
+  model catalog loads only when its in-test discovery panel is expanded and refreshes
+  only after an explicit user action.
 - `Ctrl/Cmd+K` opens a native command dialog. Arrow keys choose a page, Enter opens it,
   Escape closes it. `/` focuses the current visible search outside editable fields.
 - Filtering and sorting are browser-only views. Sorting does not reorder the test queue,
@@ -41,7 +45,8 @@ colors. `--row-padding` is the density contract; density changes never enter pri
 
 ## Responsive and accessible behavior
 
-Model cards adapt to their container width; status/history retain captions, scoped table
+The top navigation wraps into a compact mobile row; the credential/API workspace stacks
+vertically at narrow widths. Model cards adapt to their container width; status/history retain captions, scoped table
 headers and keyboard-focusable overflow regions. At narrow widths their visible metadata
 labels remain attached to each value. All pages have one main heading. Inputs have names,
 controls retain visible focus, coarse pointers get larger targets, and reduced-motion
