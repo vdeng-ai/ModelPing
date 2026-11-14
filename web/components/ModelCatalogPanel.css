@@ -1,4 +1,4 @@
-.model-catalog-panel { margin: 0 0 1rem; border: 1px solid var(--ds-separator); border-radius: var(--ds-radius-lg); background: var(--ds-surface); overflow: clip; }
+.model-catalog-panel { margin: .8rem 0 0; border: 1px solid var(--ds-separator); border-radius: var(--ds-radius-lg); background: var(--ds-surface); overflow: clip; }
 .model-catalog-summary { display: flex; align-items: center; gap: 1rem; min-height: 4.25rem; padding: .85rem 1rem; cursor: pointer; list-style: none; }
 .model-catalog-summary::-webkit-details-marker { display: none; }
 .model-catalog-summary::after { content: "⌄"; color: var(--ds-label-secondary); }
@@ -6,13 +6,13 @@
 .model-catalog-summary-copy strong { color: var(--ds-label); font-size: .95rem; }
 .model-catalog-summary-copy small,.model-catalog-updated,.model-catalog-meta { color: var(--ds-label-secondary); font-size: .75rem; }
 .model-catalog-updated { margin-left: auto; text-align: right; }
-.model-catalog-content { display: grid; gap: .85rem; padding: 0 1rem 1rem; border-top: 1px solid var(--ds-separator); }
+.model-catalog-content { display: grid; gap: .85rem; padding: 0 .75rem .85rem; border-top: 1px solid var(--ds-separator); }
 .model-catalog-intro { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding-top: .85rem; }
 .model-catalog-intro p { margin: 0; max-width: 42rem; color: var(--ds-label-secondary); font-size: .82rem; line-height: 1.5; }
 .model-catalog-intro button,.model-catalog-footer button { flex: 0 0 auto; }
 .model-catalog-meta { display: flex; justify-content: space-between; gap: .75rem; }
 .model-catalog-meta a { color: var(--ds-accent); text-decoration: underline; text-underline-offset: 2px; }
-.model-catalog-controls { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: .75rem; }
+.model-catalog-controls { display: grid; grid-template-columns: minmax(0,1fr); gap: .65rem; }
 .model-catalog-controls .field { display: grid; gap: .35rem; min-width: 0; color: var(--ds-label-secondary); font-size: .78rem; }
 .model-catalog-controls select { width: 100%; min-height: 2.65rem; }
 .model-catalog-search { min-height: 2.65rem; }

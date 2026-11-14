@@ -7,8 +7,8 @@ describe("appRouteFromHash", () => {
     expect(appRouteFromHash("#test/history/")).toBe("test-history");
     expect(appRouteFromHash("#status")).toBe("status");
     expect(appRouteFromHash("#providers")).toBe("providers");
-    expect(appRouteFromHash("#toolbox")).toBe("toolbox");
-    expect(appRouteFromHash(" #TOOLBOX/ ")).toBe("toolbox");
+    expect(appRouteFromHash("#toolbox")).toBe("test-models");
+    expect(appRouteFromHash(" #TOOLBOX/ ")).toBe("test-models");
   });
 
   it("keeps the legacy settings hash and defaults unknown hashes", () => {
@@ -24,6 +24,5 @@ describe("hashForAppRoute", () => {
     expect(hashForAppRoute("test-history")).toBe("#test/history");
     expect(hashForAppRoute("status")).toBe("#status");
     expect(hashForAppRoute("providers")).toBe("#providers");
-    expect(hashForAppRoute("toolbox")).toBe("#toolbox");
   });
 });

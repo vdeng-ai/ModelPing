@@ -32,7 +32,7 @@ import { SegmentButton, SegmentedControl } from "./design-system/Controls.js";
 import { useToolbox } from "./useToolbox.js";
 import "./ToolboxPanel.css";
 
-export default function ToolboxPanel() {
+export default function ToolboxPanel({ onUseValue }: { onUseValue: (kind: "apiKey" | "baseUrl", value: string) => void }) {
   const { t, lang } = useI18n();
   const [preferences, setPreferences] = useState(loadToolboxPreferences);
   const [canSavePreferences, setCanSavePreferences] = useState(true);
@@ -357,6 +357,16 @@ export default function ToolboxPanel() {
             onInput={(event) => setInput(event.currentTarget.value)}
           />
         </div>
+
+        {output && !pending && tool !== "jwt" && direction !== "encode" ? (
+          <div class="toolbox-actions toolbox-use-credential">
+            {/^https?:\/\//i.test(output.trim()) ? (
+              <button type="button" class="primary" onClick={() => onUseValue("baseUrl", output.trim())}>{t("toolbox.useAsBaseUrl")}</button>
+            ) : (
+              <button type="button" class="primary" onClick={() => onUseValue("apiKey", output.trim())}>{t("toolbox.useAsApiKey")}</button>
+            )}
+          </div>
+        ) : null}
 
         <div class="toolbox-actions">
           <button

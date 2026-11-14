@@ -1,4 +1,4 @@
-import { Activity, Binary, Command, FlaskConical, History, ServerCog } from "lucide-preact";
+import { Activity, Command, FlaskConical, History, ServerCog } from "lucide-preact";
 import { useI18n } from "../lib/i18n.js";
 import { hashForAppRoute, type AppRoute } from "../lib/navigation.js";
 import { LangToggle } from "./LangToggle.js";
@@ -6,10 +6,9 @@ import { ThemeToggle } from "./ThemeToggle.js";
 
 export const NAV_ITEMS = [
   { route: "test-models", label: "app.tabTest", icon: FlaskConical },
-  { route: "status", label: "app.tabStatus", icon: Activity },
   { route: "test-history", label: "workbench.navHistory", icon: History },
+  { route: "status", label: "app.tabStatus", icon: Activity },
   { route: "providers", label: "app.tabProviders", icon: ServerCog },
-  { route: "toolbox", label: "app.tabToolbox", icon: Binary },
 ] as const;
 
 export function AppNavigation({

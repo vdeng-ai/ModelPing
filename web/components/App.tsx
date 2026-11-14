@@ -74,6 +74,7 @@ type StatusDraft = Omit<StatusEntry, "id">;
 export function App() {
   const { t, lang } = useI18n();
   const [commandsOpen, setCommandsOpen] = useState(false);
+  const [testView, setTestView] = useState<"models" | "toolbox">("models");
   const [density, setDensity] = useState(readDensity);
   const online = useOnline();
   const [providers, setProviders] = useState<ProviderPreset[]>([]);
@@ -142,6 +143,7 @@ export function App() {
     const hash = hashForAppRoute(next);
     if (window.location.hash === hash) {
       setRoute(next);
+      if (next === "test-models") setTestView("models");
       return;
     }
     window.location.hash = hash;
@@ -542,8 +544,17 @@ export function App() {
     applyPresets({ providers: nextProviders, defaults: presetDefaults }, t("app.toastProvidersSaved"));
   };
 
-  const onAddCatalogModels = (providerId: string, models: { id: string; label: string }[]) => {
-    const next = providersRef.current.map((provider) => {
+  const onAddCatalogModels = (providerId: string, models: { id: string; label: string }[], source: import("../lib/api.js").CatalogProvider) => {
+    let next = providersRef.current;
+    if (providerId === "__new__") {
+      const baseId = source.id.toLowerCase().replace(/[^a-z0-9._-]+/g, "-").slice(0, 70) || "provider";
+      let id = baseId;
+      let suffix = 2;
+      while (next.some((provider) => provider.id === id)) id = `${baseId}-${suffix++}`;
+      next = [...next, { id, name: source.name, baseUrl: source.baseUrl, ...(source.docs ? { docs: source.docs } : {}), models: [] }];
+      providerId = id;
+    }
+    next = next.map((provider) => {
       if (provider.id !== providerId) return provider;
       const existing = new Set(provider.models.map((model) => model.id));
       return { ...provider, models: [...provider.models, ...models.filter((model) => !existing.has(model.id))] };
@@ -580,7 +591,10 @@ export function App() {
     historyRef.current = [];
   };
 
-  const onTestSelected = () => runBatch(rows.filter((r) => r.checked));
+  const onTestSelected = (keys?: string[]) => {
+    const selected = keys ? new Set(keys) : null;
+    runBatch(rows.filter((r) => selected ? selected.has(r.key) : r.checked));
+  };
 
   const onToggle = (key: string, checked: boolean) =>
     setRows((rs) => rs.map((r) => (r.key === key ? { ...r, checked } : r)));
@@ -794,11 +808,10 @@ export function App() {
   const testRoute = route === "test-models";
   const pageKey = (
     {
-      "test-models": "test",
+      "test-models": testView === "toolbox" ? "toolbox" : "test",
       "test-history": "history",
       status: "status",
       providers: "providers",
-      toolbox: "toolbox",
     } as const
   )[route];
 
@@ -829,7 +842,7 @@ export function App() {
           <div class="page-heading-actions">
             <span hidden={route === "status"} class={"runtime-badge" + (busy ? " running" : "")}>
               <span aria-hidden="true" />
-              {t(busy ? "workbench.running" : route === "toolbox" ? "workbench.localOnly" : "workbench.manual")}
+              {t(busy ? "workbench.running" : testView === "toolbox" ? "workbench.localOnly" : "workbench.manual")}
             </span>
             <button
               class="icon-button subtle density-toggle"
@@ -862,7 +875,7 @@ export function App() {
             {t("workbench.offline")}
           </div>
         ) : null}
-        {loadErr && route !== "toolbox" ? (
+        {loadErr ? (
           <section class="panel">
             <div class="status-text fail">{t("app.loadFailed", { msg: loadErr })}</div>
             <div class="actions">
@@ -871,7 +884,7 @@ export function App() {
           </section>
         ) : null}
 
-        {!loadErr && !bootstrapped && route !== "toolbox" ? (
+        {!loadErr && !bootstrapped ? (
           <section class="panel" aria-busy="true" aria-label={t("app.loading")}>
             <div class="skeleton-stack">
               <div class="skeleton-bar" />
@@ -881,24 +894,28 @@ export function App() {
           </section>
         ) : null}
 
-        {securityWarn && route !== "toolbox" ? (
+        {securityWarn ? (
           <section class="security-warning" role="status">
             <strong>{t("app.securityWarningTitle")}</strong>
             <span>{t("app.securityWarningBody")}</span>
           </section>
         ) : null}
 
-        {route === "toolbox" ? (
-          <Suspense
-            fallback={
-              <section class="panel" role="status" aria-busy="true">
-                {t("app.loading")}
-              </section>
-            }
-          >
-            <ToolboxPanel />
+        {testRoute ? (
+          <div class="test-view-switch" role="group" aria-label={t("app.tabTest")}>
+            <button type="button" class={testView === "models" ? "active" : ""} aria-pressed={testView === "models"} onClick={() => setTestView("models")}>{t("workbench.modelTesting")}</button>
+            <button type="button" class={testView === "toolbox" ? "active" : ""} aria-pressed={testView === "toolbox"} onClick={() => setTestView("toolbox")}>{t("app.tabToolbox")}</button>
+          </div>
+        ) : null}
+        {testRoute && testView === "toolbox" ? (
+          <Suspense fallback={<section class="panel" role="status" aria-busy="true">{t("app.loading")}</section>}>
+            <ToolboxPanel onUseValue={(kind, value) => {
+              onConnChange({ ...connRef.current, providerId: CUSTOM_PROVIDER_ID, ...(kind === "apiKey" ? { apiKey: value } : { baseUrl: value }) });
+              setTestView("models");
+              showToast(t(kind === "apiKey" ? "toolbox.apiKeyTransferred" : "toolbox.baseUrlTransferred"), { tone: "success" });
+            }} />
           </Suspense>
-        ) : !loadErr && bootstrapped && testRoute ? (
+        ) : !loadErr && bootstrapped && testRoute && testView === "models" ? (
           <div class="test-workspace">
             <aside class="workspace-sidebar" aria-label={t("app.setupLabel")}>
               <ConnectionPanel
@@ -910,6 +927,7 @@ export function App() {
                 onAddModels={onAddModels}
                 onAddToProvider={onAddToProvider}
                 onToast={showToast}
+                onAddCatalogModels={onAddCatalogModels}
               />
               <ConfigPanel value={config} onChange={onConfigChange} />
             </aside>
@@ -966,7 +984,6 @@ export function App() {
             onImport={onImportPresets}
             onDirtyChange={setProviderDirty}
             onSaved={() => showToast(t("ui.saved"), { tone: "success" })}
-            onAddCatalogModels={onAddCatalogModels}
           />
         ) : null}
 

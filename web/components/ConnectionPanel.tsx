@@ -9,6 +9,8 @@ import { ModelPickerModal } from "./ModelPickerModal.js";
 import { PromptModal } from "./PromptModal.js";
 import { useMediaQuery } from "./useMediaQuery.js";
 import { useI18n, translate, type Lang } from "../lib/i18n.js";
+import { ModelCatalogPanel } from "./ModelCatalogPanel.js";
+import type { CatalogProvider } from "../lib/api.js";
 
 export interface ConnValue {
   providerId: string;
@@ -35,6 +37,7 @@ interface Props {
   onAddModels: (ids: string[]) => void;
   onAddToProvider: (draft: AddToProviderDraft) => void;
   onToast: (msg: string, opts?: { tone?: "info" | "error"; ms?: number }) => void;
+  onAddCatalogModels: (providerId: string, models: { id: string; label: string }[], source: CatalogProvider) => void;
 }
 
 // 余额展示文案。
@@ -66,6 +69,7 @@ export function ConnectionPanel({
   onAddModels,
   onAddToProvider,
   onToast,
+  onAddCatalogModels,
 }: Props) {
   const { t, lang } = useI18n();
   const mobile = useMediaQuery("(max-width: 760px)");
@@ -228,6 +232,7 @@ export function ConnectionPanel({
             ))}
           </select>
         </div>
+        <ModelCatalogPanel providers={providers} busy={modelsBusy} onAdd={onAddCatalogModels} />
 
         <div class="row mt-12">
           <div class="field grow">

@@ -9,11 +9,12 @@ export function ModelCatalogPanel({ providers, busy, disableAdd = false, onAdd }
   providers: ProviderPreset[];
   busy: boolean;
   disableAdd?: boolean;
-  onAdd: (providerId: string, models: { id: string; label: string }[]) => void;
+  onAdd: (providerId: string, models: { id: string; label: string }[], source: CatalogProvider) => void;
 }) {
   const { t, lang } = useI18n();
   const [catalog, setCatalog] = useState<{ providers: CatalogProvider[]; updatedAt: string | null }>({ providers: [], updatedAt: null });
   const [loading, setLoading] = useState(true);
+  const [expanded, setExpanded] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState("");
   const [sourceId, setSourceId] = useState("");
@@ -22,6 +23,7 @@ export function ModelCatalogPanel({ providers, busy, disableAdd = false, onAdd }
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
   useEffect(() => {
+    if (!expanded) return;
     let active = true;
     void fetchModelCatalog().then((data) => {
       if (active) {
@@ -32,7 +34,7 @@ export function ModelCatalogPanel({ providers, busy, disableAdd = false, onAdd }
       if (active) setError(e?.message ?? String(e));
     }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, []);
+  }, [expanded]);
 
   useEffect(() => {
     if (!providers.some((provider) => provider.id === targetId)) setTargetId(providers[0]?.id ?? "");
@@ -63,11 +65,11 @@ export function ModelCatalogPanel({ providers, busy, disableAdd = false, onAdd }
   };
 
   const addSelected = () => {
-    if (!source || !target || !addable.length) return;
-    onAdd(target.id, addable.map((id) => {
+    if (!source || (!target && targetId !== "__new__") || !addable.length) return;
+    onAdd(targetId, addable.map((id) => {
       const model = source.models.find((item) => item.id === id)!;
       return { id: model.id, label: model.label };
-    }));
+    }), source);
     setSelected(new Set());
   };
 
@@ -76,7 +78,7 @@ export function ModelCatalogPanel({ providers, busy, disableAdd = false, onAdd }
     : t("catalog.neverSynced");
 
   return (
-    <details class="model-catalog-panel">
+    <details class="model-catalog-panel" onToggle={(event) => setExpanded((event.currentTarget as HTMLDetailsElement).open)}>
       <summary class="model-catalog-summary">
         <span class="model-catalog-summary-copy"><strong>{t("catalog.title")}</strong><small>{t("catalog.summary", { providers: catalog.providers.length, models: catalog.providers.reduce((sum, item) => sum + item.models.length, 0) })}</small></span>
         <span class="model-catalog-updated">{updatedLabel}</span>
@@ -98,7 +100,8 @@ export function ModelCatalogPanel({ providers, busy, disableAdd = false, onAdd }
                 <option value="">{t("catalog.chooseProvider")}</option>
                 {catalog.providers.map((provider) => <option value={provider.id}>{provider.name} ({provider.models.length})</option>)}
               </select></label>
-              <label class="field"><span>{t("catalog.targetProvider")}</span><select value={targetId} disabled={!providers.length || busy} onChange={(e) => setTargetId(e.currentTarget.value)}>
+              <label class="field"><span>{t("catalog.targetProvider")}</span><select value={targetId} disabled={busy} onChange={(e) => setTargetId(e.currentTarget.value)}>
+                <option value="__new__">{t("catalog.createProvider")}</option>
                 {providers.map((provider) => <option value={provider.id}>{provider.name}</option>)}
               </select></label>
             </div>
@@ -116,7 +119,7 @@ export function ModelCatalogPanel({ providers, busy, disableAdd = false, onAdd }
                   })}
                   {!filtered.length ? <p class="empty">{t("ui.noMatch")}</p> : null}
                 </div>
-                <div class="model-catalog-footer"><span>{t("catalog.selected", { count: addable.length })}</span><button class="primary" type="button" disabled={!addable.length || busy || disableAdd || !target} onClick={addSelected}><Download size={15}/>{t("catalog.addSelected")}</button></div>
+                <div class="model-catalog-footer"><span>{t("catalog.selected", { count: addable.length })}</span><button class="primary" type="button" disabled={!addable.length || busy || disableAdd || (targetId === "__new__" && !source.baseUrl)} onClick={addSelected}><Download size={15}/>{t(targetId === "__new__" ? "catalog.createAndAdd" : "catalog.addSelected")}</button></div>
               </>
             ) : null}
           </>

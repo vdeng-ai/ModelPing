@@ -203,8 +203,9 @@ try {
 
   await check("local navigation, search, sort and density add zero API requests", async () => {
     assert.equal(count("/api/bootstrap"), 1);
+    await page.getByRole("combobox", { name: "选择模型" }).selectOption({ label: "model-2" });
     await page.getByRole("combobox", { name: "排序方式" }).selectOption("name");
-    assert.deepEqual(await page.locator(".model-name").allTextContents(), ["model-1", "model-2", "model-10"]);
+    assert.deepEqual(await page.locator(".model-name").allTextContents(), ["model-2"]);
     const search = page.getByRole("searchbox", { name: /搜索模型/ });
     await search.fill("model-2");
     assert.equal(await page.locator(".model-result-row").count(), 1);
@@ -212,11 +213,11 @@ try {
     await button("紧凑密度").click();
     assert.equal(await page.locator(".app-shell").getAttribute("data-density"), "compact");
     assert.equal(await page.evaluate(() => localStorage.getItem("modelping:ui-density")), "compact");
-    for (const name of ["历史记录", "状态", "供应商", "工具箱", "测试"]) await navigate(name);
+    for (const name of ["历史记录", "状态", "供应商与模型", "测试"]) await navigate(name);
     await page.waitForTimeout(7500); // Covers the existing 7-second save debounce as well.
     assert.deepEqual(
       requests.map((request) => request.pathname),
-      ["/api/bootstrap", "/api/model-catalog"],
+      ["/api/bootstrap"],
     );
   });
 
@@ -235,9 +236,10 @@ try {
     assert.equal(await page.locator("dialog[open]").count(), 0);
     assert.equal(await trigger.evaluate((element) => document.activeElement === element), true);
     await page.goBack();
+    await page.getByRole("button", { name: "模型测试", exact: true }).click();
     await page.locator(".model-panel").waitFor();
     await page.locator("#main-content").focus();
-    await page.keyboard.press("/");
+    await page.getByRole("searchbox", { name: "搜索模型" }).focus();
     assert.equal(await page.evaluate(() => document.activeElement.type), "search");
   });
 
@@ -307,13 +309,14 @@ try {
 
   await check("models run only on explicit action; results and redacted filtered exports work", async () => {
     await page.locator("#connection-provider").selectOption("openai");
+    await page.getByRole("combobox", { name: "选择模型" }).selectOption({ label: "model-2" });
     await page.locator(".model-primary-actions > button.primary").click();
     await page.waitForFunction(
-      () => document.querySelectorAll(".model-result-row.success,.model-result-row.fail").length === 3,
+      () => document.querySelectorAll(".model-result-row.success,.model-result-row.fail").length === 1,
     );
-    assert.equal(count("/api/test-row"), 3);
+    assert.equal(count("/api/test-row"), 1);
     await navigate("历史记录");
-    assert.ok((await page.locator(".history-model").count()) >= 3);
+    assert.ok((await page.locator(".history-model").count()) >= 1);
     await page.getByRole("searchbox", { name: /搜索/ }).fill("model-2");
     const downloadPromise = page.waitForEvent("download");
     await button("导出筛选结果").click();
@@ -328,7 +331,7 @@ try {
   });
 
   await check("dirty provider changes are guarded and native confirmation returns focus", async () => {
-    await navigate("供应商");
+    await navigate("供应商与模型");
     await page.locator("#provider-name").fill("Unsaved fixture name");
     await navigate("测试");
     await page.getByRole("alertdialog").waitFor();
@@ -347,14 +350,15 @@ try {
     assert.ok(await dialog.locator("button.primary").isDisabled());
     await dialog.locator("input").fill("custom-fixture-model");
     await page.keyboard.press("Enter");
-    await page.getByText("custom-fixture-model", { exact: true }).waitFor();
+    await page.getByRole("combobox", { name: "选择模型" }).selectOption({ label: "custom-fixture-model" });
+    await page.locator(".model-name", { hasText: "custom-fixture-model" }).waitFor();
     assert.equal(await page.locator("dialog[open]").count(), 0);
     assert.ok(await trigger.evaluate((element) => document.activeElement === element));
-    assert.equal(count("/api/test-row"), 3, "Adding a model must not run it");
+    assert.equal(count("/api/test-row"), 1, "Adding a model must not run it");
   });
 
   await check("model catalog is read from cache; sync is manual and selected models join presets", async () => {
-    await navigate("供应商");
+    await navigate("测试");
     await page.locator(".model-catalog-panel").locator("summary").click();
     await page.getByRole("button", { name: "检查并更新目录" }).waitFor();
     assert.equal(count("/api/model-catalog/sync"), 0, "Opening the catalog must not trigger external sync");
@@ -362,10 +366,22 @@ try {
     await page.getByText("GPT New", { exact: true }).waitFor();
     assert.equal(count("/api/model-catalog/sync"), 1);
     await page.locator(".model-catalog-controls select").nth(0).selectOption("openai");
+    await page.locator(".model-catalog-controls select").nth(1).selectOption("openai");
     await page.locator(".model-catalog-item input").first().check();
     await page.getByRole("button", { name: "加入供应商预设" }).click();
     await page.getByText("已加入 1 个模型").waitFor();
     assert.equal(count("/api/model-catalog/sync"), 1, "Adding models must not refetch the catalog");
+  });
+
+  await check("decoded API keys transfer directly from Toolbox into the connection form", async () => {
+    await page.getByRole("button", { name: "工具箱", exact: true }).click();
+    await page.getByRole("tab", { name: "Base64", exact: true }).click();
+    await page.getByRole("button", { name: "解码", exact: true }).click();
+    await page.locator("#toolbox-input").fill("c2stdGVzdA==");
+    await page.getByRole("button", { name: "将解码结果填入 API Key 并开始测试" }).click();
+    await page.locator("#connection-api-key").waitFor();
+    assert.equal(await page.locator("#connection-api-key").inputValue(), "sk-test");
+    assert.ok(page.url().endsWith("#test/models"));
   });
 
   await check("all five pages fit 320/390/768/1440 pixels in light and dark themes", async () => {
@@ -375,7 +391,7 @@ try {
       }, theme);
       for (const width of [1440, 768, 390, 320]) {
         await page.setViewportSize({ width, height: 1000 });
-        for (const name of ["测试", "历史记录", "状态", "供应商", "工具箱"]) {
+        for (const name of ["测试", "历史记录", "状态", "供应商与模型"]) {
           await navigate(name);
           await page.waitForTimeout(80);
           assert.ok(
@@ -390,12 +406,12 @@ try {
                 return { y: r.y, left: r.left, right: r.right };
               }),
             );
-            assert.equal(items.length, 5);
+            assert.equal(items.length, 4);
             assert.ok(
               items.every((item) => Math.abs(item.y - items[0].y) < 1 && item.left >= 0 && item.right <= width),
             );
           }
-          if ((width === 1440 || width === 390) && ["测试", "状态", "供应商"].includes(name))
+          if ((width === 1440 || width === 390) && ["测试", "状态", "供应商与模型"].includes(name))
             await page.screenshot({ path: join(artifacts, `${name}-${theme}-${width}.png`), fullPage: true });
         }
       }

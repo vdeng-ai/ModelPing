@@ -1,4 +1,4 @@
-import { useState } from "preact/hooks";
+import { useEffect, useState } from "preact/hooks";
 import {
   Ban,
   BookmarkPlus,
@@ -45,7 +45,7 @@ interface Props {
   onAdd: (model: string) => void;
   onRemove: (key: string) => void;
   onSaveCustomModel: (model: string) => void;
-  onTestSelected: () => void;
+  onTestSelected: (keys?: string[]) => void;
   onCancel: () => void;
   onAddToStatus: (entries: Array<Omit<StatusEntry, "id">>) => void;
   onLaunched: (msg: string) => void;
@@ -121,14 +121,25 @@ export function ModelTable(props: Props) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("all");
   const [sort, setSort] = useState<ModelSort>("preset");
+  const [modelChoice, setModelChoice] = useState("");
   const [addingModel, setAddingModel] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   const [statusNamePrompt, setStatusNamePrompt] = useState<Array<Omit<StatusEntry, "id">> | null>(null);
   const [lastCustomProviderName, setLastCustomProviderName] = useState("");
+  const selectedProviderModels = conn.providerId === CUSTOM_PROVIDER_ID
+    ? rows
+    : rows.filter((row) => row.custom || Object.keys(row.modelByProvider)[0] === conn.providerId);
+  const activeModelChoice = selectedProviderModels.some((row) => row.key === modelChoice) ? modelChoice : (selectedProviderModels[0]?.key ?? "");
+  useEffect(() => {
+    if (!activeModelChoice) return;
+    props.onToggleAll(false);
+    props.onToggle(activeModelChoice, true);
+  }, [activeModelChoice]);
   const visibleRows = sortModelRows(
     rows.filter(
       (row) =>
+        row.key === activeModelChoice &&
         (!query.trim() ||
           `${row.label} ${Object.values(row.modelByProvider).join(" ")}`
             .toLowerCase()
@@ -337,6 +348,12 @@ export function ModelTable(props: Props) {
         ))}
       </div>
       <div class="model-toolbar">
+        <label class="field model-choice-field">
+          <span>{t("workbench.chooseModel")}</span>
+          <select aria-label={t("workbench.chooseModel")} value={activeModelChoice} onChange={(e) => { const key = e.currentTarget.value; setModelChoice(key); props.onToggleAll(false); props.onToggle(key, true); }}>
+            {selectedProviderModels.map((row) => <option value={row.key}>{row.label}</option>)}
+          </select>
+        </label>
         <label class="search-control">
           <Search size={17} aria-hidden="true" />
           <input
@@ -428,7 +445,7 @@ export function ModelTable(props: Props) {
               {t("models.cancelTests")}
             </button>
           ) : (
-            <button class="primary" disabled={!selectedCount || !canAddStatus} onClick={props.onTestSelected}>
+            <button class="primary" disabled={!activeModelChoice || busy || !canAddStatus} onClick={() => props.onTestSelected([activeModelChoice])}>
               <Play size={16} fill="currentColor" />
               {selectedCount ? t("models.testSelectedCount", { count: selectedCount }) : t("models.testSelected")}
             </button>

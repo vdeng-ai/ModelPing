@@ -39,6 +39,12 @@
   flex-wrap: wrap;
   padding: 20px 20px 12px;
 }
+.model-choice-field { display: grid; gap: 4px; min-width: min(100%, 240px); }
+.model-choice-field > span { color: var(--ds-label-secondary); font-size: 12px; }
+.model-choice-field select { width: 100%; }
+.test-view-switch { display: flex; gap: 6px; margin: 0 0 14px; padding: 4px; width: fit-content; border: 1px solid var(--ds-separator); border-radius: var(--ds-radius-md); background: var(--ds-surface); }
+.test-view-switch button { border: 0; background: transparent; color: var(--ds-label-secondary); padding: 8px 14px; border-radius: var(--ds-radius-sm); }
+.test-view-switch button.active { color: var(--ds-label); background: var(--ds-surface-raised); box-shadow: 0 1px 3px #00000018; }
 .model-toolbar .search-control {
   flex: 1;
   min-width: 160px;

@@ -116,7 +116,8 @@ try {
   page = await context.newPage();
   const workers = [];
   page.on("worker", (worker) => workers.push(worker.url()));
-  await page.goto(`${origin}/#toolbox`);
+  await page.goto(`${origin}/#test/models`);
+  await page.getByRole("button", { name: "工具箱", exact: true }).click();
   await input(page).waitFor();
 
   await check("11 tools, live Base64 auto detection and explicit overrides", async () => {
@@ -263,7 +264,7 @@ try {
     await choose(page, "快速 Base64");
     await button(page, "清空").click();
     await page.getByRole("combobox", { name: "语言", exact: true }).selectOption("en");
-    await page.getByRole("heading", { name: "Developer toolbox" }).waitFor();
+    await page.getByRole("heading", { name: "Local toolbox" }).waitFor();
     for (const width of [1440, 768, 390, 320]) {
       await page.setViewportSize({ width, height: 1100 });
       assert.ok(
@@ -277,7 +278,7 @@ try {
             return { top: rect.top, left: rect.left, right: rect.right };
           }),
         );
-        assert.equal(navigation.length, 5);
+        assert.equal(navigation.length, 4);
         assert.ok(
           navigation.every((item) => Math.abs(item.top - navigation[0].top) < 1),
           "All five mobile navigation items must share one row",
@@ -314,6 +315,7 @@ try {
   await check("preferences survive reload but content and secret do not", async () => {
     await choose(page, "JWT");
     await page.reload();
+    await page.getByRole("button", { name: /^(工具箱|Toolbox)$/ }).click();
     await page.locator("#toolbox-secret").waitFor();
     assert.equal(await input(page).inputValue(), "");
     assert.equal(await page.locator("#toolbox-secret").inputValue(), "");
@@ -326,13 +328,14 @@ try {
   await check("existing navigation and browser back/forward still work", async () => {
     await page.getByRole("link", { name: "测试", exact: true }).click();
     await page.getByRole("heading", { name: "模型工作台", exact: true }).waitFor();
-    await page.getByRole("link", { name: "供应商", exact: true }).click();
+    await page.getByRole("link", { name: "供应商与模型", exact: true }).click();
     assert.ok(page.url().endsWith("#providers"));
     await page.goBack();
     assert.ok(page.url().endsWith("#test/models"));
-    await page.goBack();
+    await page.getByRole("link", { name: "测试", exact: true }).click();
+    await page.getByRole("button", { name: "工具箱", exact: true }).click();
     await input(page).waitFor();
-    assert.ok(page.url().endsWith("#toolbox"));
+    assert.ok(page.url().endsWith("#test/models"));
     assert.equal(await input(page).inputValue(), "");
   });
 
@@ -379,7 +382,8 @@ try {
     const target = await fallback.newPage();
     const exceptions = [];
     target.on("pageerror", (error) => exceptions.push(error.message));
-    await target.goto(`${origin}/#toolbox`);
+    await target.goto(`${origin}/#test/models`);
+    await target.getByRole("button", { name: /^(工具箱|Toolbox)$/ }).click();
     await input(target).fill("hello");
     await waitOutput(target, "aGVsbG8=");
     await target
@@ -397,7 +401,8 @@ try {
       route.fulfill({ status: 503, contentType: "application/json", body: '{"error":"offline"}' }),
     );
     const target = await offline.newPage();
-    await target.goto(`${origin}/#toolbox`);
+    await target.goto(`${origin}/#test/models`);
+    await target.getByRole("button", { name: /^(工具箱|Toolbox)$/ }).click();
     await input(target).fill("hello");
     await waitOutput(target, "aGVsbG8=");
     await offline.close();
@@ -406,7 +411,7 @@ try {
       route.fulfill({ status: 401, contentType: "application/json", body: '{"error":"password required"}' }),
     );
     const gate = await locked.newPage();
-    await gate.goto(`${origin}/#toolbox`);
+    await gate.goto(`${origin}/#test/models`);
     await gate.getByRole("heading", { name: "Access password required" }).waitFor();
     assert.equal(await input(gate).count(), 0);
     await locked.close();
