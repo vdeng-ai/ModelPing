@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import { lazy, Suspense } from "preact/compat";
-import { Activity, Binary, FlaskConical, History, ServerCog } from "lucide-preact";
+import { Activity, Command, LayoutList, Rows3, WifiOff, X } from "lucide-preact";
 import type {
   ConfigState,
   Defaults,
@@ -31,12 +31,9 @@ import {
 import { initTheme } from "../lib/theme.js";
 import { ConnectionPanel, type ConnValue, type AddToProviderDraft } from "./ConnectionPanel.js";
 import { ConfigPanel } from "./ConfigPanel.js";
-import { CubeMark } from "./CubeMark.js";
 import { ModelTable } from "./ModelTable.js";
 import { HistoryPanel } from "./HistoryPanel.js";
 import { ConfirmModal } from "./ConfirmModal.js";
-import { ThemeToggle } from "./ThemeToggle.js";
-import { LangToggle } from "./LangToggle.js";
 import { SettingsPanel } from "./SettingsPanel.js";
 import { StatusPanel } from "./StatusPanel.js";
 import { initLang, useI18n } from "../lib/i18n.js";
@@ -61,6 +58,11 @@ import { removeProviderModelsByLabel, upsertProviderFromConn, upsertProviderMode
 import { appRouteFromHash, hashForAppRoute, type AppRoute } from "../lib/navigation.js";
 import { DEFAULT_MODELPING_DAILY_BUDGET } from "../lib/status-budget.js";
 
+import { AppNavigation, NAV_ITEMS } from "./AppNavigation.js";
+import { CommandPalette } from "./CommandPalette.js";
+import { useOnline } from "./useOnline.js";
+import { readDensity, writeDensity } from "../lib/ui-preferences.js";
+
 // Load the toolbox and its worker only when requested; the model tester stays lean.
 const ToolboxPanel = lazy(() => import("./ToolboxPanel.js"));
 
@@ -71,6 +73,9 @@ type StatusDraft = Omit<StatusEntry, "id">;
 
 export function App() {
   const { t, lang } = useI18n();
+  const [commandsOpen, setCommandsOpen] = useState(false);
+  const [density, setDensity] = useState(readDensity);
+  const online = useOnline();
   const [providers, setProviders] = useState<ProviderPreset[]>([]);
   const [presetDefaults, setPresetDefaults] = useState<Defaults>(FALLBACK_DEFAULTS);
   const [route, setRoute] = useState<AppRoute>(() => appRouteFromHash(window.location.hash));
@@ -288,8 +293,44 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    window.requestAnimationFrame(() => mainRef.current?.focus({ preventScroll: true }));
+    const frame = window.requestAnimationFrame(() => {
+      mainRef.current?.focus({ preventScroll: true });
+      window.scrollTo(0, 0);
+    });
+    return () => window.cancelAnimationFrame(frame);
   }, [route]);
+
+  useEffect(() => {
+    const keydown = (event: KeyboardEvent) => {
+      if (event.isComposing || document.querySelector("dialog[open]")) return;
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setCommandsOpen(true);
+      }
+      if (
+        event.key === "/" &&
+        !event.metaKey &&
+        !event.ctrlKey &&
+        !event.altKey &&
+        !(event.target instanceof Element && event.target.closest("input,textarea,select,[contenteditable]"))
+      ) {
+        const search = Array.from(
+          mainRef.current?.querySelectorAll<HTMLInputElement>('input[type="search"]') ?? [],
+        ).find((input) => input.getClientRects().length > 0);
+        if (search) {
+          event.preventDefault();
+          search.focus();
+        }
+      }
+    };
+    window.addEventListener("keydown", keydown);
+    return () => window.removeEventListener("keydown", keydown);
+  }, []);
+
+  useEffect(() => {
+    const label = NAV_ITEMS.find((item) => item.route === route)?.label ?? "app.tabTest";
+    document.title = `${t(label)} · ModelPing`;
+  }, [route, lang]);
 
   // 初始化：一次 bootstrap 请求完成口令验证、拉预设与恢复私有状态。
   const init = async () => {
@@ -702,32 +743,16 @@ export function App() {
   if (needPassword && !authed) {
     return (
       <div class="pw-gate">
-        <span class="pw-gate-logo" aria-hidden="true">
-          <svg width="40" height="40" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
-            <defs>
-              <linearGradient id="pw-ping" x1="11" y1="8" x2="53" y2="56" gradientUnits="userSpaceOnUse">
-                <stop offset="0" stop-color="var(--brand-from)" />
-                <stop offset="1" stop-color="var(--brand-to)" />
-              </linearGradient>
-            </defs>
-            <path
-              d="M14.5 40C18 47 24.4 51.5 32 51.5S46 47 49.5 40"
-              fill="none"
-              stroke="url(#pw-ping)"
-              stroke-width="6.5"
-              stroke-linecap="round"
-            />
-            <circle cx="32" cy="30" r="16" fill="none" stroke="url(#pw-ping)" stroke-width="3" />
-            <circle cx="32" cy="23.5" r="4" fill="var(--brand-to)" />
-            <circle cx="25.5" cy="34.5" r="4" fill="var(--brand-from)" />
-            <circle cx="39" cy="34.5" r="4" fill="var(--brand-from)" />
-          </svg>
+        <span class="brand-logo pw-gate-logo" aria-hidden="true">
+          <Activity size={25} />
         </span>
         <h1>{t("app.pwTitle")}</h1>
         <section class="panel">
           <div class="field">
-            <label>{t("app.pwLabel")}</label>
+            <label for="app-password">{t("app.pwLabel")}</label>
             <input
+              id="app-password"
+              autocomplete="current-password"
               type="password"
               value={pwInput}
               disabled={pwSubmitting}
@@ -756,90 +781,77 @@ export function App() {
     );
   }
 
-  const testRoute = route === "test-models" || route === "test-history";
+  const testRoute = route === "test-models";
+  const pageKey = (
+    {
+      "test-models": "test",
+      "test-history": "history",
+      status: "status",
+      providers: "providers",
+      toolbox: "toolbox",
+    } as const
+  )[route];
 
   return (
-    <div class={"app-shell " + (route.startsWith("test") ? "test-shell" : "settings-shell")}>
-      <a class="skip-link" href="#main-content">
+    <div class="app-shell" data-density={density}>
+      <a
+        class="skip-link"
+        href="#main-content"
+        onClick={(event) => {
+          event.preventDefault();
+          mainRef.current?.focus();
+          mainRef.current?.scrollIntoView();
+        }}
+      >
         {t("app.skipToContent")}
       </a>
-      <header class="app-header">
-        <div class="app-header-inner">
-          <div class="brand-lockup">
-            <span class="brand-logo" aria-hidden="true">
-              <svg width="34" height="34" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
-                <defs>
-                  <linearGradient id="brand-ping" x1="11" y1="8" x2="53" y2="56" gradientUnits="userSpaceOnUse">
-                    <stop offset="0" stop-color="var(--brand-from)" />
-                    <stop offset="1" stop-color="var(--brand-to)" />
-                  </linearGradient>
-                </defs>
-                <path
-                  d="M14.5 40C18 47 24.4 51.5 32 51.5S46 47 49.5 40"
-                  fill="none"
-                  stroke="url(#brand-ping)"
-                  stroke-width="6.5"
-                  stroke-linecap="round"
-                />
-                <circle cx="32" cy="30" r="16" fill="none" stroke="url(#brand-ping)" stroke-width="3" />
-                <circle cx="32" cy="23.5" r="4" fill="var(--brand-to)" />
-                <circle cx="25.5" cy="34.5" r="4" fill="var(--brand-from)" />
-                <circle cx="39" cy="34.5" r="4" fill="var(--brand-from)" />
-              </svg>
-            </span>
-            <span class="brand-copy">
-              <strong>ModelPing</strong>
-              <span>LLM API Tester</span>
-            </span>
-          </div>
-
-          <nav class="primary-nav" aria-label={t("app.navLabel")}>
-            <button
-              type="button"
-              class={"nav-item " + (testRoute ? "active" : "")}
-              aria-current={testRoute ? "page" : undefined}
-              onClick={() => navigateTo("test-models")}
-            >
-              <FlaskConical size={17} aria-hidden="true" />
-              {t("app.tabTest")}
-            </button>
-            <button
-              type="button"
-              class={"nav-item " + (route === "status" ? "active" : "")}
-              aria-current={route === "status" ? "page" : undefined}
-              onClick={() => navigateTo("status")}
-            >
-              <Activity size={17} aria-hidden="true" />
-              {t("app.tabStatus")}
-            </button>
-            <button
-              type="button"
-              class={"nav-item " + (route === "providers" ? "active" : "")}
-              aria-current={route === "providers" ? "page" : undefined}
-              onClick={() => navigateTo("providers")}
-            >
-              <ServerCog size={17} aria-hidden="true" />
-              {t("app.tabProviders")}
-            </button>
-            <button
-              type="button"
-              class={"nav-item " + (route === "toolbox" ? "active" : "")}
-              aria-current={route === "toolbox" ? "page" : undefined}
-              onClick={() => navigateTo("toolbox")}
-            >
-              <Binary size={17} aria-hidden="true" />
-              {t("app.tabToolbox")}
-            </button>
-          </nav>
-
-          <div class="app-utilities">
-            <LangToggle />
-            <ThemeToggle />
-          </div>
-        </div>
-      </header>
+      <AppNavigation route={route} navigate={navigateTo} openCommands={() => setCommandsOpen(true)} />
 
       <main id="main-content" class="app-main" ref={mainRef} tabIndex={-1}>
+        <div class="page-heading">
+          <div>
+            <p class="page-eyebrow">
+              MODELPING <span>/ {t("workbench.workspace")}</span>
+            </p>
+            <h1 id="workspace-heading">{t(`workbench.${pageKey}Title`)}</h1>
+            <p class="page-description">{t(`workbench.${pageKey}Description`)}</p>
+          </div>
+          <div class="page-heading-actions">
+            <span hidden={route === "status"} class={"runtime-badge" + (busy ? " running" : "")}>
+              <span aria-hidden="true" />
+              {t(busy ? "workbench.running" : route === "toolbox" ? "workbench.localOnly" : "workbench.manual")}
+            </span>
+            <button
+              class="icon-button subtle density-toggle"
+              aria-label={t(density === "comfortable" ? "workbench.compact" : "workbench.comfortable")}
+              title={t(density === "comfortable" ? "workbench.compact" : "workbench.comfortable")}
+              onClick={() => {
+                const next = density === "comfortable" ? "compact" : "comfortable";
+                setDensity(next);
+                writeDensity(next);
+              }}
+            >
+              {density === "comfortable" ? (
+                <Rows3 size={18} aria-hidden="true" />
+              ) : (
+                <LayoutList size={18} aria-hidden="true" />
+              )}
+            </button>
+            <button
+              class="icon-button subtle mobile-command"
+              aria-label={t("workbench.quickJump")}
+              onClick={() => setCommandsOpen(true)}
+            >
+              <Command size={18} aria-hidden="true" />
+            </button>
+          </div>
+        </div>
+        {!online ? (
+          <div class="offline-notice" role="status">
+            <WifiOff size={18} aria-hidden="true" />
+            {t("workbench.offline")}
+          </div>
+        ) : null}
         {loadErr && route !== "toolbox" ? (
           <section class="panel">
             <div class="status-text fail">{t("app.loadFailed", { msg: loadErr })}</div>
@@ -867,11 +879,17 @@ export function App() {
         ) : null}
 
         {route === "toolbox" ? (
-          <Suspense fallback={<section class="panel" role="status" aria-busy="true">{t("app.loading")}</section>}>
+          <Suspense
+            fallback={
+              <section class="panel" role="status" aria-busy="true">
+                {t("app.loading")}
+              </section>
+            }
+          >
             <ToolboxPanel />
           </Suspense>
         ) : !loadErr && bootstrapped && testRoute ? (
-          <div class={"test-workspace" + (route === "test-history" ? " history-workspace" : "")}>
+          <div class="test-workspace">
             <aside class="workspace-sidebar" aria-label={t("app.setupLabel")}>
               <ConnectionPanel
                 providers={providers}
@@ -886,70 +904,45 @@ export function App() {
               <ConfigPanel value={config} onChange={onConfigChange} />
             </aside>
             <section class="workspace-content" aria-label={t("app.workspaceLabel")}>
-              {route === "test-models" ? (
-                <div class="workbench-intro">
-                  <h2>{t("ui.modelTest")}</h2>
-                </div>
-              ) : null}
-              <div class="workspace-tabs" role="tablist" aria-label={t("app.workspaceLabel")}>
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={route === "test-models"}
-                  class={route === "test-models" ? "active" : ""}
-                  onClick={() => navigateTo("test-models")}
-                >
-                  <CubeMark size={20} filled={route === "test-models"} />
-                  {t("app.workspaceModels")}
-                  <span class="tab-count">{rows.length}</span>
-                </button>
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={route === "test-history"}
-                  class={route === "test-history" ? "active" : ""}
-                  onClick={() => navigateTo("test-history")}
-                >
-                  <History size={16} aria-hidden="true" />
-                  {t("app.workspaceHistory")}
-                  {route === "test-history" ? <span class="tab-count">{history.length}</span> : null}
-                </button>
-              </div>
-              {route === "test-models" ? (
-                <ModelTable
-                  rows={rows}
-                  providers={providers}
-                  busy={busy}
-                  progress={progress}
-                  conn={conn}
-                  userAgent={config.userAgent}
-                  providerName={
-                    providers.find((p) => p.id === conn.providerId)?.name ??
-                    (conn.providerId === CUSTOM_PROVIDER_ID ? t("common.custom") : conn.providerId)
-                  }
-                  savedCustomModels={savedCustomModels}
-                  privatePersistAvailable={statusPersisted}
-                  onToggle={onToggle}
-                  onToggleAll={onToggleAll}
-                  onToggleGroup={onToggleGroup}
-                  onAdd={onAddModel}
-                  onRemove={onRemoveModel}
-                  onSaveCustomModel={onSaveCustomModel}
-                  onTestSelected={onTestSelected}
-                  onCancel={cancelBatch}
-                  onAddToStatus={onAddToStatus}
-                  onLaunched={showToast}
-                />
-              ) : (
-                <HistoryPanel entries={history} onClear={onClearHistory} onLaunched={showToast} />
-              )}
+              <ModelTable
+                rows={rows}
+                providers={providers}
+                busy={busy}
+                progress={progress}
+                conn={conn}
+                userAgent={config.userAgent}
+                providerName={
+                  providers.find((p) => p.id === conn.providerId)?.name ??
+                  (conn.providerId === CUSTOM_PROVIDER_ID ? t("common.custom") : conn.providerId)
+                }
+                savedCustomModels={savedCustomModels}
+                privatePersistAvailable={statusPersisted}
+                onToggle={onToggle}
+                onToggleAll={onToggleAll}
+                onToggleGroup={onToggleGroup}
+                onAdd={onAddModel}
+                onRemove={onRemoveModel}
+                onSaveCustomModel={onSaveCustomModel}
+                onTestSelected={onTestSelected}
+                onCancel={cancelBatch}
+                onAddToStatus={onAddToStatus}
+                onLaunched={showToast}
+              />
             </section>
           </div>
+        ) : !loadErr && bootstrapped && route === "test-history" ? (
+          <HistoryPanel
+            entries={history}
+            onClear={onClearHistory}
+            onLaunched={showToast}
+            onGoToTest={() => navigateTo("test-models")}
+          />
         ) : !loadErr && bootstrapped && route === "status" ? (
           <StatusPanel
             entries={statusEntries}
             persisted={statusPersisted}
             dailyRequestBudget={dailyRequestBudget}
+            onGoToTest={() => navigateTo("test-models")}
             onDelete={onDeleteStatus}
             onGotoTest={onGotoStatusTest}
             onLaunched={showToast}
@@ -972,10 +965,14 @@ export function App() {
             role="status"
             aria-live="polite"
           >
-            {toast}
+            <span>{toast}</span>
+            <button class="icon-button subtle" aria-label={t("workbench.dismissNotice")} onClick={() => setToast(null)}>
+              <X size={16} aria-hidden="true" />
+            </button>
           </div>
         ) : null}
       </main>
+      {commandsOpen ? <CommandPalette onClose={() => setCommandsOpen(false)} navigate={navigateTo} /> : null}
       {pendingRoute ? (
         <ConfirmModal
           title={t("ui.discardTitle")}

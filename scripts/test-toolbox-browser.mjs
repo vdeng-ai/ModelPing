@@ -23,11 +23,27 @@ process.env.XDG_CONFIG_HOME = join(artifacts, "config");
 assert.ok(existsSync(join(assets, "index.html")), "Build first: npm run build");
 
 const bootstrap = {
-  health: { ok: true, needPassword: false, persistence: { settings: false, privateState: false, privateStateScope: "none" } },
-  settings: { providers: [], defaults: { input: "Hello", timeoutMs: 30000, maxRetries: 1, maxTokens: 512, concurrency: 2, userAgent: "" } },
+  health: {
+    ok: true,
+    needPassword: false,
+    persistence: { settings: false, privateState: false, privateStateScope: "none" },
+  },
+  settings: {
+    providers: [],
+    defaults: { input: "Hello", timeoutMs: 30000, maxRetries: 1, maxTokens: 512, concurrency: 2, userAgent: "" },
+  },
   privateState: null,
 };
-const mime = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".json": "application/json", ".svg": "image/svg+xml", ".woff2": "font/woff2", ".png": "image/png", ".txt": "text/plain" };
+const mime = {
+  ".html": "text/html",
+  ".js": "text/javascript",
+  ".css": "text/css",
+  ".json": "application/json",
+  ".svg": "image/svg+xml",
+  ".woff2": "font/woff2",
+  ".png": "image/png",
+  ".txt": "text/plain",
+};
 const server = createServer(async (req, res) => {
   try {
     const pathname = decodeURIComponent(new URL(req.url ?? "/", "http://localhost").pathname);
@@ -36,13 +52,24 @@ const server = createServer(async (req, res) => {
       res.end(JSON.stringify(bootstrap));
       return;
     }
-    if (pathname.startsWith("/api/")) { res.writeHead(404); res.end(); return; }
+    if (pathname.startsWith("/api/")) {
+      res.writeHead(404);
+      res.end();
+      return;
+    }
     let path = resolve(assets, `.${pathname}`);
-    if (path !== assets && !path.startsWith(assets + sep)) { res.writeHead(403); res.end(); return; }
+    if (path !== assets && !path.startsWith(assets + sep)) {
+      res.writeHead(403);
+      res.end();
+      return;
+    }
     if (!existsSync(path) || !(await stat(path)).isFile()) path = join(assets, "index.html");
     res.writeHead(200, { "content-type": `${mime[extname(path)] ?? "application/octet-stream"}; charset=utf-8` });
     res.end(await readFile(path));
-  } catch { res.writeHead(500); res.end(); }
+  } catch {
+    res.writeHead(500);
+    res.end();
+  }
 });
 await new Promise((done) => server.listen(0, "127.0.0.1", done));
 const origin = `http://127.0.0.1:${server.address().port}`;
@@ -50,16 +77,30 @@ let browser;
 let page;
 let checks = 0;
 
-const check = async (name, test) => { await test(); console.log(`✓ ${name}`); checks++; };
-const waitOutput = (target, value) => target.waitForFunction((expected) => document.querySelector("#toolbox-output")?.value === expected, value);
+const check = async (name, test) => {
+  await test();
+  console.log(`✓ ${name}`);
+  checks++;
+};
+const waitOutput = (target, value) =>
+  target.waitForFunction((expected) => document.querySelector("#toolbox-output")?.value === expected, value);
 const choose = (target, label) => target.getByRole("tab", { name: label, exact: true }).click();
 const input = (target) => target.locator("#toolbox-input");
 const button = (target, name) => target.getByRole("button", { name, exact: true });
 
 try {
-  const executablePath = process.env.CHROME_PATH || ["/usr/bin/google-chrome", "/usr/bin/chromium", "/usr/bin/chromium-browser"].find(existsSync);
-  browser = await chromium.launch({ executablePath, headless: true, args: ["--no-sandbox", "--disable-dev-shm-usage"] });
-  const context = await browser.newContext({ viewport: { width: 1440, height: 1100 }, permissions: ["clipboard-read", "clipboard-write"] });
+  const executablePath =
+    process.env.CHROME_PATH ||
+    ["/usr/bin/google-chrome", "/usr/bin/chromium", "/usr/bin/chromium-browser"].find(existsSync);
+  browser = await chromium.launch({
+    executablePath,
+    headless: true,
+    args: ["--no-sandbox", "--disable-dev-shm-usage"],
+  });
+  const context = await browser.newContext({
+    viewport: { width: 1440, height: 1100 },
+    permissions: ["clipboard-read", "clipboard-write"],
+  });
   await context.addInitScript(() => {
     // Playwright also evaluates init scripts on the opaque initial about:blank.
     if (!/^https?:$/.test(location.protocol)) return;
@@ -69,7 +110,9 @@ try {
   const errors = [];
   const requests = [];
   context.on("page", (p) => p.on("pageerror", (error) => errors.push(error.message)));
-  context.on("request", (request) => requests.push({ url: request.url(), method: request.method(), body: request.postData() }));
+  context.on("request", (request) =>
+    requests.push({ url: request.url(), method: request.method(), body: request.postData() }),
+  );
   page = await context.newPage();
   const workers = [];
   page.on("worker", (worker) => workers.push(worker.url()));
@@ -92,7 +135,10 @@ try {
     await button(page, "自动").click();
     await input(page).fill("hello");
     await waitOutput(page, "aGVsbG8=");
-    assert.ok(workers.some((url) => url.includes("toolbox.worker")), "Conversions should run in a worker");
+    assert.ok(
+      workers.some((url) => url.includes("toolbox.worker")),
+      "Conversions should run in a worker",
+    );
   });
 
   await check("copy, select-all, clear and examples", async () => {
@@ -100,7 +146,10 @@ try {
     await button(page, "已复制").waitFor();
     assert.equal(await page.evaluate(() => navigator.clipboard.readText()), "aGVsbG8=");
     await page.locator("#toolbox-output").click();
-    assert.deepEqual(await page.locator("#toolbox-output").evaluate((el) => [el.selectionStart, el.selectionEnd]), [0, 8]);
+    assert.deepEqual(
+      await page.locator("#toolbox-output").evaluate((el) => [el.selectionStart, el.selectionEnd]),
+      [0, 8],
+    );
     await button(page, "清空").click();
     await waitOutput(page, "");
     await button(page, "填入示例").click();
@@ -110,9 +159,12 @@ try {
   await check("all text codecs work in the real browser", async () => {
     const cases = [
       ["Base64", "你好 👋", Buffer.from("你好 👋").toString("base64")],
-      ["Hex", "Hi", "48 69"], ["URL", "a + b", "a%20%2B%20b"],
-      ["Base32", "foobar", "MZXW6YTBOI======"], ["Unicode", "你好", "\\u4f60\\u597d"],
-      ["HTML", "<>&", "&lt;&gt;&amp;"], ["ROT", "Hello 123", "Uryyb 123"],
+      ["Hex", "Hi", "48 69"],
+      ["URL", "a + b", "a%20%2B%20b"],
+      ["Base32", "foobar", "MZXW6YTBOI======"],
+      ["Unicode", "你好", "\\u4f60\\u597d"],
+      ["HTML", "<>&", "&lt;&gt;&amp;"],
+      ["ROT", "Hello 123", "Uryyb 123"],
       ["摩斯电码", "SOS HELP", "... --- ... / .... . .-.. .--."],
     ];
     for (const [tool, value, expected] of cases) {
@@ -189,11 +241,16 @@ try {
     await choose(page, "JWT");
     await input(page).fill("private-toolbox-input-marker");
     await page.locator("#toolbox-secret").fill("private-toolbox-secret-marker");
-    const stored = await page.evaluate(() => JSON.stringify({ local: { ...localStorage }, session: { ...sessionStorage } }));
+    const stored = await page.evaluate(() =>
+      JSON.stringify({ local: { ...localStorage }, session: { ...sessionStorage } }),
+    );
     assert.ok(!stored.includes("private-toolbox-"));
     assert.ok(!requests.some((request) => request.method !== "GET" || request.body));
     assert.equal(requests.filter((request) => new URL(request.url).pathname.startsWith("/api/")).length, 1);
-    assert.ok(requests.every((request) => request.url.startsWith(origin)), "No external requests");
+    assert.ok(
+      requests.every((request) => request.url.startsWith(origin)),
+      "No external requests",
+    );
   });
 
   await check("keyboard navigation, live language switch and responsive themes", async () => {
@@ -206,20 +263,32 @@ try {
     await choose(page, "快速 Base64");
     await button(page, "清空").click();
     await page.getByRole("combobox", { name: "语言", exact: true }).selectOption("en");
-    await page.getByRole("heading", { name: "Encoding & Decoding Toolbox" }).waitFor();
+    await page.getByRole("heading", { name: "Developer toolbox" }).waitFor();
     for (const width of [1440, 768, 390, 320]) {
       await page.setViewportSize({ width, height: 1100 });
-      assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `Horizontal overflow at ${width}px`);
+      assert.ok(
+        await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1),
+        `Horizontal overflow at ${width}px`,
+      );
       if (width <= 760) {
-        const navigation = await page.locator(".primary-nav .nav-item").evaluateAll((items) => items.map((item) => {
-          const rect = item.getBoundingClientRect();
-          return { top: rect.top, left: rect.left, right: rect.right };
-        }));
-        assert.equal(navigation.length, 4);
-        assert.ok(navigation.every((item) => Math.abs(item.top - navigation[0].top) < 1), "All four mobile navigation items must share one row");
-        assert.ok(navigation.every((item) => item.left >= 0 && item.right <= width + 1), "Mobile navigation must fit the viewport");
+        const navigation = await page.locator(".primary-nav .nav-item").evaluateAll((items) =>
+          items.map((item) => {
+            const rect = item.getBoundingClientRect();
+            return { top: rect.top, left: rect.left, right: rect.right };
+          }),
+        );
+        assert.equal(navigation.length, 5);
+        assert.ok(
+          navigation.every((item) => Math.abs(item.top - navigation[0].top) < 1),
+          "All five mobile navigation items must share one row",
+        );
+        assert.ok(
+          navigation.every((item) => item.left >= 0 && item.right <= width + 1),
+          "Mobile navigation must fit the viewport",
+        );
       }
-      if (width === 1440 || width === 390) await page.screenshot({ path: join(artifacts, `toolbox-en-light-${width}.png`), fullPage: true });
+      if (width === 1440 || width === 390)
+        await page.screenshot({ path: join(artifacts, `toolbox-en-light-${width}.png`), fullPage: true });
     }
     await page.getByRole("combobox", { name: "Language", exact: true }).selectOption("zh");
     await button(page, "暗黑").click();
@@ -255,9 +324,9 @@ try {
   });
 
   await check("existing navigation and browser back/forward still work", async () => {
-    await button(page, "测试").click();
-    await page.getByRole("tab", { name: /模型/ }).waitFor();
-    await button(page, "供应商").click();
+    await page.getByRole("link", { name: "测试", exact: true }).click();
+    await page.getByRole("heading", { name: "模型工作台", exact: true }).waitFor();
+    await page.getByRole("link", { name: "供应商", exact: true }).click();
     assert.ok(page.url().endsWith("#providers"));
     await page.goBack();
     assert.ok(page.url().endsWith("#test/models"));
@@ -273,22 +342,39 @@ try {
     await input(page).fill("clipboard-test");
     await waitOutput(page, Buffer.from("clipboard-test").toString("base64"));
     await page.evaluate(() => {
-      Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: () => Promise.reject(new Error("denied")) } });
-      document.execCommand = () => { throw new Error("denied"); };
+      Object.defineProperty(navigator, "clipboard", {
+        configurable: true,
+        value: { writeText: () => Promise.reject(new Error("denied")) },
+      });
+      document.execCommand = () => {
+        throw new Error("denied");
+      };
     });
     await button(page, "复制结果").click();
     await button(page, "复制失败，请手动复制").waitFor();
     assert.equal(await page.locator("body > textarea").count(), 0);
-    assert.ok(await page.locator("#toolbox-output").evaluate((el) => el.selectionEnd === el.value.length && el.selectionStart === 0));
+    assert.ok(
+      await page
+        .locator("#toolbox-output")
+        .evaluate((el) => el.selectionEnd === el.value.length && el.selectionStart === 0),
+    );
   });
   assert.deepEqual(errors, [], "No uncaught browser errors");
 
   await check("blocked storage and Worker fall back without disabling local tools", async () => {
     const fallback = await browser.newContext();
     await fallback.addInitScript(() => {
-      Storage.prototype.getItem = () => { throw new Error("storage denied"); };
-      Storage.prototype.setItem = () => { throw new Error("storage denied"); };
-      window.Worker = class { constructor() { throw new Error("workers denied"); } };
+      Storage.prototype.getItem = () => {
+        throw new Error("storage denied");
+      };
+      Storage.prototype.setItem = () => {
+        throw new Error("storage denied");
+      };
+      window.Worker = class {
+        constructor() {
+          throw new Error("workers denied");
+        }
+      };
     });
     const target = await fallback.newPage();
     const exceptions = [];
@@ -296,21 +382,29 @@ try {
     await target.goto(`${origin}/#toolbox`);
     await input(target).fill("hello");
     await waitOutput(target, "aGVsbG8=");
-    await target.getByText("Preferences cannot be saved in this browser. All tools still work for this session.", { exact: false }).waitFor();
+    await target
+      .getByText("Preferences cannot be saved in this browser. All tools still work for this session.", {
+        exact: false,
+      })
+      .waitFor();
     assert.deepEqual(exceptions, []);
     await fallback.close();
   });
 
   await check("backend unavailable does not break local tools; password gate remains", async () => {
     const offline = await browser.newContext();
-    await offline.route("**/api/bootstrap", (route) => route.fulfill({ status: 503, contentType: "application/json", body: '{"error":"offline"}' }));
+    await offline.route("**/api/bootstrap", (route) =>
+      route.fulfill({ status: 503, contentType: "application/json", body: '{"error":"offline"}' }),
+    );
     const target = await offline.newPage();
     await target.goto(`${origin}/#toolbox`);
     await input(target).fill("hello");
     await waitOutput(target, "aGVsbG8=");
     await offline.close();
     const locked = await browser.newContext();
-    await locked.route("**/api/bootstrap", (route) => route.fulfill({ status: 401, contentType: "application/json", body: '{"error":"password required"}' }));
+    await locked.route("**/api/bootstrap", (route) =>
+      route.fulfill({ status: 401, contentType: "application/json", body: '{"error":"password required"}' }),
+    );
     const gate = await locked.newPage();
     await gate.goto(`${origin}/#toolbox`);
     await gate.getByRole("heading", { name: "Access password required" }).waitFor();
@@ -319,7 +413,8 @@ try {
   });
   console.log(`\n${checks} browser checks passed. Screenshots: ${artifacts}`);
 } catch (error) {
-  if (page && !page.isClosed()) await page.screenshot({ path: join(artifacts, "failure.png"), fullPage: true }).catch(() => {});
+  if (page && !page.isClosed())
+    await page.screenshot({ path: join(artifacts, "failure.png"), fullPage: true }).catch(() => {});
   console.error(error);
   process.exitCode = 1;
 } finally {

@@ -184,7 +184,7 @@ export function ConnectionPanel({
   };
 
   return (
-    <details class="panel connection-panel setup-disclosure" open={!mobile}>
+    <details class="panel connection-panel setup-disclosure" open={!mobile || !value.baseUrl || !value.apiKey}>
       <summary class="setup-summary">
         <Link size={20} aria-hidden="true" />
         <strong>
@@ -222,7 +222,9 @@ export function ConnectionPanel({
           >
             <option value={CUSTOM_PROVIDER_ID}>{t("ui.customCompatible")}</option>
             {sortedProviders.map((p) => (
-              <option value={p.id}>{p.name}</option>
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
             ))}
           </select>
         </div>
@@ -233,6 +235,9 @@ export function ConnectionPanel({
             <div class="key-wrap">
               <input
                 id="connection-base-url"
+                type="url"
+                spellcheck={false}
+                autoCapitalize="none"
                 class="mono"
                 value={value.baseUrl}
                 placeholder="https://api.example.com/v1"
@@ -261,6 +266,8 @@ export function ConnectionPanel({
             <div class="key-wrap">
               <input
                 id="connection-api-key"
+                spellcheck={false}
+                autoCapitalize="none"
                 class="mono"
                 type={showKey ? "text" : "password"}
                 value={value.apiKey}
@@ -279,76 +286,83 @@ export function ConnectionPanel({
               <CopyButton value={value.apiKey} title={t("conn.copyKey")} />
             </div>
             <div class="field-tools key-field-tools">
-              <div class="field-tools-row">
-                <button
-                  class="compact-button"
-                  title={t("conn.b64Title")}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    try {
-                      const decoded = new TextDecoder().decode(
-                        Uint8Array.from(atob(value.apiKey), (c) => c.charCodeAt(0)),
-                      );
-                      onChange({ ...value, apiKey: decoded });
-                    } catch {
-                      onToast(t("conn.decodeFailed"), { tone: "error" });
-                    }
-                  }}
-                >
-                  Base64
-                </button>
-                <button
-                  class="compact-button"
-                  title={t("conn.hexTitle")}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    try {
-                      const bytes = value.apiKey
-                        .trim()
-                        .split(/\s+/)
-                        .filter(Boolean)
-                        .map((h) => {
-                          if (!/^[0-9a-fA-F]{1,2}$/.test(h)) throw new Error("bad hex");
-                          return parseInt(h, 16);
-                        });
-                      if (bytes.length === 0) {
-                        onToast(t("conn.decodeFailed"), { tone: "error" });
-                        return;
-                      }
-                      const decoded = new TextDecoder().decode(Uint8Array.from(bytes));
-                      onChange({ ...value, apiKey: decoded });
-                    } catch {
-                      onToast(t("conn.decodeFailed"), { tone: "error" });
-                    }
-                  }}
-                >
-                  Hex
-                </button>
-                <button
-                  class="compact-button"
-                  title={t("conn.reverseTitle")}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onChange({ ...value, apiKey: Array.from(value.apiKey).reverse().join("") });
-                  }}
-                >
-                  {t("conn.reverse")}
-                </button>
-              </div>
-              <details class="disclosure quick-import">
-                <summary>{t("ui.moreConnection")}</summary>
+              <details class="disclosure key-utilities">
+                <summary>{t("workbench.advancedConnection")}</summary>
                 <div class="disclosure-body">
-                  <CopyButton value={value.baseUrl} title={t("conn.copyBaseUrl")} showLabel />
-                  <label class="sr-only" for="connection-quick-import">
-                    {t("conn.quickImport")}
-                  </label>
-                  <input
-                    id="connection-quick-import"
-                    class="mono"
-                    type="text"
-                    placeholder={t("conn.quickImportPlaceholder")}
-                    onInput={(e) => tryQuickImport((e.target as HTMLInputElement).value, e.target as HTMLInputElement)}
-                  />
+                  <div class="field-tools-row">
+                    <button
+                      class="compact-button"
+                      title={t("conn.b64Title")}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        try {
+                          const decoded = new TextDecoder().decode(
+                            Uint8Array.from(atob(value.apiKey), (c) => c.charCodeAt(0)),
+                          );
+                          onChange({ ...value, apiKey: decoded });
+                        } catch {
+                          onToast(t("conn.decodeFailed"), { tone: "error" });
+                        }
+                      }}
+                    >
+                      Base64
+                    </button>
+                    <button
+                      class="compact-button"
+                      title={t("conn.hexTitle")}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        try {
+                          const bytes = value.apiKey
+                            .trim()
+                            .split(/\s+/)
+                            .filter(Boolean)
+                            .map((h) => {
+                              if (!/^[0-9a-fA-F]{1,2}$/.test(h)) throw new Error("bad hex");
+                              return parseInt(h, 16);
+                            });
+                          if (bytes.length === 0) {
+                            onToast(t("conn.decodeFailed"), { tone: "error" });
+                            return;
+                          }
+                          const decoded = new TextDecoder().decode(Uint8Array.from(bytes));
+                          onChange({ ...value, apiKey: decoded });
+                        } catch {
+                          onToast(t("conn.decodeFailed"), { tone: "error" });
+                        }
+                      }}
+                    >
+                      Hex
+                    </button>
+                    <button
+                      class="compact-button"
+                      title={t("conn.reverseTitle")}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onChange({ ...value, apiKey: Array.from(value.apiKey).reverse().join("") });
+                      }}
+                    >
+                      {t("conn.reverse")}
+                    </button>
+                  </div>
+                  <details class="disclosure quick-import">
+                    <summary>{t("ui.moreConnection")}</summary>
+                    <div class="disclosure-body">
+                      <CopyButton value={value.baseUrl} title={t("conn.copyBaseUrl")} showLabel />
+                      <label class="sr-only" for="connection-quick-import">
+                        {t("conn.quickImport")}
+                      </label>
+                      <input
+                        id="connection-quick-import"
+                        class="mono"
+                        type="text"
+                        placeholder={t("conn.quickImportPlaceholder")}
+                        onInput={(e) =>
+                          tryQuickImport((e.target as HTMLInputElement).value, e.target as HTMLInputElement)
+                        }
+                      />
+                    </div>
+                  </details>
                 </div>
               </details>
               <div class="field-tools-row lookup-tools-row">

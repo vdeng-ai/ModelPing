@@ -1,5 +1,5 @@
 import { useState } from "preact/hooks";
-import { ChevronRight, Download, FileText, Search, Trash2 } from "lucide-preact";
+import { ChevronRight, Download, FileText, History, Search, Trash2 } from "lucide-preact";
 import type { HistoryEntry } from "../lib/types.js";
 import { fmtMs, fmtTok, fmtTime, PROTOCOL_LABEL } from "../lib/format.js";
 import { PROTOCOL_TO_APP } from "../lib/ccswitch.js";
@@ -12,8 +12,12 @@ import { ActionMenu } from "./ActionMenu.js";
 import { useI18n } from "../lib/i18n.js";
 import { useMediaQuery } from "./useMediaQuery.js";
 
+import { historyForExport } from "../lib/history-export.js";
+
 function exportJson(entries: HistoryEntry[]) {
-  const url = URL.createObjectURL(new Blob([JSON.stringify(entries, null, 2)], { type: "application/json" }));
+  const url = URL.createObjectURL(
+    new Blob([JSON.stringify(historyForExport(entries), null, 2)], { type: "application/json" }),
+  );
   const anchor = document.createElement("a");
   anchor.href = url;
   anchor.download = `llm-test-history-${Date.now()}.json`;
@@ -25,9 +29,11 @@ export function HistoryPanel({
   entries,
   onClear,
   onLaunched,
+  onGoToTest,
 }: {
   entries: HistoryEntry[];
   onClear: () => void;
+  onGoToTest: () => void;
   onLaunched: (msg: string, opts?: { tone?: "info" | "error"; ms?: number }) => void;
 }) {
   const { t } = useI18n();
@@ -84,9 +90,9 @@ export function HistoryPanel({
           />
         </label>
         <span class="desktop-filter">{filterControl}</span>
-        <button class="primary" disabled={!entries.length} onClick={() => exportJson(entries)}>
+        <button class="primary" disabled={!filtered.length} onClick={() => exportJson(filtered)}>
           <Download size={16} aria-hidden="true" />
-          {t("history.exportJson")}
+          {t("workbench.exportFiltered")}
         </button>
         <button class="danger-quiet desktop-clear" disabled={!entries.length} onClick={() => setConfirmClear(true)}>
           <Trash2 size={16} />
@@ -102,25 +108,41 @@ export function HistoryPanel({
           </ActionMenu>
         </span>
       </div>
-      <div class="table-frame">
+      <p class="export-note">{t("workbench.exportNote")}</p>
+      <div class="table-frame" tabIndex={0} role="region" aria-label={t("history.title")}>
         <table class="models history-table">
+          <caption class="sr-only">{t("history.title")}</caption>
           <thead>
             <tr>
-              <th>{t("history.colProvider")}</th>
-              <th>{t("history.colModel")}</th>
-              <th>{t("history.colStatus")}</th>
-              <th>{t("history.colLatency")}</th>
-              <th>{t("history.colTtft")}</th>
-              <th>{t("history.colTokens")}</th>
-              <th>{t("history.colTime")}</th>
-              <th>{t("history.colActions")}</th>
+              <th scope="col">{t("history.colProvider")}</th>
+              <th scope="col">{t("history.colModel")}</th>
+              <th scope="col">{t("history.colStatus")}</th>
+              <th scope="col">{t("history.colLatency")}</th>
+              <th scope="col">{t("history.colTtft")}</th>
+              <th scope="col">{t("history.colTokens")}</th>
+              <th scope="col">{t("history.colTime")}</th>
+              <th scope="col">{t("history.colActions")}</th>
             </tr>
           </thead>
           <tbody>
             {!filtered.length ? (
               <tr>
-                <td colSpan={8} class="empty">
-                  {t(entries.length ? "ui.noMatch" : "history.empty")}
+                <td colSpan={8} class="empty-cell">
+                  <div class="empty-state">
+                    <History size={28} aria-hidden="true" />
+                    <h3>{t(entries.length ? "ui.noMatch" : "workbench.emptyHistory")}</h3>
+                    {!entries.length ? <p>{t("workbench.emptyHistoryBody")}</p> : null}
+                    <button
+                      onClick={() => {
+                        if (entries.length) {
+                          setQuery("");
+                          setFilter("all");
+                        } else onGoToTest();
+                      }}
+                    >
+                      {t(entries.length ? "workbench.resetFilters" : "workbench.startTesting")}
+                    </button>
+                  </div>
                 </td>
               </tr>
             ) : (
@@ -171,20 +193,22 @@ export function HistoryPanel({
                           {h.result.ok ? t("ui.passed") : t("history.fail", { status: h.result.status || "—" })}
                         </span>
                       </td>
-                      <td class="history-latency num">
+                      <td class="history-latency num" data-label={t("history.colLatency")}>
                         <small>{t("history.colLatency")}</small>
                         {fmtMs(h.result.latencyMs)}
                       </td>
-                      <td class="history-ttft num">
+                      <td class="history-ttft num" data-label={t("history.colTtft")}>
                         <small>TTFT</small>
                         {fmtMs(ttft)}
                       </td>
-                      <td class="history-tokens num">
+                      <td class="history-tokens num" data-label={t("history.colTokens")}>
                         <small>Token</small>
                         {fmtTok(h.result.usage.inputTokens)} / {fmtTok(h.result.usage.outputTokens)} /{" "}
                         {fmtTok(h.result.usage.totalTokens)}
                       </td>
-                      <td class="history-time muted">{fmtTime(h.ts, mobile)}</td>
+                      <td class="history-time muted" data-label={t("history.colTime")}>
+                        {fmtTime(h.ts, mobile)}
+                      </td>
                       <td class="history-actions">
                         <ActionMenu label={`${t("ui.more")} · ${h.modelLabel}`}>
                           <button onClick={() => toggle(setExpanded, h.id)}>

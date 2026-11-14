@@ -1,11 +1,10 @@
-import { useMemo, useRef, useState } from "preact/hooks";
+import { useId, useMemo, useState } from "preact/hooks";
 import { Plus, X } from "lucide-preact";
 import { useI18n } from "../lib/i18n.js";
-import { useModalA11y } from "./useModalA11y.js";
-import { GlassDialog } from "./design-system/GlassSurfaces.js";
+import { Modal } from "./Modal.js";
 
 interface Props {
-  models: string[];          // 拉取到的模型 id 列表
+  models: string[]; // 拉取到的模型 id 列表
   onConfirm: (ids: string[]) => void;
   onClose: () => void;
 }
@@ -15,10 +14,7 @@ export function ModelPickerModal({ models, onConfirm, onClose }: Props) {
   const { t } = useI18n();
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const dialogRef = useRef<HTMLDivElement>(null);
-  const titleId = "model-picker-title";
-
-  useModalA11y(onClose, dialogRef);
+  const titleId = useId();
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -51,52 +47,55 @@ export function ModelPickerModal({ models, onConfirm, onClose }: Props) {
   };
 
   return (
-    <div class="modal-overlay" onClick={onClose}>
-      <GlassDialog
-        elementRef={dialogRef}
-        class="modal"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        tabIndex={-1}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div class="modal-head">
-          <h3 id={titleId}>{t("picker.title", { count: models.length })}</h3>
-          <button type="button" class="icon-button subtle" aria-label={t("common.close")} title={t("common.close")} onClick={onClose}><X size={17} aria-hidden="true" /></button>
-        </div>
+    <Modal labelledBy={titleId} onClose={onClose}>
+      <div class="modal-head">
+        <h2 id={titleId}>{t("picker.title", { count: models.length })}</h2>
+        <button
+          type="button"
+          class="icon-button subtle"
+          aria-label={t("common.close")}
+          title={t("common.close")}
+          onClick={onClose}
+        >
+          <X size={17} aria-hidden="true" />
+        </button>
+      </div>
 
-        <input
-          class="mono modal-search"
-          placeholder={t("picker.searchPlaceholder")}
-          value={query}
-          data-autofocus="true"
-          onInput={(e) => setQuery((e.target as HTMLInputElement).value)}
-        />
+      <input
+        class="mono modal-search"
+        aria-label={t("picker.searchPlaceholder")}
+        type="search"
+        placeholder={t("picker.searchPlaceholder")}
+        value={query}
+        data-autofocus="true"
+        onInput={(e) => setQuery((e.target as HTMLInputElement).value)}
+      />
 
-        <div class="modal-list">
-          {filtered.length === 0 ? (
-            <div class="empty">{t("picker.noMatch")}</div>
-          ) : (
-            filtered.map((m) => (
-              <label key={m} class="modal-item">
-                <input type="checkbox" checked={selected.has(m)} onChange={() => toggle(m)} />
-                <span class="mono">{m}</span>
-              </label>
-            ))
-          )}
-        </div>
+      <div class="modal-list">
+        {filtered.length === 0 ? (
+          <div class="empty">{t("picker.noMatch")}</div>
+        ) : (
+          filtered.map((m) => (
+            <label key={m} class="modal-item">
+              <input type="checkbox" checked={selected.has(m)} onChange={() => toggle(m)} />
+              <span class="mono">{m}</span>
+            </label>
+          ))
+        )}
+      </div>
 
-        <div class="modal-actions">
-          <button disabled={filtered.length === 0} onClick={toggleAllFiltered}>
-            {allFilteredChecked ? t("common.deselectAll") : t("common.selectAll")}
-          </button>
-          <span class="spacer" />
-          <span class="modal-count">{t("picker.selectedCount", { count: selected.size })}</span>
-          <button onClick={onClose}>{t("common.cancel")}</button>
-          <button class="primary" disabled={selected.size === 0} onClick={confirm}><Plus size={16} aria-hidden="true" />{t("common.add")}</button>
-        </div>
-      </GlassDialog>
-    </div>
+      <div class="modal-actions">
+        <button disabled={filtered.length === 0} onClick={toggleAllFiltered}>
+          {allFilteredChecked ? t("common.deselectAll") : t("common.selectAll")}
+        </button>
+        <span class="spacer" />
+        <span class="modal-count">{t("picker.selectedCount", { count: selected.size })}</span>
+        <button onClick={onClose}>{t("common.cancel")}</button>
+        <button class="primary" disabled={selected.size === 0} onClick={confirm}>
+          <Plus size={16} aria-hidden="true" />
+          {t("common.add")}
+        </button>
+      </div>
+    </Modal>
   );
 }

@@ -1,8 +1,7 @@
-import { useEffect, useRef, useState } from "preact/hooks";
+import { useEffect, useId, useRef, useState } from "preact/hooks";
 import { X } from "lucide-preact";
 import { useI18n } from "../lib/i18n.js";
-import { useModalA11y } from "./useModalA11y.js";
-import { GlassDialog } from "./design-system/GlassSurfaces.js";
+import { Modal } from "./Modal.js";
 
 export interface PromptField {
   key: string;
@@ -30,10 +29,7 @@ export function PromptModal({ title, fields, confirmLabel, onConfirm, onClose }:
     return init;
   });
   const firstRef = useRef<HTMLInputElement>(null);
-  const dialogRef = useRef<HTMLDivElement>(null);
-  const titleId = "prompt-modal-title";
-
-  useModalA11y(onClose, dialogRef);
+  const titleId = useId();
 
   useEffect(() => {
     firstRef.current?.focus();
@@ -50,50 +46,49 @@ export function PromptModal({ title, fields, confirmLabel, onConfirm, onClose }:
   };
 
   return (
-    <div class="modal-overlay" onClick={onClose}>
-      <GlassDialog
-        elementRef={dialogRef}
-        class="modal modal-prompt"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        tabIndex={-1}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div class="modal-head">
-          <h3 id={titleId}>{title}</h3>
-          <button type="button" class="icon-button subtle" aria-label={t("common.close")} title={t("common.close")} onClick={onClose}><X size={17} aria-hidden="true" /></button>
-        </div>
-        <div class="modal-prompt-fields">
-          {fields.map((f, i) => (
-            <div key={f.key} class="field">
-              <label for={`${titleId}-${f.key}`}>{f.label}</label>
-              <input
-                id={`${titleId}-${f.key}`}
-                ref={i === 0 ? firstRef : undefined}
-                class={f.mono ? "mono" : undefined}
-                placeholder={f.placeholder}
-                value={values[f.key] ?? ""}
-                data-autofocus={i === 0 ? "true" : undefined}
-                onInput={(e) => setValues((prev) => ({ ...prev, [f.key]: (e.target as HTMLInputElement).value }))}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    submit();
-                  }
-                }}
-              />
-            </div>
-          ))}
-        </div>
-        <div class="modal-actions">
-          <span class="spacer" />
-          <button onClick={onClose}>{t("common.cancel")}</button>
-          <button class="primary" disabled={missingRequired} onClick={submit}>
-            {confirmLabel ?? t("common.confirm")}
-          </button>
-        </div>
-      </GlassDialog>
-    </div>
+    <Modal labelledBy={titleId} onClose={onClose} className="modal-prompt">
+      <div class="modal-head">
+        <h2 id={titleId}>{title}</h2>
+        <button
+          type="button"
+          class="icon-button subtle"
+          aria-label={t("common.close")}
+          title={t("common.close")}
+          onClick={onClose}
+        >
+          <X size={17} aria-hidden="true" />
+        </button>
+      </div>
+      <div class="modal-prompt-fields">
+        {fields.map((f, i) => (
+          <div key={f.key} class="field">
+            <label for={`${titleId}-${f.key}`}>{f.label}</label>
+            <input
+              id={`${titleId}-${f.key}`}
+              ref={i === 0 ? firstRef : undefined}
+              class={f.mono ? "mono" : undefined}
+              required={f.required}
+              placeholder={f.placeholder}
+              value={values[f.key] ?? ""}
+              data-autofocus={i === 0 ? "true" : undefined}
+              onInput={(e) => setValues((prev) => ({ ...prev, [f.key]: (e.target as HTMLInputElement).value }))}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.isComposing) {
+                  e.preventDefault();
+                  submit();
+                }
+              }}
+            />
+          </div>
+        ))}
+      </div>
+      <div class="modal-actions">
+        <span class="spacer" />
+        <button onClick={onClose}>{t("common.cancel")}</button>
+        <button class="primary" disabled={missingRequired} onClick={submit}>
+          {confirmLabel ?? t("common.confirm")}
+        </button>
+      </div>
+    </Modal>
   );
 }

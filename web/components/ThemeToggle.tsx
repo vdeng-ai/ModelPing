@@ -2,7 +2,7 @@ import { useState } from "preact/hooks";
 import { Menu, Monitor, Moon, Sun, type LucideIcon } from "lucide-preact";
 import { getThemePref, setThemePref, type ThemePref } from "../lib/theme.js";
 import { useI18n } from "../lib/i18n.js";
-import { GlassButton, GlassSegmentedControl } from "./design-system/GlassControls.js";
+import { SegmentButton, SegmentedControl } from "./design-system/Controls.js";
 
 import { useMediaQuery } from "./useMediaQuery.js";
 import { ActionMenu } from "./ActionMenu.js";
@@ -48,12 +48,12 @@ export function ThemeToggle() {
       </>
     );
   return (
-    <GlassSegmentedControl class="theme-toggle" role="group" aria-label={t("theme.label")}>
+    <SegmentedControl class="theme-toggle" role="group" aria-label={t("theme.label")}>
       {SEGS.map((s) => {
         const Icon = s.icon;
         const active = pref === s.pref;
         return (
-          <GlassButton
+          <SegmentButton
             class="seg"
             active={active}
             aria-pressed={active}
@@ -63,9 +63,9 @@ export function ThemeToggle() {
           >
             <Icon class="seg-icon" size={15} aria-hidden="true" />
             <span class="seg-label">{t(s.key)}</span>
-          </GlassButton>
+          </SegmentButton>
         );
       })}
-    </GlassSegmentedControl>
+    </SegmentedControl>
   );
 }

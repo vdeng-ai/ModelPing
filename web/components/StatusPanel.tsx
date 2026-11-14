@@ -13,6 +13,7 @@ import { ActionMenu } from "./ActionMenu.js";
 import { ConfirmModal } from "./ConfirmModal.js";
 import { CcSwitchButton } from "./CcSwitchButton.js";
 import { PING_BATCH_SIZE, dailyPingRequests, isOverFreeCap, safestInterval } from "../lib/status-budget.js";
+import { useOnline } from "./useOnline.js";
 import { acquireStatusPollLeadership } from "../lib/status-poll-leader.js";
 
 interface Props {
@@ -20,6 +21,7 @@ interface Props {
   persisted: boolean;
   dailyRequestBudget: number;
   onDelete: (ids: string[]) => void;
+  onGoToTest: () => void;
   onGotoTest: (entry: StatusEntry) => void;
   onLaunched: (msg: string, opts?: { tone?: "info" | "error"; ms?: number }) => void;
 }
@@ -37,8 +39,17 @@ function intervalLabelKey(sec: number): string {
   return `status.auto${sec}`;
 }
 
-export function StatusPanel({ entries, persisted, dailyRequestBudget, onDelete, onGotoTest, onLaunched }: Props) {
+export function StatusPanel({
+  entries,
+  persisted,
+  dailyRequestBudget,
+  onDelete,
+  onGotoTest,
+  onGoToTest,
+  onLaunched,
+}: Props) {
   const { t } = useI18n();
+  const online = useOnline();
   const [query, setQuery] = useState("");
   const [revealed, setRevealed] = useState<Set<string>>(new Set());
   const [pendingDelete, setPendingDelete] = useState<string[] | null>(null);
@@ -73,7 +84,7 @@ export function StatusPanel({ entries, persisted, dailyRequestBudget, onDelete, 
   const budgetPct = Math.round((budgetRequests / dailyRequestBudget) * 10000) / 100;
 
   const refresh = async (targets: StatusEntry[]) => {
-    if (busyRef.current || targets.length === 0) return;
+    if (busyRef.current || targets.length === 0 || !online) return;
     const controller = new AbortController();
     busyRef.current = true;
     abortRef.current = controller;
@@ -251,21 +262,21 @@ export function StatusPanel({ entries, persisted, dailyRequestBudget, onDelete, 
   }, []);
 
   useEffect(() => {
-    if (!autoSec || !visible) {
+    if (!autoSec || !visible || !online) {
       setPollLeader(false);
       return;
     }
     return acquireStatusPollLeadership(setPollLeader);
-  }, [autoSec, visible]);
+  }, [autoSec, visible, online]);
 
   useEffect(() => {
-    if (!autoSec || !visible || !pollLeader) return;
+    if (!autoSec || !visible || !online || !pollLeader) return;
     if (isOverFreeCap(entries.length, autoSec, dailyRequestBudget)) return;
     const timer = setInterval(() => {
       if (!busyRef.current && entries.length > 0) void refresh(entries);
     }, autoSec * 1000);
     return () => clearInterval(timer);
-  }, [autoSec, entries, visible, pollLeader, dailyRequestBudget]);
+  }, [autoSec, entries, visible, online, pollLeader, dailyRequestBudget]);
 
   useEffect(() => () => abortRef.current?.abort(), []);
 
@@ -284,10 +295,13 @@ export function StatusPanel({ entries, persisted, dailyRequestBudget, onDelete, 
   return (
     <section class="panel status-panel">
       <div class="page-section-head">
-        <h2>{t("status.title")}</h2>
+        <h2>{t("ui.savedEndpoints")}</h2>
         <span class="muted">{!persisted ? t("status.memoryOnly") : t("ui.statusSubtitle")}</span>
       </div>
-      <p class="status-probe-note muted">{t("status.probeExplanation")}</p>
+      <details class="status-probe-note muted">
+        <summary>{t("workbench.probeDetails")}</summary>
+        <p>{t("status.probeExplanation")}</p>
+      </details>
       <div class="status-summary-grid" aria-label={t("status.title")}>
         {[
           ["ui.savedEndpoints", entries.length, "idle"],
@@ -317,7 +331,7 @@ export function StatusPanel({ entries, persisted, dailyRequestBudget, onDelete, 
           <BarChart3 class="budget-icon" size={26} />
           <div class="budget-heading">
             <strong>
-              {t("ui.budgetTitle")} <Info size={16} />
+              {t("workbench.budgetEstimate")} <Info size={16} />
             </strong>
             <small>{t("ui.budgetBody", { count: entries.length, seconds: autoSec })}</small>
           </div>
@@ -326,7 +340,7 @@ export function StatusPanel({ entries, persisted, dailyRequestBudget, onDelete, 
             <span class="budget-mobile-percent"> · {budgetPct}%</span>
           </span>
           <div class="budget-meter">
-            <progress max={dailyRequestBudget} value={budgetRequests} aria-label={t("ui.budgetTitle")} />
+            <progress max={dailyRequestBudget} value={budgetRequests} aria-label={t("workbench.budgetEstimate")} />
             <span>
               {budgetRequests.toLocaleString()} / {dailyRequestBudget.toLocaleString()} · {budgetPct}%
             </span>
@@ -337,7 +351,7 @@ export function StatusPanel({ entries, persisted, dailyRequestBudget, onDelete, 
           </span>
         </summary>
         <div class="budget-detail">
-          <p>{t("ui.budgetBody", { count: entries.length, seconds: autoSec })}</p>
+          <p>{t("workbench.budgetExplanation")}</p>
         </div>
       </details>
       <div class="status-toolbar">
@@ -347,18 +361,26 @@ export function StatusPanel({ entries, persisted, dailyRequestBudget, onDelete, 
             {t("common.cancel")}
           </button>
         ) : (
-          <button class="primary" disabled={!entries.length} onClick={() => void refresh(entries)}>
+          <button class="primary" disabled={!entries.length || !online} onClick={() => void refresh(entries)}>
             <RefreshCw size={16} />
             {t("status.refreshAll")}
           </button>
         )}
         <span class="status-desktop-selected">
-          <button disabled={busy || !someChecked} onClick={() => void refresh(selectedEntries())}>
+          <button disabled={busy || !someChecked || !online} onClick={() => void refresh(selectedEntries())}>
             {t("status.refreshSelected")}
           </button>
         </span>
         <label class="select-visible">
-          <input type="checkbox" checked={allChecked} disabled={busy || !filtered.length} onChange={toggleAll} />
+          <input
+            type="checkbox"
+            checked={allChecked}
+            ref={(el) => {
+              if (el) el.indeterminate = !allChecked && filtered.some((entry) => checked.has(entry.id));
+            }}
+            disabled={busy || !filtered.length}
+            onChange={toggleAll}
+          />
           {t("common.selectAll")}
         </label>
         <label class="status-auto">
@@ -379,10 +401,9 @@ export function StatusPanel({ entries, persisted, dailyRequestBudget, onDelete, 
         <span class="status-last-check">
           {t("ui.lastChecked")} {lastChecked ? fmtTime(lastChecked, false).slice(0, 5) : t("common.dash")}
         </span>
-        <span class="status-desktop-search">{search}</span>
+        <span class="status-search">{search}</span>
         <ActionMenu label={t("ui.bulkActions")} showLabel>
-          <span class="status-mobile-search">{search}</span>
-          <button disabled={busy || !someChecked} onClick={() => void refresh(selectedEntries())}>
+          <button disabled={busy || !someChecked || !online} onClick={() => void refresh(selectedEntries())}>
             {t("status.refreshSelected")}
           </button>
           <button class="danger-quiet" disabled={busy || !someChecked} onClick={() => setPendingDelete([...checked])}>
@@ -401,25 +422,38 @@ export function StatusPanel({ entries, persisted, dailyRequestBudget, onDelete, 
           />
         </div>
       ) : null}
-      <div class="table-frame">
+      <div class="table-frame" tabIndex={0} role="region" aria-label={t("status.title")}>
         <table class="models status-table">
+          <caption class="sr-only">{t("status.title")}</caption>
           <thead>
             <tr>
-              <th aria-label={t("common.selectAll")} />
-              <th>{t("status.colProvider")}</th>
-              <th>{t("status.colModel")}</th>
-              <th>{t("status.colResult")}</th>
-              <th>{t("status.colLatency")}</th>
-              <th>{t("status.colKind")}</th>
-              <th>{t("status.colCheckedAt")}</th>
-              <th>{t("status.colActions")}</th>
+              <th scope="col" aria-label={t("common.selectAll")} />
+              <th scope="col">{t("status.colProvider")}</th>
+              <th scope="col">{t("status.colModel")}</th>
+              <th scope="col">{t("status.colResult")}</th>
+              <th scope="col">{t("status.colLatency")}</th>
+              <th scope="col">{t("status.colKind")}</th>
+              <th scope="col">{t("status.colCheckedAt")}</th>
+              <th scope="col">{t("status.colActions")}</th>
             </tr>
           </thead>
           <tbody>
             {!filtered.length ? (
               <tr>
-                <td colSpan={8} class="empty">
-                  {t(entries.length ? "ui.noMatch" : "status.empty")}
+                <td colSpan={8} class="empty-cell">
+                  <div class="empty-state">
+                    <Network size={28} aria-hidden="true" />
+                    <h3>{t(entries.length ? "ui.noMatch" : "workbench.emptyStatus")}</h3>
+                    {!entries.length ? <p>{t("workbench.emptyStatusBody")}</p> : null}
+                    <button
+                      onClick={() => {
+                        if (entries.length) setQuery("");
+                        else onGoToTest();
+                      }}
+                    >
+                      {t(entries.length ? "workbench.resetFilters" : "workbench.startTesting")}
+                    </button>
+                  </div>
                 </td>
               </tr>
             ) : (
@@ -427,7 +461,8 @@ export function StatusPanel({ entries, persisted, dailyRequestBudget, onDelete, 
                 const ping = pings[entry.id] ?? { status: "idle" as const };
                 const result = ping.result;
                 const methodKey = result?.kind === "completion" ? "status.kindCompletion" : "status.kindModels";
-                const explanationKey = result?.kind === "completion" ? "status.completionExplanation" : "status.modelsExplanation";
+                const explanationKey =
+                  result?.kind === "completion" ? "status.completionExplanation" : "status.modelsExplanation";
                 const keyShown = revealed.has(entry.id);
                 const keyTools = (
                   <div class="status-key-tools">
@@ -513,14 +548,24 @@ export function StatusPanel({ entries, persisted, dailyRequestBudget, onDelete, 
                         </details>
                       ) : null}
                     </td>
-                    <td class="status-latency num" title={t("status.latencyExplanation")}>
+                    <td
+                      data-label={t("status.colLatency")}
+                      class="status-latency num"
+                      title={t("status.latencyExplanation")}
+                    >
                       <small>{t("status.colLatency")}</small>
                       {fmtMs(result?.latencyMs ?? null)}
                     </td>
-                    <td class="status-kind" title={result?.ok ? t(explanationKey) : undefined}>
+                    <td
+                      data-label={t("status.colKind")}
+                      class="status-kind"
+                      title={result?.ok ? t(explanationKey) : undefined}
+                    >
                       {result ? t(methodKey) : t("common.dash")}
                     </td>
-                    <td class="status-time muted">{ping.ts ? fmtTime(ping.ts) : t("common.dash")}</td>
+                    <td data-label={t("status.colCheckedAt")} class="status-time muted">
+                      {ping.ts ? fmtTime(ping.ts) : t("common.dash")}
+                    </td>
                     <td class="status-row-actions">
                       <button class="compact-button" onClick={() => onGotoTest(entry)}>
                         {t("status.gotoTest")}
@@ -528,11 +573,7 @@ export function StatusPanel({ entries, persisted, dailyRequestBudget, onDelete, 
                       <ActionMenu label={`${t("ui.more")} · ${entry.model}`}>
                         <span class="status-mobile-key">{keyTools}</span>
                         <CopyButton value={entry.baseUrl} title={t("history.copyUrlTitle")} />
-                        <span class="muted">
-                          {result
-                            ? t(methodKey)
-                            : t("ui.pending")}
-                        </span>
+                        <span class="muted">{result ? t(methodKey) : t("ui.pending")}</span>
                         <CcSwitchButton
                           name={`${entry.providerName} - ${entry.model}`}
                           endpoint={entry.baseUrl}
@@ -557,7 +598,15 @@ export function StatusPanel({ entries, persisted, dailyRequestBudget, onDelete, 
       <div class="status-footer muted">
         <span>
           <Info size={16} />
-          {visible ? t("ui.refreshPaused") : t("status.autoPausedHidden")}
+          {!autoSec
+            ? t("workbench.manualRefresh")
+            : !online
+              ? t("workbench.offlineRefresh")
+              : !visible
+                ? t("status.autoPausedHidden")
+                : !pollLeader
+                  ? t("workbench.followerRefresh")
+                  : t("workbench.activeRefresh", { seconds: autoSec })}
         </span>
         <span>{t("ui.checkedCount", { completed: checkedCount, total: entries.length })}</span>
       </div>

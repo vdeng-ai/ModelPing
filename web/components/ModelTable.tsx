@@ -10,7 +10,6 @@ import {
   RadioTower,
   Save,
   Search,
-  Filter,
   Trash2,
   X,
 } from "lucide-preact";
@@ -26,6 +25,7 @@ import type { ModelRow, ProtocolProbe } from "../lib/model-rows.js";
 import { useMediaQuery } from "./useMediaQuery.js";
 import { ActionMenu } from "./ActionMenu.js";
 import { CopyButton } from "./CopyButton.js";
+import { sortModelRows, type ModelSort } from "../lib/model-view.js";
 import { rowState, rowResult } from "../lib/result-presentation.js";
 export { protocolsForModel } from "../lib/model-rows.js";
 
@@ -120,18 +120,22 @@ export function ModelTable(props: Props) {
   const { rows, busy, conn, providerName } = props;
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("all");
+  const [sort, setSort] = useState<ModelSort>("preset");
   const [addingModel, setAddingModel] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   const [statusNamePrompt, setStatusNamePrompt] = useState<Array<Omit<StatusEntry, "id">> | null>(null);
   const [lastCustomProviderName, setLastCustomProviderName] = useState("");
-  const visibleRows = rows.filter(
-    (row) =>
-      (!query.trim() ||
-        `${row.label} ${Object.values(row.modelByProvider).join(" ")}`
-          .toLowerCase()
-          .includes(query.trim().toLowerCase())) &&
-      (filter === "all" || rowState(row) === filter),
+  const visibleRows = sortModelRows(
+    rows.filter(
+      (row) =>
+        (!query.trim() ||
+          `${row.label} ${Object.values(row.modelByProvider).join(" ")}`
+            .toLowerCase()
+            .includes(query.trim().toLowerCase())) &&
+        (filter === "all" || rowState(row) === filter),
+    ),
+    sort,
   );
   const selectedCount = rows.filter((row) => row.checked).length;
   const allVisibleChecked = visibleRows.length > 0 && visibleRows.every((row) => row.checked);
@@ -319,6 +323,19 @@ export function ModelTable(props: Props) {
       <h2 id="models-heading" class="sr-only">
         {t("models.title")}
       </h2>
+      <div class="workbench-stats">
+        {[
+          ["workbench.allModels", rows.length, ""],
+          ["workbench.selectedModels", selectedCount, ""],
+          ["workbench.passedModels", passedCount, "success"],
+          ["workbench.failedModels", failedCount, "fail"],
+        ].map(([key, count, tone]) => (
+          <div key={key} class={`workbench-stat ${tone}`}>
+            <span>{t(String(key))}</span>
+            <strong>{count}</strong>
+          </div>
+        ))}
+      </div>
       <div class="model-toolbar">
         <label class="search-control">
           <Search size={17} aria-hidden="true" />
@@ -330,27 +347,36 @@ export function ModelTable(props: Props) {
             onInput={(e) => setQuery(e.currentTarget.value)}
           />
         </label>
-        <span class="result-filter">
-          <ActionMenu label={t("ui.allResults")} icon={Filter}>
-            {/* Filter selection remains available in the menu. */}
-            <select
-              class="result-filter-select"
-              aria-label={t("ui.allResults")}
-              value={filter}
-              onChange={(e) => setFilter(e.currentTarget.value)}
-            >
-              <option value="all">{t("ui.allResults")}</option>
-              <option value="success">{t("ui.passed")}</option>
-              <option value="fail">{t("ui.failed")}</option>
-              <option value="idle">{t("ui.pending")}</option>
-            </select>
-          </ActionMenu>
-        </span>
+        <select
+          class="result-filter-select"
+          aria-label={t("ui.allResults")}
+          value={filter}
+          onChange={(e) => setFilter(e.currentTarget.value)}
+        >
+          <option value="all">{t("ui.allResults")}</option>
+          <option value="success">{t("ui.passed")}</option>
+          <option value="fail">{t("ui.failed")}</option>
+          <option value="idle">{t("ui.pending")}</option>
+        </select>
+        <select
+          class="model-sort"
+          aria-label={t("workbench.sort")}
+          value={sort}
+          onChange={(e) => setSort(e.currentTarget.value as ModelSort)}
+        >
+          <option value="preset">{t("workbench.sortPreset")}</option>
+          <option value="name">{t("workbench.sortName")}</option>
+          <option value="latency">{t("workbench.sortLatency")}</option>
+          <option value="status">{t("workbench.sortStatus")}</option>
+        </select>
         <label class="select-visible">
           <input
             type="checkbox"
             disabled={busy || !visibleRows.length}
             checked={allVisibleChecked}
+            ref={(el) => {
+              if (el) el.indeterminate = !allVisibleChecked && visibleRows.some((row) => row.checked);
+            }}
             onChange={(e) =>
               props.onToggleGroup(
                 visibleRows.map((row) => row.key),
@@ -402,13 +428,51 @@ export function ModelTable(props: Props) {
               {t("models.cancelTests")}
             </button>
           ) : (
-            <button class="primary" disabled={!selectedCount} onClick={props.onTestSelected}>
+            <button class="primary" disabled={!selectedCount || !canAddStatus} onClick={props.onTestSelected}>
               <Play size={16} fill="currentColor" />
               {selectedCount ? t("models.testSelectedCount", { count: selectedCount }) : t("models.testSelected")}
             </button>
           )}
         </div>
       </div>
+      <div class="view-summary">
+        <span>{t("workbench.visibleCount", { visible: visibleRows.length, total: rows.length })}</span>
+        {selectedCount ? (
+          <button class="text-action" disabled={busy} onClick={() => props.onToggleAll(false)}>
+            {t("workbench.clearSelection")}
+          </button>
+        ) : null}
+        {query || filter !== "all" ? (
+          <button
+            class="text-action"
+            onClick={() => {
+              setQuery("");
+              setFilter("all");
+            }}
+          >
+            {t("workbench.resetFilters")}
+          </button>
+        ) : null}
+      </div>
+      {!canAddStatus ? (
+        <div class="setup-notice">
+          <span>{t("workbench.needsConnection")}</span>
+          <button
+            class="text-action"
+            onClick={() => {
+              const field = document.querySelector<HTMLInputElement>(
+                conn.baseUrl.trim() ? "#connection-api-key" : "#connection-base-url",
+              );
+              const disclosure = field?.closest("details");
+              if (disclosure) disclosure.open = true;
+              field?.focus();
+              field?.scrollIntoView({ block: "center" });
+            }}
+          >
+            {t("workbench.configureConnection")}
+          </button>
+        </div>
+      ) : null}
       {busy ? (
         <div class="batch-progress" aria-live="polite">
           <div class="batch-progress-label">{t("models.progress", props.progress)}</div>
@@ -425,6 +489,9 @@ export function ModelTable(props: Props) {
             <input
               type="checkbox"
               checked={allVisibleChecked}
+              ref={(el) => {
+                if (el) el.indeterminate = !allVisibleChecked && visibleRows.some((row) => row.checked);
+              }}
               disabled={busy || !visibleRows.length}
               aria-label={t("ui.selectVisible")}
               onChange={(e) =>
@@ -446,7 +513,22 @@ export function ModelTable(props: Props) {
           <span>{t("models.colActions")}</span>
         </div>
         {!visibleRows.length ? (
-          <div class="empty">{t(rows.length ? "ui.noMatch" : "models.empty")}</div>
+          <div class="empty-state">
+            <Search size={28} aria-hidden="true" />
+            <h3>{t(rows.length ? "ui.noMatch" : "workbench.emptyModels")}</h3>
+            {!rows.length ? <p>{t("workbench.emptyModelsBody")}</p> : null}
+            <button
+              disabled={busy}
+              onClick={() => {
+                if (rows.length) {
+                  setQuery("");
+                  setFilter("all");
+                } else setAddingModel(true);
+              }}
+            >
+              {t(rows.length ? "workbench.resetFilters" : "models.addModel")}
+            </button>
+          </div>
         ) : (
           listEntries.map((entry) => {
             const groupOpen = !collapsedGroups.has(entry.key);

@@ -62,42 +62,6 @@ export function ConfigPanel({ value, onChange }: { value: ConfigState; onChange:
             onInput={(e) => onChange({ ...value, input: e.currentTarget.value })}
           />
         </div>
-        <div class="field">
-          <label for="config-user-agent">{t("config.userAgent")}</label>
-          <select
-            id="config-user-agent"
-            value={selectedUa}
-            onChange={(e) => {
-              const next = e.currentTarget.value;
-              setCustomUa(next === "__custom__");
-              if (next !== "__custom__") onChange({ ...value, userAgent: next });
-            }}
-          >
-            {USER_AGENT_PRESETS.map((p) => (
-              <option key={p.value} value={p.value}>
-                {t(p.labelKey)}
-              </option>
-            ))}
-            <option value="__custom__">{t("config.userAgentCustomOption")}</option>
-          </select>
-        </div>
-        {selectedUa === "__custom__" ? (
-          <div class="field">
-            <label for="config-custom-user-agent">{t("config.userAgentCustom")}</label>
-            <input
-              id="config-custom-user-agent"
-              class="mono"
-              value={value.userAgent}
-              placeholder={t("config.userAgentPlaceholder")}
-              aria-invalid={invalid}
-              aria-describedby="config-user-agent-hint"
-              onInput={(e) => onChange({ ...value, userAgent: e.currentTarget.value })}
-            />
-            <div id="config-user-agent-hint" class={"hint " + (invalid ? "fail" : "")}>
-              {t(invalid ? "config.userAgentInvalid" : "config.userAgentHint")}
-            </div>
-          </div>
-        ) : null}
         <div class="config-main-grid">
           {numberField("concurrency", t("ui.concurrencyShort"), 1, 10)}
           {numberField("timeoutMs", t("ui.timeoutSeconds"), 1, 600)}
@@ -108,7 +72,46 @@ export function ConfigPanel({ value, onChange }: { value: ConfigState; onChange:
             <ChevronRight size={16} aria-hidden="true" />
             {t("config.advanced")}
           </summary>
-          <div class="disclosure-body">{numberField("maxRetries", t("config.maxRetries"), 0, 10)}</div>
+          <div class="disclosure-body">
+            {" "}
+            <div class="field">
+              <label for="config-user-agent">{t("config.userAgent")}</label>
+              <select
+                id="config-user-agent"
+                value={selectedUa}
+                onChange={(e) => {
+                  const next = e.currentTarget.value;
+                  setCustomUa(next === "__custom__");
+                  if (next !== "__custom__") onChange({ ...value, userAgent: next });
+                }}
+              >
+                {USER_AGENT_PRESETS.map((p) => (
+                  <option key={p.value} value={p.value}>
+                    {t(p.labelKey)}
+                  </option>
+                ))}
+                <option value="__custom__">{t("config.userAgentCustomOption")}</option>
+              </select>
+            </div>
+            {selectedUa === "__custom__" ? (
+              <div class="field">
+                <label for="config-custom-user-agent">{t("config.userAgentCustom")}</label>
+                <input
+                  id="config-custom-user-agent"
+                  class="mono"
+                  value={value.userAgent}
+                  placeholder={t("config.userAgentPlaceholder")}
+                  aria-invalid={invalid}
+                  aria-describedby="config-user-agent-hint"
+                  onInput={(e) => onChange({ ...value, userAgent: e.currentTarget.value })}
+                />
+                <div id="config-user-agent-hint" class={"hint " + (invalid ? "fail" : "")}>
+                  {t(invalid ? "config.userAgentInvalid" : "config.userAgentHint")}
+                </div>
+              </div>
+            ) : null}
+            {numberField("maxRetries", t("config.maxRetries"), 0, 10)}
+          </div>
         </details>
       </div>
     </details>

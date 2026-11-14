@@ -151,7 +151,6 @@ export function SettingsPanel({ providers, defaults, busy, onChange, onImport, o
   return (
     <section class="panel settings-panel">
       <div class="settings-page-toolbar">
-        <h2>{t("ui.providerConfig")}</h2>
         <span class="spacer" />
         {importControl}
         {exportControl}
