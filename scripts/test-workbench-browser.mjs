@@ -201,15 +201,12 @@ try {
   await page.goto(`${origin}/#test/models`);
   await page.locator(".model-result-row").first().waitFor();
 
-  await check("local navigation, search, sort and density add zero API requests", async () => {
+  await check("model dropdown, simplified controls, navigation and density add zero API requests", async () => {
     assert.equal(count("/api/bootstrap"), 1);
     await page.getByRole("combobox", { name: "选择模型" }).selectOption({ label: "model-2" });
-    await page.getByRole("combobox", { name: "排序方式" }).selectOption("name");
     assert.deepEqual(await page.locator(".model-name").allTextContents(), ["model-2"]);
-    const search = page.getByRole("searchbox", { name: /搜索模型/ });
-    await search.fill("model-2");
-    assert.equal(await page.locator(".model-result-row").count(), 1);
-    await button("重置筛选").click();
+    assert.equal(await page.locator(".model-toolbar .search-control").isVisible(), false);
+    assert.equal(await page.locator(".model-toolbar .model-sort").isVisible(), false);
     await button("紧凑密度").click();
     assert.equal(await page.locator(".app-shell").getAttribute("data-density"), "compact");
     assert.equal(await page.evaluate(() => localStorage.getItem("modelping:ui-density")), "compact");
@@ -238,8 +235,8 @@ try {
     await page.goBack();
     await page.locator(".model-panel").waitFor();
     await page.locator("#main-content").focus();
-    await page.getByRole("searchbox", { name: "搜索模型" }).focus();
-    assert.equal(await page.evaluate(() => document.activeElement.type), "search");
+    await page.getByRole("combobox", { name: "选择模型" }).focus();
+    assert.equal(await page.evaluate(() => document.activeElement.tagName), "SELECT");
   });
 
   await check("default status mode has no polling; 11 manual checks use two batched requests", async () => {

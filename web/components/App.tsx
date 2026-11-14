@@ -913,6 +913,7 @@ export function App() {
             <section class="api-test-column" aria-label={t("app.workspaceLabel")}>
               {bootstrapped && !loadErr ? <>
               <div class="integrated-section-heading"><h2>{t("workbench.apiTestTitle")}</h2><p>{t("workbench.apiTestDescription")}</p></div>
+              <div class="api-flow-card">
               <ConnectionPanel
                 providers={providers}
                 value={conn}
@@ -949,6 +950,7 @@ export function App() {
                 onAddToStatus={onAddToStatus}
                 onLaunched={showToast}
               />
+              </div>
               </> : <section class="panel"><h2>{t("workbench.apiTestTitle")}</h2><p class="muted">{t("app.loadFailed", { msg: loadErr || t("app.loading") })}</p></section>}
             </section>
           </div>

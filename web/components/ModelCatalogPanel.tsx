@@ -46,6 +46,11 @@ export function ModelCatalogPanel({ providers, busy, disableAdd = false, onAdd }
     return (source?.models ?? []).filter((model) => `${model.id} ${model.label}`.toLowerCase().includes(q));
   }, [source, query]);
   const target = providers.find((provider) => provider.id === targetId);
+  const matchedProtocol = source?.id === "anthropic"
+    ? "Anthropic Messages"
+    : source?.id === "google" || source?.id.startsWith("gemini")
+      ? "Gemini"
+      : "OpenAI Chat / Responses";
   const targetIds = new Set(target?.models.map((model) => model.id) ?? []);
   const addable = [...selected].filter((id) => !targetIds.has(id));
 
@@ -107,6 +112,7 @@ export function ModelCatalogPanel({ providers, busy, disableAdd = false, onAdd }
             </div>
             {source ? (
               <>
+                <div class="model-catalog-protocol"><span>{t("catalog.protocolMatch")}</span><strong>{matchedProtocol}</strong></div>
                 <label class="search-control model-catalog-search"><Search size={16} aria-hidden="true"/><input type="search" value={query} placeholder={t("catalog.searchModels")} onInput={(e) => setQuery(e.currentTarget.value)} /></label>
                 <div class="model-catalog-list">
                   {filtered.map((model) => {

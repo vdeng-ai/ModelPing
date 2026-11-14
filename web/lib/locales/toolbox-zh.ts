@@ -1,6 +1,6 @@
 export const toolboxZh = {
-  title: "全能编解码工具箱",
-  subtitle: "Base64、Hex、URL、Base32、Unicode、HTML、ROT、摩斯电码、JWT 与哈希 —— 全部在本地完成。",
+  title: "凭据解码",
+  subtitle: "Base64、Hex、URL、Base32、Unicode、HTML、ROT、摩斯电码、JWT 与哈希，全部在本地完成。",
   local: "浏览器本地运行",
   privacy: "转换内容和 JWT 密钥不会发送到服务器，也不会保存到浏览器存储。",
   preferencesSaved: "仅保存工具和格式偏好；复制以浏览器实际授权为准。",
@@ -46,7 +46,7 @@ export const toolboxZh = {
   processing: "正在本地转换…",
   autoEncoded: "已自动识别：编码",
   autoDecoded: "已自动识别：解码",
-  limit: "输入上限 1,000,000 个 UTF-16 代码单元。切换工具保留本页草稿，离开工具箱或刷新后清除。",
+  limit: "输入上限 1,000,000 个 UTF-16 代码单元。切换编码方式保留本页草稿，离开页面或刷新后清除。",
   base64UrlSafe: "URL 安全字符（- 和 _）",
   padding: "编码保留 = 补位",
   uppercase: "大写输出",

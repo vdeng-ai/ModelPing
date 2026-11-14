@@ -232,8 +232,6 @@ export function ConnectionPanel({
             ))}
           </select>
         </div>
-        <ModelCatalogPanel providers={providers} busy={modelsBusy} onAdd={onAddCatalogModels} />
-
         <div class="row mt-12">
           <div class="field grow">
             <label for="connection-base-url">{t("conn.baseUrl")}</label>
@@ -401,6 +399,8 @@ export function ConnectionPanel({
             {balanceText ? <div class="balance-line">{balanceText}</div> : null}
           </div>
         </div>
+
+        <ModelCatalogPanel providers={providers} busy={modelsBusy} onAdd={onAddCatalogModels} />
 
         {pickerModels ? (
           <ModelPickerModal
