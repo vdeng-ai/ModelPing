@@ -88,6 +88,8 @@ const server = createServer(async (req, res) => {
         providers: [{ id: "openai", name: "OpenAI", baseUrl: "https://api.openai.com/v1", docs: "", models: [
           { id: "gpt-new", label: "GPT New", releaseDate: "2026-11-01", context: 128000, modalities: ["text"] },
           { id: "gpt-existing", label: "GPT Existing", releaseDate: null, context: null, modalities: [] },
+        ] }, { id: "google", name: "Google", baseUrl: "https://google.fixture", docs: "", models: [
+          { id: "gemini-fixture", label: "Gemini Fixture", releaseDate: null, context: null, modalities: ["text"] },
         ] }],
       }));
       if (pathname === "/api/model-catalog/sync" && req.method === "POST") return res.end(JSON.stringify({
@@ -198,15 +200,25 @@ try {
     );
   };
   const button = (name) => page.getByRole("button", { name, exact: true });
+  const chooseModel = async (id) => {
+    const picker = page.getByRole("combobox", { name: "选择模型", exact: true });
+    await picker.fill(id);
+    await page.locator(".model-search-option").filter({ has: page.locator("code", { hasText: id }) }).first().click();
+  };
   await page.goto(`${origin}/#test/models`);
   await page.locator(".model-result-row").first().waitFor();
 
-  await check("model dropdown, simplified controls, navigation and density add zero API requests", async () => {
+  await check("model discovery reads the cache once; selection and navigation never run or sync", async () => {
     assert.equal(count("/api/bootstrap"), 1);
-    await page.getByRole("combobox", { name: "选择模型" }).selectOption({ label: "model-2" });
+    assert.equal(count("/api/model-catalog"), 0);
+    await chooseModel("model-2");
     assert.deepEqual(await page.locator(".model-name").allTextContents(), ["model-2"]);
-    assert.equal(await page.locator(".model-toolbar .search-control").isVisible(), false);
-    assert.equal(await page.locator(".model-toolbar .model-sort").isVisible(), false);
+    assert.equal(await page.locator(".model-toolbar .search-control").count(), 0);
+    assert.equal(await page.getByText("密钥处理与导入", { exact: true }).count(), 0);
+    assert.equal(await page.locator(".model-toolbar .action-menu").count(), 0);
+    for (const action of [".add-model-trigger", ".model-secondary-actions > button", ".ccswitch-add", ".catalog-trigger", ".config-trigger", ".model-result-filter"])
+      assert.ok(await page.locator(action).first().isVisible(), action);
+    assert.equal(await page.locator(".model-toolbar .model-sort").count(), 0);
     await button("紧凑密度").click();
     assert.equal(await page.locator(".app-shell").getAttribute("data-density"), "compact");
     assert.equal(await page.evaluate(() => localStorage.getItem("modelping:ui-density")), "compact");
@@ -214,7 +226,7 @@ try {
     await page.waitForTimeout(7500); // Covers the existing 7-second save debounce as well.
     assert.deepEqual(
       requests.map((request) => request.pathname),
-      ["/api/bootstrap"],
+      ["/api/bootstrap", "/api/model-catalog"],
     );
   });
 
@@ -235,8 +247,9 @@ try {
     await page.goBack();
     await page.locator(".model-panel").waitFor();
     await page.locator("#main-content").focus();
-    await page.getByRole("combobox", { name: "选择模型" }).focus();
-    assert.equal(await page.evaluate(() => document.activeElement.tagName), "SELECT");
+    await page.keyboard.press("/");
+    assert.ok(await page.getByRole("combobox", { name: "选择模型" }).evaluate((el) => document.activeElement === el));
+    await page.keyboard.press("Escape");
   });
 
   await check("default status mode has no polling; 11 manual checks use two batched requests", async () => {
@@ -305,7 +318,7 @@ try {
 
   await check("models run only on explicit action; results and redacted filtered exports work", async () => {
     await page.locator("#connection-provider").selectOption("openai");
-    await page.getByRole("combobox", { name: "选择模型" }).selectOption({ label: "model-2" });
+    await chooseModel("model-2");
     await page.locator(".model-primary-actions > button.primary").click();
     await page.waitForFunction(
       () => document.querySelectorAll(".model-result-row.success,.model-result-row.fail").length === 1,
@@ -346,16 +359,103 @@ try {
     assert.ok(await dialog.locator("button.primary").isDisabled());
     await dialog.locator("input").fill("custom-fixture-model");
     await page.keyboard.press("Enter");
-    await page.getByRole("combobox", { name: "选择模型" }).selectOption({ label: "custom-fixture-model" });
+    assert.equal(await page.getByRole("combobox", { name: "选择模型" }).inputValue(), "custom-fixture-model");
     await page.locator(".model-name", { hasText: "custom-fixture-model" }).waitFor();
     assert.equal(await page.locator("dialog[open]").count(), 0);
     assert.ok(await trigger.evaluate((element) => document.activeElement === element));
     assert.equal(count("/api/test-row"), 1, "Adding a model must not run it");
   });
 
+  await check("global discovery searches all providers, selects actual IDs, and preserves connection credentials", async () => {
+    const before = count("/api/test-row");
+    const saved = count("/api/settings");
+    const connection = await page.locator("#connection-base-url").inputValue();
+    const secret = await page.locator("#connection-api-key").inputValue();
+    const provider = await page.locator("#connection-provider").inputValue();
+    const picker = page.getByRole("combobox", { name: "选择模型", exact: true });
+    await picker.fill("OpenAI New");
+    await page.locator(".model-search-option").filter({ hasText: "GPT New" }).click();
+    assert.equal(await picker.inputValue(), "gpt-new");
+    assert.equal(await page.locator(".model-name").textContent(), "gpt-new");
+    assert.equal(await page.locator("#connection-base-url").inputValue(), connection);
+    assert.equal(await page.locator("#connection-api-key").inputValue(), secret);
+    assert.equal(await page.locator("#connection-provider").inputValue(), provider);
+    assert.equal(count("/api/test-row"), before);
+    assert.equal(count("/api/settings"), saved, "Picking a model must not save provider presets");
+    assert.equal(count("/api/model-catalog/sync"), 0);
+    await page.locator(".model-primary-actions > button.primary").click();
+    await page.locator(".model-result-row.success").waitFor();
+    const sent = requests.filter((request) => request.pathname === "/api/test-row").at(-1).input;
+    assert.equal(sent.model, "gpt-new");
+    assert.equal(sent.baseUrl, connection);
+    assert.equal(sent.apiKey, secret);
+    assert.deepEqual(sent.protocols, ["openai-chat", "openai-responses"]);
+    await chooseModel("gpt-new");
+    await picker.fill("gpt-new");
+    assert.equal(await page.locator(".model-search-option").count(), 1, "Repeated selections must not duplicate models");
+    await page.keyboard.press("Escape");
+  });
+
+  await check("model picker supports keyboard selection, IME, Escape, Tab and protocol matching", async () => {
+    const picker = page.getByRole("combobox", { name: "选择模型", exact: true });
+    await picker.fill("Google");
+    await page.locator(".model-search-option").filter({ hasText: "Gemini Fixture" }).waitFor();
+    await page.keyboard.press("ArrowDown");
+    assert.ok(await picker.getAttribute("aria-activedescendant"));
+    await picker.dispatchEvent("keydown", { key: "Enter", isComposing: true });
+    assert.equal(await picker.getAttribute("aria-expanded"), "true");
+    await page.keyboard.press("Enter");
+    assert.equal(await picker.inputValue(), "gemini-fixture");
+    await picker.fill("no-such-model-anywhere");
+    await page.locator(".model-search-empty").waitFor();
+    await page.keyboard.press("Escape");
+    assert.equal(await picker.inputValue(), "gemini-fixture");
+    await picker.click();
+    await page.keyboard.press("Tab");
+    assert.equal(await picker.getAttribute("aria-expanded"), "false");
+    await page.locator("#connection-provider").selectOption("custom");
+    await chooseModel("gemini-fixture");
+    await page.locator(".model-primary-actions > button.primary").click();
+    await page.locator(".model-result-row.success").waitFor();
+    const sent = requests.filter((request) => request.pathname === "/api/test-row").at(-1).input;
+    assert.equal(sent.model, "gemini-fixture");
+    assert.deepEqual(sent.protocols, ["gemini"]);
+  });
+
+  await check("request settings use one dialog, retain values and apply only to explicit tests", async () => {
+    const before = count("/api/test-row");
+    const trigger = page.locator(".config-trigger");
+    await trigger.click();
+    const dialog = page.getByRole("dialog");
+    assert.equal(await dialog.locator("details").count(), 0);
+    for (const field of ["input", "concurrency", "timeoutMs", "maxTokens", "maxRetries", "user-agent"])
+      assert.ok(await dialog.locator(`#config-${field}`).isVisible());
+    await dialog.locator("#config-maxTokens").fill("128");
+    await dialog.locator("#config-timeoutMs").fill("15");
+    await dialog.locator("#config-maxRetries").fill("2");
+    await dialog.locator("#config-input").fill("Fixture custom input");
+    await dialog.locator("#config-user-agent").selectOption("__custom__");
+    await dialog.locator("#config-custom-user-agent").fill("fixture-agent/1.0");
+    await page.keyboard.press("Escape");
+    assert.ok(await trigger.evaluate((el) => document.activeElement === el));
+    assert.equal(count("/api/test-row"), before);
+    await trigger.click();
+    assert.equal(await dialog.locator("#config-maxTokens").inputValue(), "128");
+    await dialog.locator(".modal-head button").click();
+    await chooseModel("gpt-new");
+    await page.locator(".model-primary-actions > button.primary").click();
+    await page.locator(".model-result-row.success").waitFor();
+    const sent = requests.filter((request) => request.pathname === "/api/test-row").at(-1).input;
+    assert.equal(sent.input, "Fixture custom input");
+    assert.equal(sent.maxTokens, 128);
+    assert.equal(sent.timeoutMs, 15000);
+    assert.equal(sent.maxRetries, 2);
+    assert.equal(sent.userAgent, "fixture-agent/1.0");
+  });
+
   await check("model catalog is read from cache; sync is manual and selected models join presets", async () => {
     await navigate("测试");
-    await page.locator(".model-catalog-panel").locator("summary").click();
+    await page.locator(".catalog-trigger").click();
     await page.getByRole("button", { name: "检查并更新目录" }).waitFor();
     assert.equal(count("/api/model-catalog/sync"), 0, "Opening the catalog must not trigger external sync");
     await page.getByRole("button", { name: "检查并更新目录" }).click();
@@ -367,6 +467,8 @@ try {
     await page.getByRole("button", { name: "加入供应商预设" }).click();
     await page.getByText("已加入 1 个模型").waitFor();
     assert.equal(count("/api/model-catalog/sync"), 1, "Adding models must not refetch the catalog");
+    await page.keyboard.press("Escape");
+    assert.ok(await page.locator(".catalog-trigger").evaluate((el) => document.activeElement === el));
   });
 
   await check("decoded API keys transfer directly from Toolbox into the connection form", async () => {
@@ -379,7 +481,66 @@ try {
     assert.ok(page.url().endsWith("#test/models"));
   });
 
-  await check("all five pages fit 320/390/768/1440 pixels in light and dark themes", async () => {
+  await check("touch input selects a catalog model without closing the option before selection", async () => {
+    const touch = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+    touch.on("request", (request) => { if (!request.url().startsWith(origin)) externalRequests.push(request.url()); });
+    await touch.addInitScript(() => { if (/^https?:$/.test(location.protocol)) localStorage.setItem("llm-test:lang", "zh"); });
+    const mobile = await touch.newPage();
+    mobile.on("pageerror", (error) => errors.push(error.message));
+    await mobile.goto(`${origin}/#test/models`);
+    const picker = mobile.getByRole("combobox", { name: "选择模型", exact: true });
+    await picker.tap();
+    await picker.fill("gpt-new");
+    await mobile.locator(".model-search-option").filter({ hasText: "gpt-new" }).tap();
+    assert.equal(await picker.inputValue(), "gpt-new");
+    assert.equal(await picker.getAttribute("aria-expanded"), "false");
+    await touch.close();
+  });
+
+  await check("catalog failures keep local choices available and explicit retry recovers", async () => {
+    const fallback = await context.newPage();
+    let attempts = 0;
+    await fallback.route("**/api/model-catalog", async (route) => {
+      attempts++;
+      if (attempts === 1) return route.fulfill({ status: 503, contentType: "application/json", body: '{"error":"fixture catalog offline"}' });
+      return route.continue();
+    });
+    await fallback.goto(`${origin}/#test/models`);
+    const picker = fallback.getByRole("combobox", { name: "选择模型", exact: true });
+    await picker.fill("model-2");
+    await fallback.locator(".model-search-error").waitFor();
+    assert.ok(await fallback.locator(".model-search-option").filter({ hasText: "model-2" }).isVisible());
+    await picker.fill("model-1");
+    assert.equal(attempts, 1, "Typing must not retry a failing catalog request");
+    await fallback.locator(".model-search-error button").click();
+    await fallback.waitForFunction(() => !document.querySelector(".model-search-error"));
+    await picker.fill("gpt-new");
+    await fallback.locator(".model-search-option").filter({ hasText: "gpt-new" }).click();
+    assert.equal(await picker.inputValue(), "gpt-new");
+    assert.equal(attempts, 2);
+    await fallback.close();
+  });
+
+  await check("empty catalog explains manual updates without blocking local model selection", async () => {
+    const empty = await context.newPage();
+    await empty.route("**/api/model-catalog", (route) => route.fulfill({ status: 200, contentType: "application/json", body: '{"available":false,"updatedAt":null,"providers":[]}' }));
+    await empty.goto(`${origin}/#test/models`);
+    const picker = empty.getByRole("combobox", { name: "选择模型", exact: true });
+    await picker.fill("model-2");
+    await empty.getByText("尚无目录缓存，可在“全球模型目录”中手动更新。", { exact: true }).waitFor();
+    await empty.locator(".model-search-option").filter({ hasText: "model-2" }).click();
+    assert.equal(await picker.inputValue(), "model-2");
+    await empty.locator(".catalog-trigger").click();
+    await empty.getByRole("button", { name: "检查并更新目录" }).click();
+    await empty.getByText("GPT New", { exact: true }).waitFor();
+    await empty.keyboard.press("Escape");
+    await picker.fill("gpt-new");
+    await empty.locator(".model-search-option").filter({ hasText: "gpt-new" }).click();
+    assert.equal(await picker.inputValue(), "gpt-new");
+    await empty.close();
+  });
+
+  await check("all four pages, model search and dialogs fit 320/390/768/1440 pixels in both themes", async () => {
     for (const theme of ["light", "dark"]) {
       await page.evaluate((value) => {
         document.documentElement.dataset.theme = value;
@@ -394,6 +555,23 @@ try {
             `${name} overflow at ${width}px/${theme}`,
           );
           assert.equal(await page.locator("h1").count(), 1);
+          if (name === "测试") {
+            await page.getByRole("combobox", { name: "选择模型", exact: true }).click();
+            await page.locator(".model-search-option").first().waitFor();
+            assert.ok(await page.locator(".model-search-popup").evaluate((element) => {
+              const box = element.getBoundingClientRect();
+              return box.left >= 0 && box.right <= innerWidth + 1;
+            }));
+            if (width === 390 || width === 1440) await page.screenshot({ path: join(artifacts, `model-search-${theme}-${width}.png`), fullPage: true });
+            await page.keyboard.press("Escape");
+            for (const kind of ["catalog", "config"]) {
+              await page.locator(`.${kind}-trigger`).click();
+              const dialog = page.getByRole("dialog");
+              assert.ok(await dialog.evaluate((element) => element.scrollWidth <= element.clientWidth + 1), `${kind} dialog overflow at ${width}px`);
+              if (width === 390 || width === 1440) await page.screenshot({ path: join(artifacts, `${kind}-${theme}-${width}.png`), fullPage: true });
+              await page.keyboard.press("Escape");
+            }
+          }
           if (width <= 760) {
             const items = await page.locator(".primary-nav a").evaluateAll((links) =>
               links.map((link) => {
@@ -423,6 +601,7 @@ try {
   if (page && !page.isClosed())
     await page.screenshot({ path: join(artifacts, "failure.png"), fullPage: true }).catch(() => {});
   console.error(error);
+  if (page && !page.isClosed()) console.error(await page.evaluate(() => ({ toolbar: document.querySelector(".model-toolbar")?.innerText, picker: document.querySelector(".model-select input")?.outerHTML, provider: document.querySelector("#connection-provider")?.value, focused: document.activeElement?.tagName })));
   process.exitCode = 1;
 } finally {
   await browser?.close();

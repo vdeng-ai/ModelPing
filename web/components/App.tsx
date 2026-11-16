@@ -30,7 +30,7 @@ import {
 } from "../lib/presets.js";
 import { initTheme } from "../lib/theme.js";
 import { ConnectionPanel, type ConnValue, type AddToProviderDraft } from "./ConnectionPanel.js";
-import { ConfigPanel } from "./ConfigPanel.js";
+import { selectModelById } from "../lib/model-selection.js";
 import { ModelTable } from "./ModelTable.js";
 import { HistoryPanel } from "./HistoryPanel.js";
 import { ConfirmModal } from "./ConfirmModal.js";
@@ -294,6 +294,10 @@ export function App() {
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
+      // A user may already have focused a field while the route effect was queued.
+      // Never steal that focus (or close an open picker/dialog) after navigation.
+      if (document.querySelector("dialog[open]") ||
+        (document.activeElement !== mainRef.current && mainRef.current?.contains(document.activeElement))) return;
       mainRef.current?.focus({ preventScroll: true });
       window.scrollTo(0, 0);
     });
@@ -315,7 +319,7 @@ export function App() {
         !(event.target instanceof Element && event.target.closest("input,textarea,select,[contenteditable]"))
       ) {
         const search = Array.from(
-          mainRef.current?.querySelectorAll<HTMLInputElement>('input[type="search"]') ?? [],
+          mainRef.current?.querySelectorAll<HTMLInputElement>('input[type="search"], input[role="combobox"]') ?? [],
         ).find((input) => input.getClientRects().length > 0);
         if (search) {
           event.preventDefault();
@@ -642,7 +646,9 @@ export function App() {
   };
 
   const onAddModel = (model: string) => {
-    updateRows((rs) => upsertCustomModelRows(rs, [model]));
+    const selected = selectModelById(rowsRef.current, connRef.current.providerId, model);
+    updateRows(() => selected.rows);
+    return selected.key;
   };
 
   const onRemoveModel = (key: string) => {
@@ -923,10 +929,11 @@ export function App() {
                 onAddModels={onAddModels}
                 onAddToProvider={onAddToProvider}
                 onToast={showToast}
-                onAddCatalogModels={onAddCatalogModels}
               />
-              <details class="advanced-request-settings"><summary>{t("config.advanced")}</summary><ConfigPanel value={config} onChange={onConfigChange} /></details>
               <ModelTable
+                config={config}
+                onConfigChange={onConfigChange}
+                onAddCatalogModels={onAddCatalogModels}
                 rows={rows}
                 providers={providers}
                 busy={busy}

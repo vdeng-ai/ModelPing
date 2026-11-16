@@ -1,0 +1,78 @@
+.model-select {
+  position: relative;
+  flex: 1 0 100%;
+  min-width: 0;
+}
+.model-select-input {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 0 12px;
+  border: 1px solid var(--ds-separator-strong);
+  border-radius: var(--ds-radius-md);
+  background: var(--ds-surface);
+  color: var(--ds-label-secondary);
+}
+.model-select-input:focus-within {
+  outline: 2px solid var(--ds-accent);
+  outline-offset: 2px;
+}
+.model-select-input > svg { flex-shrink: 0; }
+.model-select-input > input {
+  min-width: 0;
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.model-select-input > input:focus-visible { outline: none; }
+.model-select-hint {
+  margin: 8px 0 0;
+  color: var(--ds-label-secondary);
+  font-size: 11px;
+  line-height: 1.6;
+}
+.model-search-popup {
+  position: absolute;
+  inset: 50px 0 auto;
+  z-index: 20;
+  border: 1px solid var(--ds-separator-strong);
+  border-radius: var(--ds-radius-md);
+  background: var(--ds-surface);
+  box-shadow: var(--ds-shadow-2);
+  overflow: hidden;
+}
+.model-search-options {
+  max-height: min(320px, 42dvh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.model-search-status, .model-search-empty, .model-search-error {
+  margin: 0;
+  padding: 9px 12px;
+  color: var(--ds-label-secondary);
+  font-size: 11px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.model-search-status { background: var(--ds-surface-soft); }
+.model-search-error { color: var(--ds-red); }
+.model-search-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  min-height: 60px;
+  border-bottom: 1px solid var(--ds-separator);
+  cursor: pointer;
+}
+.model-search-option:last-child { border-bottom: 0; }
+.model-search-option.active, .model-search-option:hover { background: var(--ds-accent-tint); }
+.model-search-option[aria-selected="true"] > svg { color: var(--ds-accent); flex-shrink: 0; }
+.model-search-identity { display: grid; gap: 3px; min-width: 0; }
+.model-search-identity strong { font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
+.model-search-identity code { font-size: 11px; color: var(--ds-label-secondary); overflow-wrap: anywhere; }
+.model-search-identity small { font-size: 10px; color: var(--ds-label-secondary); overflow-wrap: anywhere; }

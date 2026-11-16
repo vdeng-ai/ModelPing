@@ -1,43 +1,34 @@
 import { useEffect, useMemo, useState } from "preact/hooks";
 import { Check, Download, RefreshCw, Search } from "lucide-preact";
 import type { ProviderPreset } from "../lib/types.js";
-import { fetchModelCatalog, syncModelCatalog, type CatalogProvider } from "../lib/api.js";
+import type { CatalogProvider } from "../lib/api.js";
+import type { ModelCatalogState } from "./useModelCatalog.js";
 import { useI18n } from "../lib/i18n.js";
 import "./ModelCatalogPanel.css";
 
-export function ModelCatalogPanel({ providers, busy, disableAdd = false, onAdd }: {
+export function ModelCatalogPanel({ providers, busy, disableAdd = false, onAdd, state, activeProviderId }: {
+  state: ModelCatalogState;
+  activeProviderId: string;
   providers: ProviderPreset[];
   busy: boolean;
   disableAdd?: boolean;
   onAdd: (providerId: string, models: { id: string; label: string }[], source: CatalogProvider) => void;
 }) {
   const { t, lang } = useI18n();
-  const [catalog, setCatalog] = useState<{ providers: CatalogProvider[]; updatedAt: string | null }>({ providers: [], updatedAt: null });
-  const [loading, setLoading] = useState(true);
-  const [expanded, setExpanded] = useState(false);
-  const [syncing, setSyncing] = useState(false);
-  const [error, setError] = useState("");
+  const catalog = state.data ?? { providers: [], updatedAt: null };
+  const { loading, syncing, error } = state;
   const [sourceId, setSourceId] = useState("");
-  const [targetId, setTargetId] = useState(providers[0]?.id ?? "");
+  const [targetId, setTargetId] = useState(providers.some((p) => p.id === activeProviderId) ? activeProviderId : (providers[0]?.id ?? "__new__"));
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
+  useEffect(() => { void state.load(); }, [state.load]);
   useEffect(() => {
-    if (!expanded) return;
-    let active = true;
-    void fetchModelCatalog().then((data) => {
-      if (active) {
-        setCatalog({ providers: data.providers ?? [], updatedAt: data.updatedAt });
-        setSourceId(data.providers?.[0]?.id ?? "");
-      }
-    }).catch((e) => {
-      if (active) setError(e?.message ?? String(e));
-    }).finally(() => { if (active) setLoading(false); });
-    return () => { active = false; };
-  }, [expanded]);
-
+    setSourceId((current) => state.data?.providers.some((p) => p.id === current) ? current : (state.data?.providers[0]?.id ?? ""));
+    setSelected(new Set());
+  }, [state.data]);
   useEffect(() => {
-    if (!providers.some((provider) => provider.id === targetId)) setTargetId(providers[0]?.id ?? "");
+    if (targetId !== "__new__" && !providers.some((provider) => provider.id === targetId)) setTargetId(providers[0]?.id ?? "__new__");
   }, [providers, targetId]);
 
   const source = catalog.providers.find((provider) => provider.id === sourceId);
@@ -54,21 +45,6 @@ export function ModelCatalogPanel({ providers, busy, disableAdd = false, onAdd }
   const targetIds = new Set(target?.models.map((model) => model.id) ?? []);
   const addable = [...selected].filter((id) => !targetIds.has(id));
 
-  const sync = async () => {
-    setSyncing(true);
-    setError("");
-    try {
-      const data = await syncModelCatalog();
-      setCatalog({ providers: data.providers ?? [], updatedAt: data.updatedAt });
-      setSourceId((current) => data.providers.some((provider) => provider.id === current) ? current : (data.providers[0]?.id ?? ""));
-      setSelected(new Set());
-    } catch (e: any) {
-      setError(e?.message ?? String(e));
-    } finally {
-      setSyncing(false);
-    }
-  };
-
   const addSelected = () => {
     if (!source || (!target && targetId !== "__new__") || !addable.length) return;
     onAdd(targetId, addable.map((id) => {
@@ -83,37 +59,34 @@ export function ModelCatalogPanel({ providers, busy, disableAdd = false, onAdd }
     : t("catalog.neverSynced");
 
   return (
-    <details class="model-catalog-panel" onToggle={(event) => setExpanded((event.currentTarget as HTMLDetailsElement).open)}>
-      <summary class="model-catalog-summary">
-        <span class="model-catalog-summary-copy"><strong>{t("catalog.title")}</strong><small>{t("catalog.summary", { providers: catalog.providers.length, models: catalog.providers.reduce((sum, item) => sum + item.models.length, 0) })}</small></span>
-        <span class="model-catalog-updated">{updatedLabel}</span>
-      </summary>
+    <section class="model-catalog-panel">
+      <p class="model-catalog-updated">{updatedLabel}</p>
       <div class="model-catalog-content">
         <div class="model-catalog-intro">
           <p>{t("catalog.description")}</p>
-          <button class="primary" type="button" disabled={syncing || busy} onClick={() => void sync()}>
+          <button class="primary" type="button" disabled={syncing || busy || loading} onClick={() => void state.sync()}>
             <RefreshCw size={16} class={syncing ? "spin" : ""} />
             {syncing ? t("catalog.syncing") : t("catalog.sync")}
           </button>
         </div>
         <div class="model-catalog-meta"><span>{t("catalog.source")}: <a href="https://models.dev/" target="_blank" rel="noreferrer">Models.dev</a></span><span>{loading ? t("common.loading") : t("catalog.manualOnly")}</span></div>
-        {error ? <p class="model-catalog-error" role="alert">{error}</p> : null}
+        {error ? <div class="model-catalog-error" role="alert">{error}{!state.data ? <button type="button" onClick={() => void state.load()}>{t("app.retry")}</button> : null}</div> : null}
         {catalog.providers.length ? (
           <>
             <div class="model-catalog-controls">
               <label class="field"><span>{t("catalog.sourceProvider")}</span><select value={sourceId} onChange={(e) => { setSourceId(e.currentTarget.value); setSelected(new Set()); }}>
                 <option value="">{t("catalog.chooseProvider")}</option>
-                {catalog.providers.map((provider) => <option value={provider.id}>{provider.name} ({provider.models.length})</option>)}
+                {catalog.providers.map((provider) => <option key={provider.id} value={provider.id}>{provider.name} ({provider.models.length})</option>)}
               </select></label>
               <label class="field"><span>{t("catalog.targetProvider")}</span><select value={targetId} disabled={busy} onChange={(e) => setTargetId(e.currentTarget.value)}>
                 <option value="__new__">{t("catalog.createProvider")}</option>
-                {providers.map((provider) => <option value={provider.id}>{provider.name}</option>)}
+                {providers.map((provider) => <option key={provider.id} value={provider.id}>{provider.name}</option>)}
               </select></label>
             </div>
             {source ? (
               <>
                 <div class="model-catalog-protocol"><span>{t("catalog.protocolMatch")}</span><strong>{matchedProtocol}</strong></div>
-                <label class="search-control model-catalog-search"><Search size={16} aria-hidden="true"/><input type="search" value={query} placeholder={t("catalog.searchModels")} onInput={(e) => setQuery(e.currentTarget.value)} /></label>
+                <label class="search-control model-catalog-search"><Search size={16} aria-hidden="true"/><input type="search" aria-label={t("catalog.searchModels")} value={query} placeholder={t("catalog.searchModels")} onInput={(e) => setQuery(e.currentTarget.value)} /></label>
                 <div class="model-catalog-list">
                   {filtered.map((model) => {
                     const exists = targetIds.has(model.id);
@@ -131,6 +104,6 @@ export function ModelCatalogPanel({ providers, busy, disableAdd = false, onAdd }
           </>
         ) : <p class="model-catalog-empty">{loading ? t("common.loading") : t("catalog.empty")}</p>}
       </div>
-    </details>
+    </section>
   );
 }

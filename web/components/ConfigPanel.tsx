@@ -2,12 +2,9 @@ import { useState } from "preact/hooks";
 import type { ConfigState } from "../lib/types.js";
 import { useI18n } from "../lib/i18n.js";
 import { USER_AGENT_PRESETS, isValidUserAgentHeader } from "../lib/user-agent.js";
-import { ChevronRight, SlidersHorizontal } from "lucide-preact";
-import { useMediaQuery } from "./useMediaQuery.js";
 
 export function ConfigPanel({ value, onChange }: { value: ConfigState; onChange: (v: ConfigState) => void }) {
   const { t } = useI18n();
-  const mobile = useMediaQuery("(max-width: 760px)");
   const [customUa, setCustomUa] = useState(false);
   const isPreset = USER_AGENT_PRESETS.some((preset) => preset.value === value.userAgent);
   const selectedUa = customUa || !isPreset ? "__custom__" : value.userAgent;
@@ -29,30 +26,15 @@ export function ConfigPanel({ value, onChange }: { value: ConfigState; onChange:
         value={key === "timeoutMs" ? value.timeoutMs / 1000 : value[key]}
         onChange={(event) => {
           const n = Number(event.currentTarget.value);
-          const next = Math.max(min, Math.min(max, Number.isFinite(n) ? n : min));
+          const next = Math.max(min, Math.min(max, Number.isFinite(n) ? Math.trunc(n) : min));
           onChange({ ...value, [key]: key === "timeoutMs" ? next * 1000 : next });
         }}
       />
     </div>
   );
   return (
-    <details class="panel config-panel setup-disclosure" open={!mobile}>
-      <summary class="setup-summary">
-        <SlidersHorizontal size={20} aria-hidden="true" />
-        <strong>{t("config.title")}</strong>
-        <small>
-          {t("ui.concurrencyShort")} {value.concurrency} · {value.timeoutMs / 1000}s · {value.maxTokens}
-        </small>
-        <ChevronRight size={16} class="config-edit" aria-hidden="true" />
-      </summary>
+    <div class="config-panel">
       <div class="setup-body">
-        <div class="panel-title-row">
-          <div>
-            <span class="section-index">02</span>
-            <h2>{t("config.title")}</h2>
-          </div>
-          <SlidersHorizontal size={17} aria-hidden="true" />
-        </div>
         <div class="field">
           <label for="config-input">{t("config.input")}</label>
           <textarea
@@ -66,14 +48,8 @@ export function ConfigPanel({ value, onChange }: { value: ConfigState; onChange:
           {numberField("concurrency", t("ui.concurrencyShort"), 1, 10)}
           {numberField("timeoutMs", t("ui.timeoutSeconds"), 1, 600)}
           {numberField("maxTokens", t("ui.outputLimit"), 1, 200000)}
+          {numberField("maxRetries", t("config.maxRetries"), 0, 10)}
         </div>
-        <details class="disclosure advanced-settings">
-          <summary>
-            <ChevronRight size={16} aria-hidden="true" />
-            {t("config.advanced")}
-          </summary>
-          <div class="disclosure-body">
-            {" "}
             <div class="field">
               <label for="config-user-agent">{t("config.userAgent")}</label>
               <select
@@ -110,10 +86,7 @@ export function ConfigPanel({ value, onChange }: { value: ConfigState; onChange:
                 </div>
               </div>
             ) : null}
-            {numberField("maxRetries", t("config.maxRetries"), 0, 10)}
-          </div>
-        </details>
       </div>
-    </details>
+    </div>
   );
 }

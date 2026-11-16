@@ -26,11 +26,20 @@ colors. `--row-padding` is the density contract; density changes never enter pri
 - One four-item top navigation with real hash links and `aria-current`; there is no
   permanent side rail. Browser back/forward and guarded unsaved changes remain intact.
 - The primary workspace keeps credential decoding and API testing visible together.
-  Decoded API keys and base URLs flow directly into the connection form; the global
-  model catalog loads only when its in-test discovery panel is expanded and refreshes
-  only after an explicit user action.
+  Decoded API keys and base URLs flow directly into the connection form. Do not add
+  duplicate decoding/import controls beside the API key.
+- The model combobox searches configured models and all catalog providers by name,
+  request ID and source. Focusing it or opening the catalog manager reads the cached
+  directory lazily; typing filters in memory. Upstream synchronization remains manual.
+  Picking a catalog model selects its actual request ID without changing credentials,
+  running a test or saving provider presets. Catalog management lives beside model
+  selection; request settings live beside the test action in a single native dialog.
+- Model actions and result filters stay visible at every viewport. Arrow keys and
+  Enter select a search result; Escape cancels search and Tab leaves the combobox.
+  Keep scrollable suggestion lists out of the sequential tab order.
 - `Ctrl/Cmd+K` opens a native command dialog. Arrow keys choose a page, Enter opens it,
-  Escape closes it. `/` focuses the current visible search outside editable fields.
+  Escape closes it. `/` focuses the current visible search or model combobox outside
+  editable fields. Delayed route focus must never steal focus from an active field.
 - Filtering and sorting are browser-only views. Sorting does not reorder the test queue,
   mutate results or lose selection. Tests and model discovery always require explicit action.
 - Native `<dialog>.showModal()` provides top-layer placement, background inertness and
@@ -67,4 +76,6 @@ Browser suites serve the production bundle locally, mock every API and reject ex
 requests. Screenshots and logs are generated under `node_modules/.cache/`; they contain
 fixture data only. The workbench suite asserts zero extra API calls for navigation,
 filtering, sorting and density; batching; hidden/offline pausing; cross-tab leadership;
-native-dialog focus; guarded edits; exports; and five views at 320/390/768/1440 px.
+native-dialog focus; guarded edits; exports; and four pages at 320/390/768/1440 px.
+It also covers global model selection, canonical request IDs, keyboard/touch input,
+catalog failure/retry/empty states, and catalog/request dialogs in both themes.

@@ -1,10 +1,12 @@
-import { useEffect, useState } from "preact/hooks";
+import { useEffect, useId, useState } from "preact/hooks";
 import {
   Ban,
   BookmarkPlus,
   ChevronRight,
   Equal,
   FileText,
+  Globe,
+  SlidersHorizontal,
   Play,
   Plus,
   RadioTower,
@@ -13,7 +15,7 @@ import {
   Trash2,
   X,
 } from "lucide-preact";
-import type { Protocol, ProviderPreset, StatusEntry } from "../lib/types.js";
+import type { ConfigState, Protocol, ProviderPreset, StatusEntry } from "../lib/types.js";
 import { fmtMs, fmtTok, PROTOCOL_LABEL } from "../lib/format.js";
 import { CcSwitchButton } from "./CcSwitchButton.js";
 import { PromptModal } from "./PromptModal.js";
@@ -23,13 +25,21 @@ import { CUSTOM_PROVIDER_ID } from "../lib/presets.js";
 import { StatusMark } from "./StatusMark.js";
 import type { ModelRow, ProtocolProbe } from "../lib/model-rows.js";
 import { useMediaQuery } from "./useMediaQuery.js";
-import { ActionMenu } from "./ActionMenu.js";
 import { CopyButton } from "./CopyButton.js";
-import { sortModelRows, type ModelSort } from "../lib/model-view.js";
+import { modelsForConnection } from "../lib/model-selection.js";
+import { ModelSelect } from "./ModelSelect.js";
+import { ModelCatalogPanel } from "./ModelCatalogPanel.js";
+import { useModelCatalog } from "./useModelCatalog.js";
+import { ConfigPanel } from "./ConfigPanel.js";
+import { Modal } from "./Modal.js";
+import type { CatalogProvider } from "../lib/api.js";
 import { rowState, rowResult } from "../lib/result-presentation.js";
 export { protocolsForModel } from "../lib/model-rows.js";
 
 interface Props {
+  config: ConfigState;
+  onConfigChange: (config: ConfigState) => void;
+  onAddCatalogModels: (providerId: string, models: { id: string; label: string }[], source: CatalogProvider) => void;
   rows: ModelRow[];
   providers: ProviderPreset[];
   busy: boolean;
@@ -42,7 +52,7 @@ interface Props {
   onToggle: (key: string, checked: boolean) => void;
   onToggleAll: (checked: boolean) => void;
   onToggleGroup: (keys: string[], checked: boolean) => void;
-  onAdd: (model: string) => void;
+  onAdd: (model: string) => string;
   onRemove: (key: string) => void;
   onSaveCustomModel: (model: string) => void;
   onTestSelected: (keys?: string[]) => void;
@@ -118,36 +128,25 @@ export function ModelTable(props: Props) {
   const { t, lang } = useI18n();
   const mobile = useMediaQuery("(max-width: 760px)");
   const { rows, busy, conn, providerName } = props;
-  const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("all");
-  const [sort, setSort] = useState<ModelSort>("preset");
+  const catalog = useModelCatalog();
+  const [catalogOpen, setCatalogOpen] = useState(false);
+  const [configOpen, setConfigOpen] = useState(false);
+  const dialogId = useId();
   const [modelChoice, setModelChoice] = useState("");
   const [addingModel, setAddingModel] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   const [statusNamePrompt, setStatusNamePrompt] = useState<Array<Omit<StatusEntry, "id">> | null>(null);
   const [lastCustomProviderName, setLastCustomProviderName] = useState("");
-  const selectedProviderModels = conn.providerId === CUSTOM_PROVIDER_ID
-    ? rows
-    : rows.filter((row) => row.custom || Object.keys(row.modelByProvider)[0] === conn.providerId);
+  const selectedProviderModels = modelsForConnection(rows, conn.providerId);
   const activeModelChoice = selectedProviderModels.some((row) => row.key === modelChoice) ? modelChoice : (selectedProviderModels[0]?.key ?? "");
   useEffect(() => {
     if (!activeModelChoice) return;
     props.onToggleAll(false);
     props.onToggle(activeModelChoice, true);
-  }, [activeModelChoice]);
-  const visibleRows = sortModelRows(
-    rows.filter(
-      (row) =>
-        row.key === activeModelChoice &&
-        (!query.trim() ||
-          `${row.label} ${Object.values(row.modelByProvider).join(" ")}`
-            .toLowerCase()
-            .includes(query.trim().toLowerCase())) &&
-        (filter === "all" || rowState(row) === filter),
-    ),
-    sort,
-  );
+  }, [activeModelChoice, conn.providerId]);
+  const visibleRows = rows.filter((row) => row.key === activeModelChoice && (filter === "all" || rowState(row) === filter));
   const selectedCount = rows.filter((row) => row.checked).length;
   const allVisibleChecked = visibleRows.length > 0 && visibleRows.every((row) => row.checked);
   const canAddStatus = Boolean(conn.baseUrl.trim() && conn.apiKey.trim());
@@ -245,7 +244,7 @@ export function ModelTable(props: Props) {
             </span>
           </div>
           <div class="model-row-actions">
-            <ActionMenu label={`${t("ui.more")} · ${r.label}`}>
+            <div class="model-row-secondary-actions">
               <button disabled={busy || !canAddStatus} onClick={() => addRowsToStatus([r])}>
                 <BookmarkPlus size={16} />
                 {t("models.addToStatus")}
@@ -263,7 +262,7 @@ export function ModelTable(props: Props) {
                 <Trash2 size={16} />
                 {t("common.remove")}
               </button>
-            </ActionMenu>
+            </div>
             {result ? (
               <button
                 type="button"
@@ -348,128 +347,52 @@ export function ModelTable(props: Props) {
         ))}
       </div>
       <div class="model-toolbar">
-        <label class="field model-choice-field">
-          <span>{t("workbench.chooseModel")}</span>
-          <select aria-label={t("workbench.chooseModel")} value={activeModelChoice} onChange={(e) => { const key = e.currentTarget.value; setModelChoice(key); props.onToggleAll(false); props.onToggle(key, true); }}>
-            {selectedProviderModels.map((row) => <option value={row.key}>{row.label}</option>)}
-          </select>
-        </label>
-        <label class="search-control">
-          <Search size={17} aria-hidden="true" />
-          <input
-            type="search"
-            value={query}
-            placeholder={t("ui.searchModels")}
-            aria-label={t("ui.searchModels")}
-            onInput={(e) => setQuery(e.currentTarget.value)}
-          />
-        </label>
-        <select
-          class="result-filter-select"
-          aria-label={t("ui.allResults")}
-          value={filter}
-          onChange={(e) => setFilter(e.currentTarget.value)}
-        >
-          <option value="all">{t("ui.allResults")}</option>
-          <option value="success">{t("ui.passed")}</option>
-          <option value="fail">{t("ui.failed")}</option>
-          <option value="idle">{t("ui.pending")}</option>
-        </select>
-        <select
-          class="model-sort"
-          aria-label={t("workbench.sort")}
-          value={sort}
-          onChange={(e) => setSort(e.currentTarget.value as ModelSort)}
-        >
-          <option value="preset">{t("workbench.sortPreset")}</option>
-          <option value="name">{t("workbench.sortName")}</option>
-          <option value="latency">{t("workbench.sortLatency")}</option>
-          <option value="status">{t("workbench.sortStatus")}</option>
-        </select>
-        <label class="select-visible">
-          <input
-            type="checkbox"
-            disabled={busy || !visibleRows.length}
-            checked={allVisibleChecked}
-            ref={(el) => {
-              if (el) el.indeterminate = !allVisibleChecked && visibleRows.some((row) => row.checked);
-            }}
-            onChange={(e) =>
-              props.onToggleGroup(
-                visibleRows.map((row) => row.key),
-                e.currentTarget.checked,
-              )
-            }
-          />
-          {t("common.selectAll")}
-        </label>
-        <span class="selection-count">{t("ui.selected", { count: selectedCount })}</span>
-        <button class="mobile-add-model text-action" disabled={busy} onClick={() => setAddingModel(true)}>
-          <Plus size={16} />
-          {t("models.addModel")}
-        </button>
-        <div class="model-primary-actions">
-          <ActionMenu label={t("ui.more")} showLabel>
-            <button onClick={() => setAddingModel(true)}>
-              <Plus size={16} />
-              {t("models.addModel")}
+        <div class="model-selection-heading">
+          <span class="section-index">02</span><h3>{t("workbench.chooseModel")}</h3>
+          <button type="button" class="text-action catalog-trigger" onClick={() => setCatalogOpen(true)}>
+            <Globe size={16} aria-hidden="true" />{t("catalog.title")}
+          </button>
+        </div>
+        <ModelSelect rows={rows} providerId={conn.providerId} selectedKey={activeModelChoice} disabled={busy} catalog={catalog}
+          onSelect={(option) => {
+            const key = option.rowKey ?? props.onAdd(option.id);
+            setModelChoice(key); setFilter("all");
+            props.onToggleAll(false); props.onToggle(key, true);
+          }} />
+        <div class="model-secondary-actions" aria-label={t("modelSelect.actions")}>
+          <button class="add-model-trigger" disabled={busy} onClick={() => setAddingModel(true)}>
+            <Plus size={16} aria-hidden="true" />{t("ui.addCustomModel")}
+          </button>
+          <button disabled={busy || !selectedCount || !canAddStatus} onClick={() => addRowsToStatus(rows.filter((r) => r.checked))}>
+            <BookmarkPlus size={16} aria-hidden="true" />{t("models.addSelectedToStatus")}
+          </button>
+          <CcSwitchButton name={providerName} endpoint={conn.baseUrl} apiKey={conn.apiKey}
+            model={rows.find((row) => row.key === activeModelChoice)?.modelByProvider[conn.providerId] ?? rows.find((row) => row.key === activeModelChoice)?.label}
+            defaultApp="claude" disabled={busy || !canAddStatus} onLaunched={props.onLaunched} />
+        </div>
+        <div class="model-request-bar">
+          <div class="request-summary"><strong>{t("modelSelect.request")}</strong>
+            <span>{props.config.timeoutMs / 1000}s · {props.config.maxTokens} tokens · {t("ui.concurrencyShort")} {props.config.concurrency}</span>
+          </div>
+          <div class="model-primary-actions">
+            <button type="button" class="config-trigger" disabled={busy} onClick={() => setConfigOpen(true)}>
+              <SlidersHorizontal size={16} aria-hidden="true" />{t("config.advanced")}
             </button>
-            <label class="menu-field">
-              {t("ui.allResults")}
-              <select value={filter} onChange={(e) => setFilter(e.currentTarget.value)}>
-                <option value="all">{t("ui.allResults")}</option>
-                <option value="success">{t("ui.passed")}</option>
-                <option value="fail">{t("ui.failed")}</option>
-                <option value="idle">{t("ui.pending")}</option>
-              </select>
-            </label>
-            <button
-              disabled={busy || !selectedCount || !canAddStatus}
-              onClick={() => addRowsToStatus(rows.filter((r) => r.checked))}
-            >
-              <BookmarkPlus size={16} />
-              {t("models.addSelectedToStatus")}
-            </button>
-            <CcSwitchButton
-              name={providerName}
-              endpoint={conn.baseUrl}
-              apiKey={conn.apiKey}
-              defaultApp="claude"
-              disabled={busy || !canAddStatus}
-              onLaunched={props.onLaunched}
-            />
-          </ActionMenu>
-          {busy ? (
-            <button class="danger" onClick={props.onCancel}>
-              <X size={16} />
-              {t("models.cancelTests")}
-            </button>
-          ) : (
-            <button class="primary" disabled={!activeModelChoice || busy || !canAddStatus} onClick={() => props.onTestSelected([activeModelChoice])}>
-              <Play size={16} fill="currentColor" />
-              {selectedCount ? t("models.testSelectedCount", { count: selectedCount }) : t("models.testSelected")}
-            </button>
-          )}
+            {busy ? <button class="danger" onClick={props.onCancel}><X size={16} />{t("models.cancelTests")}</button>
+              : <button class="primary" disabled={!activeModelChoice || !canAddStatus} onClick={() => props.onTestSelected([activeModelChoice])}>
+                <Play size={16} fill="currentColor" />{t("models.testSelectedCount", { count: 1 })}
+              </button>}
+          </div>
         </div>
       </div>
-      <div class="view-summary">
-        <span>{t("workbench.visibleCount", { visible: visibleRows.length, total: rows.length })}</span>
-        {selectedCount ? (
-          <button class="text-action" disabled={busy} onClick={() => props.onToggleAll(false)}>
-            {t("workbench.clearSelection")}
-          </button>
-        ) : null}
-        {query || filter !== "all" ? (
-          <button
-            class="text-action"
-            onClick={() => {
-              setQuery("");
-              setFilter("all");
-            }}
-          >
-            {t("workbench.resetFilters")}
-          </button>
-        ) : null}
+      <div class="model-results-heading">
+        <h3>{t("modelSelect.results")}</h3>
+        <label class="model-result-filter"><span>{t("modelSelect.resultFilter")}</span>
+          <select aria-label={t("ui.allResults")} value={filter} onChange={(event) => setFilter(event.currentTarget.value)}>
+            <option value="all">{t("ui.allResults")}</option><option value="success">{t("ui.passed")}</option>
+            <option value="fail">{t("ui.failed")}</option><option value="idle">{t("ui.pending")}</option>
+          </select>
+        </label>
       </div>
       {!canAddStatus ? (
         <div class="setup-notice">
@@ -538,7 +461,6 @@ export function ModelTable(props: Props) {
               disabled={busy}
               onClick={() => {
                 if (rows.length) {
-                  setQuery("");
                   setFilter("all");
                 } else setAddingModel(true);
               }}
@@ -590,22 +512,19 @@ export function ModelTable(props: Props) {
           })
         )}
       </div>
-      <div class="model-list-footer">
-        <button class="add-model-trigger" disabled={busy} onClick={() => setAddingModel(true)}>
-          <Plus size={16} />
-          {t("ui.addCustomModel")}
-        </button>
-        <span class="spacer" />
-        <span class="success">
-          <StatusMark state="success" />
-          {t("ui.passedCount", { count: passedCount })}
-        </span>
-        <span class="fail">
-          <StatusMark state="fail" />
-          {t("ui.failedCount", { count: failedCount })}
-        </span>
-        <span class="muted">{t("ui.batchCount", props.progress)}</span>
-      </div>
+      {catalogOpen ? <Modal labelledBy={`${dialogId}-catalog`} onClose={() => setCatalogOpen(false)} className="catalog-dialog">
+        <div class="modal-head"><h2 id={`${dialogId}-catalog`}>{t("catalog.title")}</h2>
+          <button type="button" class="icon-button subtle" aria-label={t("common.close")} onClick={() => setCatalogOpen(false)}><X size={18} /></button>
+        </div>
+        <ModelCatalogPanel providers={props.providers} busy={busy} state={catalog} activeProviderId={conn.providerId} onAdd={props.onAddCatalogModels} />
+      </Modal> : null}
+      {configOpen ? <Modal labelledBy={`${dialogId}-config`} onClose={() => setConfigOpen(false)} className="config-dialog">
+        <div class="modal-head"><h2 id={`${dialogId}-config`}>{t("config.advanced")}</h2>
+          <button type="button" class="icon-button subtle" aria-label={t("common.close")} onClick={() => setConfigOpen(false)}><X size={18} /></button>
+        </div>
+        <ConfigPanel value={props.config} onChange={props.onConfigChange} />
+        <div class="modal-actions"><span>{t("modelSelect.settingsHint")}</span><button class="primary" onClick={() => setConfigOpen(false)}>{t("common.close")}</button></div>
+      </Modal> : null}
       {addingModel ? (
         <PromptModal
           title={t("ui.addCustomModel")}
@@ -621,7 +540,8 @@ export function ModelTable(props: Props) {
           ]}
           onClose={() => setAddingModel(false)}
           onConfirm={({ model }) => {
-            props.onAdd(model.trim());
+            setModelChoice(props.onAdd(model.trim()));
+            setFilter("all");
             setAddingModel(false);
           }}
         />

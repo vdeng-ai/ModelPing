@@ -9,8 +9,6 @@ import { ModelPickerModal } from "./ModelPickerModal.js";
 import { PromptModal } from "./PromptModal.js";
 import { useMediaQuery } from "./useMediaQuery.js";
 import { useI18n, translate, type Lang } from "../lib/i18n.js";
-import { ModelCatalogPanel } from "./ModelCatalogPanel.js";
-import type { CatalogProvider } from "../lib/api.js";
 
 export interface ConnValue {
   providerId: string;
@@ -37,7 +35,6 @@ interface Props {
   onAddModels: (ids: string[]) => void;
   onAddToProvider: (draft: AddToProviderDraft) => void;
   onToast: (msg: string, opts?: { tone?: "info" | "error"; ms?: number }) => void;
-  onAddCatalogModels: (providerId: string, models: { id: string; label: string }[], source: CatalogProvider) => void;
 }
 
 // 余额展示文案。
@@ -53,11 +50,6 @@ function fmtBalance(b: Balance, lang: Lang): string {
   return tr("conn.balanceNotParsed");
 }
 
-function looksLikeJsonObject(raw: string): boolean {
-  const s = raw.trim();
-  return s.startsWith("{") && s.endsWith("}");
-}
-
 // 连接面板：点选供应商自动填 baseUrl；或选「自定义」自填。
 // key 掩码显示，可切换明文，带复制按钮；并支持查询余额 / 拉取模型列表 / 添加到供应商。
 export function ConnectionPanel({
@@ -69,7 +61,6 @@ export function ConnectionPanel({
   onAddModels,
   onAddToProvider,
   onToast,
-  onAddCatalogModels,
 }: Props) {
   const { t, lang } = useI18n();
   const mobile = useMediaQuery("(max-width: 760px)");
@@ -161,30 +152,6 @@ export function ConnectionPanel({
       isFullUrl: value.isFullUrl,
       models: selectedModels,
     });
-  };
-
-  const tryQuickImport = (raw: string, input: HTMLInputElement) => {
-    const val = raw.trim();
-    if (!val) return;
-    // 仅在像完整 JSON 对象时反馈错误，避免边输入边刷 toast。
-    if (!looksLikeJsonObject(val)) return;
-    try {
-      const parsed = JSON.parse(val);
-      if (parsed && typeof parsed === "object" && parsed.key && parsed.url) {
-        onChange({
-          providerId: CUSTOM_PROVIDER_ID,
-          baseUrl: String(parsed.url),
-          apiKey: String(parsed.key),
-          isFullUrl: Boolean(value.isFullUrl),
-        });
-        input.value = "";
-        onToast(t("conn.quickImportSuccess"));
-        return;
-      }
-      onToast(t("conn.quickImportInvalid"), { tone: "error" });
-    } catch {
-      onToast(t("conn.quickImportInvalid"), { tone: "error" });
-    }
   };
 
   return (
@@ -289,85 +256,6 @@ export function ConnectionPanel({
               <CopyButton value={value.apiKey} title={t("conn.copyKey")} />
             </div>
             <div class="field-tools key-field-tools">
-              <details class="disclosure key-utilities">
-                <summary>{t("workbench.advancedConnection")}</summary>
-                <div class="disclosure-body">
-                  <div class="field-tools-row">
-                    <button
-                      class="compact-button"
-                      title={t("conn.b64Title")}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        try {
-                          const decoded = new TextDecoder().decode(
-                            Uint8Array.from(atob(value.apiKey), (c) => c.charCodeAt(0)),
-                          );
-                          onChange({ ...value, apiKey: decoded });
-                        } catch {
-                          onToast(t("conn.decodeFailed"), { tone: "error" });
-                        }
-                      }}
-                    >
-                      Base64
-                    </button>
-                    <button
-                      class="compact-button"
-                      title={t("conn.hexTitle")}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        try {
-                          const bytes = value.apiKey
-                            .trim()
-                            .split(/\s+/)
-                            .filter(Boolean)
-                            .map((h) => {
-                              if (!/^[0-9a-fA-F]{1,2}$/.test(h)) throw new Error("bad hex");
-                              return parseInt(h, 16);
-                            });
-                          if (bytes.length === 0) {
-                            onToast(t("conn.decodeFailed"), { tone: "error" });
-                            return;
-                          }
-                          const decoded = new TextDecoder().decode(Uint8Array.from(bytes));
-                          onChange({ ...value, apiKey: decoded });
-                        } catch {
-                          onToast(t("conn.decodeFailed"), { tone: "error" });
-                        }
-                      }}
-                    >
-                      Hex
-                    </button>
-                    <button
-                      class="compact-button"
-                      title={t("conn.reverseTitle")}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onChange({ ...value, apiKey: Array.from(value.apiKey).reverse().join("") });
-                      }}
-                    >
-                      {t("conn.reverse")}
-                    </button>
-                  </div>
-                  <details class="disclosure quick-import">
-                    <summary>{t("ui.moreConnection")}</summary>
-                    <div class="disclosure-body">
-                      <CopyButton value={value.baseUrl} title={t("conn.copyBaseUrl")} showLabel />
-                      <label class="sr-only" for="connection-quick-import">
-                        {t("conn.quickImport")}
-                      </label>
-                      <input
-                        id="connection-quick-import"
-                        class="mono"
-                        type="text"
-                        placeholder={t("conn.quickImportPlaceholder")}
-                        onInput={(e) =>
-                          tryQuickImport((e.target as HTMLInputElement).value, e.target as HTMLInputElement)
-                        }
-                      />
-                    </div>
-                  </details>
-                </div>
-              </details>
               <div class="field-tools-row lookup-tools-row">
                 <button
                   ref={fetchModelsButtonRef}
@@ -399,8 +287,6 @@ export function ConnectionPanel({
             {balanceText ? <div class="balance-line">{balanceText}</div> : null}
           </div>
         </div>
-
-        <ModelCatalogPanel providers={providers} busy={modelsBusy} onAdd={onAddCatalogModels} />
 
         {pickerModels ? (
           <ModelPickerModal
