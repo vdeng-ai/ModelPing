@@ -1,313 +1,129 @@
-# ModelPing · LLM API Testing Tool
+# ModelPing · Credential Decode & API Test
 
 **English** | [简体中文](./README.zh-CN.md)
 
-A lightweight, zero-config web tool to quickly check whether an LLM API is reachable, and to measure latency and token usage across providers.
+Decode credentials, choose a model, and test an LLM API in one workspace. ModelPing helps you check protocol compatibility, streaming behavior, response latency, and token usage without writing a test script.
 
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/vdeng-ai/ModelPing)
+![Credential decoding and API testing in the current English interface](./docs/screenshots/workbench-en.png)
 
-> One-click Cloudflare deployment clones the repository, configures Workers Builds, and provisions resources declared by Wrangler. Before exposing the Worker publicly, set strong `APP_PASSWORD` and `PRIVATE_STATE_SECRET` values during deployment setup.
+_Screenshots show the real interface with synthetic endpoints, credentials, responses, and timings. They are usage examples, not provider benchmarks._
 
-![Model testing workbench in English](./docs/screenshots/workbench-en.png)
+## What ModelPing does
 
-*English interface with illustrative endpoints and responses. No real API keys are shown.*
+| Area               | What you can do                                                                                                                                  |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Test               | Decode credentials beside the connection form; search configured models and the global catalog; run the selected model and inspect its response. |
+| History            | Search this session's tests, inspect errors and request details, and export the filtered results as JSON.                                        |
+| Status             | Save endpoint/model combinations and check reachability manually, with optional automatic refresh while the page is active.                      |
+| Providers & models | Edit reusable endpoints and model presets, or import/export provider configuration.                                                              |
+
+The interface supports English and Simplified Chinese, light/dark/system themes, and desktop/mobile layouts. Adding a model, choosing a preset, or editing parameters does not start a test.
+
+## Test your first model
+
+Open a ModelPing instance you trust. You need your provider's **Base URL**, **API key**, and a model ID that your account can access. ModelPing does not supply credentials or model credits. To run your own instance, see the [deployment guide](./docs/deployment.md).
+
+### 1. Set up the connection
+
+On **Test**, select a saved provider or use a custom endpoint. Enter the **Base URL** and **API Key**; enable **Full URL** only when supplying the complete request endpoint rather than a base URL.
+
+Encoded values can be decoded in the **Credential decoding** panel on the same page. Choose the matching format, inspect the output, and use **Use decoded value as API key** or **Use decoded value as Base URL**. Transfer fills the form; it does not send a model request. You can also paste plain values directly.
+
+### 2. Find and select a model
+
+Type a model name, request ID, or catalog provider into **Choose model**. Results combine configured models and the cached global catalog. Selecting a catalog entry uses its actual model ID, keeps your current connection and credentials, and does not require importing it into a provider preset first.
+
+Use **Global model catalog**, next to the model heading, to browse sources, **Check for model updates**, or explicitly add models to a provider preset. Searching uses the existing snapshot; only the update button contacts the upstream catalog.
+
+**Catalog availability:** the current catalog storage integration requires Cloudflare Workers with `SETTINGS_KV`. Node/Docker and Vercel do not currently wire up this store. Without it, use configured models, **Fetch models**, or **Add custom model**. Catalog membership is not proof that your endpoint or API key can use a model.
+
+**Fetch models** reads the current provider's model list and lets you add selected IDs. **Add custom model** accepts an ID directly. These actions add choices, not generation requests.
+
+### 3. Adjust parameters and run
+
+Open **Advanced parameters** next to the test button to change the prompt, timeout, output limit, retries, concurrency, or User-Agent. Closing this dialog keeps the changes for subsequent requests.
+
+| Setting        | Initial value                                                       |
+| -------------- | ------------------------------------------------------------------- |
+| Prompt         | A short self-introduction request, following the interface language |
+| Timeout        | 30 seconds                                                          |
+| Maximum output | 512 tokens                                                          |
+| Retries        | 1                                                                   |
+| Concurrency    | 2                                                                   |
+| User-Agent     | No override                                                         |
+
+Restored settings may replace these initial values. Select **Test selected (1)** to test the active model. ModelPing checks the protocols appropriate to the connection and model, including non-streaming and streaming requests. One click can send multiple upstream requests and consume provider credits.
+
+### 4. Inspect the result
+
+Read the protocol badges, pass/fail state, latency, time to first token, and usage below the test controls. Expand a result for response text or failure details. Missing upstream usage data is shown as unavailable, not zero. Use the result filter to show successful, failed, or pending results.
+
+| Protocol                | Request format                                |
+| ----------------------- | --------------------------------------------- |
+| OpenAI Chat Completions | `/chat/completions`                           |
+| OpenAI Responses        | `/responses`                                  |
+| Gemini native           | `:generateContent` / `:streamGenerateContent` |
+| Anthropic Messages      | `/v1/messages`                                |
+
+Protocol selection depends on the current connection and model, not just the catalog source. A compatible gateway may expose a model through a different protocol than its original vendor.
+
+## Other useful actions
+
+**Local decoding.** Quick Base64, Base64, Hex, URL, Base32, Unicode, HTML, ROT, Morse, JWT, and hashes run in the browser. Conversion supports examples, direction/format controls, copying, and moving output back to input. Drafts clear when you leave Test or reload; only tool preferences are saved. See the [decoding reference](./docs/credential-decoding.md) for formats and JWT limitations. Decoding a credential does not prove it is valid or trustworthy.
+
+**History.** Open **History** to review tests from the current page session. Navigation preserves this history; reloading clears it. **Export filtered results** omits the explicit API-key field, but you should still inspect response bodies and logs before sharing.
+
+**Status.** Use **Add selected to Status** in the model actions. A saved entry does not run a check. Status opens in manual mode; automatic refresh is opt-in and pauses when hidden or offline. **Reachable** means the model-list endpoint responded, not that a particular model can generate. A fallback minimal-generation check can consume tokens. Use Test for model-level verification.
+
+**Providers and helpers.** Save reusable endpoints and model IDs in **Providers & models**. Presets do not contain API keys. **Balance** queries supported providers; **cc-switch** transfers the selected connection/model to a compatible local installation. Review the destination before importing credentials. Model actions are directly visible rather than hidden in a More menu.
+
+**Keyboard.** Press `Ctrl/Cmd + K` to jump between pages, or `/` outside a text field to focus the page's search. In model search, use arrow keys and Enter to choose, Escape to dismiss, and Tab to move on.
+
+## Screenshots
 
 <details>
-<summary>More screenshots: history, status, providers, and mobile</summary>
+<summary>Model search, catalog, parameters, history, status, providers, and mobile</summary>
+
+**Search configured models and the global catalog**
+
+![Searchable model selection with configured and global catalog results](./docs/screenshots/model-search-en.png)
+
+**Browse and import from the catalog**
+
+![Global model catalog in its own dialog](./docs/screenshots/catalog-en.png)
+
+**Request parameters**
+
+![Advanced parameters in one dialog without nested disclosures](./docs/screenshots/parameters-en.png)
 
 **Session history and failure diagnostics**
 
-![English session history with expanded failure diagnostics](./docs/screenshots/history-en.png)
+![Session history with a synthetic authentication failure expanded](./docs/screenshots/history-en.png)
 
 **Endpoint status**
 
-![English endpoint status dashboard](./docs/screenshots/status-en.png)
+![Manual endpoint checks with synthetic status results](./docs/screenshots/status-en.png)
 
 **Provider configuration**
 
-![English provider configuration with unsaved changes](./docs/screenshots/providers-en.png)
+![Saved provider endpoints and model presets](./docs/screenshots/providers-en.png)
 
-**Mobile workbench**
+**Mobile workspace**
 
-<img src="./docs/screenshots/mobile-en.png" alt="English mobile model testing workbench" width="393" />
+<img src="./docs/screenshots/mobile-en.png" alt="Credential decoding and API testing stacked on mobile" width="390" />
 
 </details>
 
-Supported protocols:
+## Privacy and safe use
 
-| Protocol           | Endpoint                                      | Typical providers                                                |
-| ------------------ | --------------------------------------------- | ---------------------------------------------------------------- |
-| `openai-chat`      | `/chat/completions`                           | OpenAI, DeepSeek, GLM, Qwen, Kimi, MiMo, most aggregators…       |
-| `openai-responses` | `/responses`                                  | OpenAI Responses API                                             |
-| `gemini`           | `:generateContent` / `:streamGenerateContent` | Google Gemini (native)                                           |
-| `anthropic`        | `/v1/messages`                                | Anthropic Claude                                                 |
+Decoding stays local. Testing, fetching models, and querying balances send the connection information through the ModelPing backend to the target provider. Use only an instance and endpoint you trust.
 
-Features:
+When encrypted private-state storage is configured, connection details and saved Status entries, including API keys, can be persisted on the server. Otherwise they remain in memory. Test history is session-only even when private-state storage is enabled. Transferring decoded output into the connection form makes it part of that connection state.
 
-- Pick a provider to auto-fill its baseUrl; each model auto-probes provider-appropriate protocols
-- Auto-detects non-streaming and streaming (SSE) availability
-- **Balance lookup**: identifies the provider by baseUrl host and queries remaining credit/quota in one click (DeepSeek, SiliconFlow, OpenRouter, StepFun, Novita, …)
-- **Model list fetch**: pulls available models from the provider's `/models` endpoint; search, multi-select in a modal, and batch-add to the test table
-- **One-click cc-switch import**: opens `ccswitch://v1/import` deep links for the current provider or a passed test result, with target app selection for Claude Code, Codex, Gemini CLI, OpenCode, and OpenClaw
-- Optional custom User-Agent presets for coding-plan upstreams that gate access by client UA; applies consistently to model tests, stream checks, model listing, and balance lookup
-- Reports total latency, time-to-first-token (TTFT, streaming), and input/output/total tokens
-- Per-row status lights in the model table: gray (pending) → blue (testing) → green (pass) / red (fail)
-- Batch testing (default concurrency 2), custom models, adjustable timeout/retries/maxTokens/input text
-- History (toggleable persistence, copy baseUrl/masked key, export JSON)
-- Status page: save common provider + model entries, batch-refresh endpoint latency, auto-refresh with multi-tab leader election, and import to cc-switch
-  - Green **Reachable** means the model-list endpoint responded successfully; models sharing a connection may share this result. It does not verify a particular model's existence, permissions, or generation.
-  - **Minimal generation passed** means only the fallback generation request succeeded; fallback requests may consume tokens. Probe latency is not generation speed or time to first token. Use the Test workbench to check actual model generation.
-- **Local encoding toolbox**: 11 tool tabs covering automatic Base64 conversion, Hex, URL, Base32, Unicode, HTML, ROT, Morse, JWT and hashes, without sending conversion content to the server
-- **Key safety**: the backend never stores API keys in plaintext and never logs them; private working state is saved only as an encrypted blob
+Do not share real credentials, unreviewed logs, or sensitive screenshots. Public instances require access controls; see [deployment and security](./docs/deployment.md).
 
-## Quick start (local)
+## Documentation and license
 
-```bash
-npm install
-npm run dev      # frontend on 5173 (dev) + backend on 8787; open http://localhost:5173
-```
+[Documentation](./docs/README.md) contains local setup, development, deployment, configuration, and maintenance instructions.
 
-Production mode (single process, frontend and backend same-origin):
-
-```bash
-npm run build
-npm start        # http://localhost:8787
-```
-
-## Provider helpers
-
-After entering a provider `baseUrl` and API key in the connection panel, ModelPing can help with a few adjacent setup tasks:
-
-- **Query balance**: click **Balance** next to the API key field. The backend matches the provider by the `baseUrl` host, calls the provider's balance endpoint, and returns remaining credit/quota when that provider is supported. Unsupported providers will be reported as unsupported instead of guessed.
-- **Fetch models**: click **Fetch models** next to the API key field. ModelPing calls the provider's `/models` endpoint, opens a searchable multi-select modal, and batch-adds selected model ids to the test table.
-- **Import to cc-switch**: use the **→ cc-switch** button in the model area to import the current provider, or use the same button in successful history rows to import a tested provider + model pair. The target app dropdown supports Claude Code, Codex, Gemini CLI, OpenCode, and OpenClaw, then opens the local `ccswitch://v1/import` deep link.
-
-These helpers use the same `baseUrl`, API key, full-URL mode, and optional User-Agent configured in the UI. API keys are only forwarded for the request/deep link action and are not persisted by the backend.
-
-## Local encoding and decoding toolbox
-
-Open **Toolbox** in the top navigation, or append `#toolbox` to the current site's address. Conversion runs as you type, with explicit encode/decode modes, examples, clear, move-result-to-input, click-to-select output and clipboard copying. The toolbox follows the app's language and theme, supports mobile layouts and provides keyboard-operated tabs.
-
-| Tool | Supported features |
-| --- | --- |
-| Quick Base64 | Automatically decode Base64 that produces readable UTF-8, or select a direction explicitly |
-| Base64 | UTF-8, standard Base64 / Base64URL and optional `=` padding |
-| Hex | UTF-8 hexadecimal, letter case and none/space/colon separators; decode `0x` prefixes and common byte separators |
-| URL | Component, full URL and form-component modes (space / `+` conversion) |
-| Base32 | RFC 4648, including omitted padding, lowercase input and unused-bit validation |
-| Unicode | `\uXXXX`, `\u{…}`, `\xXX` and common escapes, including multilingual text, emoji and surrogate validation |
-| HTML | HTML5 entity decoding, special-character escaping and decimal/hex entities for all characters |
-| ROT | ROT13, ROT5, ROT18 and ROT47 |
-| Morse | Latin letters, digits and common punctuation; spaces separate characters, `/` separates words, line breaks are preserved |
-| JWT | Inspect Header / Payload, sign and verify HS256 / HS384 / HS512 with an explicitly selected algorithm, display `exp` / `nbf` status |
-| Hash | MD5, SHA-1, SHA-256, SHA-384 and SHA-512; hexadecimal or Base64 digests, including empty-string hashing |
-
-Conversion stays in the browser, using a Web Worker when available and a local fallback otherwise. No conversion API, polling or remote resources are added. Hashing and HMAC do not require Web Crypto, so they also work on local-network HTTP pages. Clipboard access remains subject to browser permissions, with manual copying available on failure.
-
-Only the selected tool, directions and format preferences are saved under `modelping:toolbox:preferences:v1`. Input, output and JWT secrets are never written to localStorage / sessionStorage or synced with ModelPing's private working state. Per-tool drafts stay in memory while the toolbox is open and are cleared when leaving the toolbox or reloading. Input is limited to 1,000,000 UTF-16 code units; oversized input, invalid alphabets and invalid UTF-8 produce errors instead of silent truncation or replacement.
-
-Limitations: automatic Base64 detection is a heuristic; select an explicit direction for ambiguous text. Morse does not support non-Latin text and decodes to uppercase. Hashes are not reversible; MD5 / SHA-1 are legacy checksums, not security primitives. JWT signing accepts `{"header":{"alg":"HS256","typ":"JWT"},"payload":{"sub":"demo"}}`, with an optional `header`; HS256 / HS384 / HS512 signing keys must contain at least 32 / 48 / 64 UTF-8 bytes respectively. Other JWT signing algorithms can be inspected, but not verified; five-part JWE is not supported. **Decoding does not establish trust, and an HMAC match does not validate issuer, audience or permissions.** Time claims are evaluated at conversion time. This toolbox is not a substitute for application authentication.
-
-Verification:
-
-```bash
-npm run verify                 # Types, lint, all unit tests and production build
-npm run test:toolbox:browser    # Build and run real Chromium integration checks
-```
-
-Browser checks prefer a locally installed Chrome / Chromium; set `CHROME_PATH` to override the executable. Otherwise, install Playwright's browser with `npx playwright install chromium`. Tests use a local mock bootstrap and never contact real model providers. Screenshots are written to `node_modules/.cache/toolbox-browser/`. Licenses for the toolbox's `@noble/hashes` and `entities` dependencies are included in the build; see [third-party licenses](./web/public/assets/toolbox-licenses.txt).
-
-## Default models
-
-A set of default models and curated providers is bundled, maintained with reference to the provider/baseUrl/model presets of [`farion1231/cc-switch`](https://github.com/farion1231/cc-switch):
-
-- Official/native: OpenAI, Anthropic, Google Gemini
-- China & coding plans: DeepSeek, Zhipu GLM, Qwen, Moonshot/Kimi, Kimi For Coding, Xiaomi MiMo, Volcengine Ark
-- Aggregators & global platforms: SiliconFlow, OpenRouter, Nvidia
-
-> ⚠️ Model ids evolve as providers update. The presets are a starting point only — verify against official docs. You can add/edit/remove providers and models in the UI's **Settings** (saved in the browser), or edit `web/public/presets.json` and rebuild/redeploy to ship new defaults.
-
-## Parameter defaults
-
-| Parameter        | Default                                          |
-| ---------------- | ------------------------------------------------ |
-| Input text       | 你好，请用一句话自我介绍。                        |
-| Transport        | Auto-probe non-streaming and streaming           |
-| Timeout          | 30000 ms                                          |
-| Max retries      | 1 (exponential backoff; only network/timeout/429/5xx) |
-| Max output tokens| 512                                              |
-| Concurrency      | 2                                                |
-| User-Agent       | Empty (do not override runtime default)          |
-
-## Deployment
-
-Cloudflare Workers is the recommended low-cost personal deployment path. The app is built as a Worker API plus Workers Static Assets, so normal page and asset requests are served by Assets while `/api/*` invokes the Worker.
-
-### Docker (self-host / cloud server)
-
-The repo still ships a GitHub Actions workflow (`.github/workflows/docker-publish.yml`) for fallback self-hosting. It builds and pushes a GHCR image only when manually dispatched or when a `v*` tag is pushed, so day-to-day `main` pushes can be handled by Cloudflare Builds instead.
-
-One-time setup:
-
-1. **Publish the image** — run the workflow manually or push a `v*` tag to publish `ghcr.io/<owner>/modelping`. In your repo's *Packages*, set its visibility to **Public** so the server can pull without credentials. (Forking? Change the `image:` in `docker-compose.yml` to your own `ghcr.io/<owner>/modelping`.)
-2. **On the server**:
-   ```bash
-   git clone https://github.com/<owner>/ModelPing.git
-   cd ModelPing
-   cp .env.example .env        # set APP_PASSWORD and PRIVATE_STATE_SECRET (kept out of git)
-   docker compose up -d        # http://<server>:8787
-   ```
-
-`docker-compose.yml` runs two services: `modelping` (the app) and `watchtower` (checks GHCR every 5 min, pulls new images, restarts, prunes old ones). The image bakes in no keys.
-
-To update afterwards, manually rerun the workflow or push a `v*` tag, then Watchtower redeploys within its interval. Prefer building on the box instead of GHCR? Replace `image:` with `build: .` and run `docker compose up -d --build`.
-
-Environment (set in `.env`, or the `environment:` block of `docker-compose.yml`):
-
-- `APP_PASSWORD` (required by compose): access-password gate for `/api`
-- `PRIVATE_STATE_SECRET` (required by compose): long random encryption secret for private working state; keep it separate from `APP_PASSWORD`
-- `ALLOWED_HOSTS`: optional comma-separated target-host allowlist (open-proxy / SSRF protection). Leave unset to allow any custom target host; if you do, block intranet access at the network layer instead (see Security)
-- `CORS_ORIGIN`: comma-separated allowed cross-site origins (same-origin by default; see Security below)
-
-Settings persistence (presets shared across devices) uses the file driver by default. `docker-compose.yml` already points `SETTINGS_FILE` to `/data/presets.json` and mounts a named volume `presets-data`, so it survives container rebuilds. When the volume is empty on first run, `/presets.json` falls back to the defaults bundled in the image.
-
-Private working state (history, the history persistence toggle, last connection, test settings, and Status entries, including API keys) is stored server-side as an encrypted blob when `PRIVATE_STATE_SECRET`, `STATUS_SECRET`, or `APP_PASSWORD` is available. For Docker, set a dedicated `PRIVATE_STATE_SECRET` so changing the access password does not make existing state undecryptable. `STATUS_SECRET` is only a legacy fallback; old sensitive localStorage keys are migrated once and removed; theme/language and non-sensitive preset cache stay local.
-
-### Cloudflare Workers (free tier)
-
-For the simplest setup, use the **Deploy to Cloudflare** button near the top of this README. Cloudflare will clone the repository, configure Workers Builds, provision the Wrangler-declared KV binding for the new deployment, and let you provide `APP_PASSWORD` and `PRIVATE_STATE_SECRET` from the repository's example environment configuration.
-
-Manual deployment remains available:
-
-```bash
-npx wrangler login
-npx wrangler kv namespace create SETTINGS_KV
-npm run deploy:cf
-npx wrangler secret put APP_PASSWORD
-npx wrangler secret put PRIVATE_STATE_SECRET
-```
-
-Put the returned KV id into `wrangler.toml`:
-
-```toml
-[[kv_namespaces]]
-binding = "SETTINGS_KV"
-id = "<your-kv-namespace-id>"
-```
-
-Static assets are served via `[assets]` with SPA fallback. `run_worker_first = ["/api/*"]` explicitly routes only API calls through the Worker; frontend routes and assets are served directly by Workers Static Assets without invoking the Worker script.
-
-Free-tier defaults are intentionally conservative:
-
-- `PRIVATE_STATE_SCOPE=config`: KV stores presets, last connection, test parameters, and Status entries, but not test history.
-- `DAILY_REQUEST_BUDGET=60000`: Status auto-refresh reserves only 60% of the 100k/day Worker request ceiling. Status checks are packed into batches of 10 and same-connection `/models` probes are deduplicated.
-- `BLOCK_PRIVATE_HOSTS=1`: Workers lacks the Docker egress firewall, so public deployments get app-level private-address blocking by default.
-- `APP_PASSWORD` and `PRIVATE_STATE_SECRET` must be Workers secrets, not `wrangler.toml` values.
-
-For GitHub push-to-deploy, connect the repository in Cloudflare Workers Builds:
-
-- Production branch: `main`
-- Build command: `npm run build:cf`
-- Deploy command: `npx wrangler deploy`
-
-Cloudflare free-tier reference limits: Workers Free has 100,000 requests/day, 10 ms CPU/request, and 50 subrequests/request; KV Free has 100,000 reads/day, 1,000 writes/day, 1 write/second to the same key, and 1 GB storage. Workers Static Assets requests are free and unlimited.
-
-### Vercel (free tier)
-
-```bash
-npm i -g vercel
-vercel            # link the project on first run; later use vercel --prod
-```
-
-Static hosting + a single serverless function (`api/index.ts`, which `vercel.json` routes `/api/*` to). Settings/private-state persistence uses Vercel Blob by default: once you add Blob to the project, `BLOB_READ_WRITE_TOKEN` is injected automatically and the store enables the vercel driver; otherwise server-side persistence is disabled and the UI falls back where possible.
-
-> ⚠️ Vercel free-tier serverless functions have an execution limit of ~10s, while this tool defaults to `timeoutMs=30000`. Testing slow models or long streaming responses may be cut off mid-flight by the platform, surfacing as unexpected failures. Use it privately, lower the timeout, or set a higher `maxDuration` in `vercel.json` (requires a suitable plan).
-
-### Settings persistence (presets shared across devices)
-
-Providers/models edited in the UI's **Settings** are stored in the browser by default. To share them across devices, enable server-side presets persistence (**presets never contain apiKey**); the driver is auto-selected by platform:
-
-| Driver   | Trigger                              | Storage location                                              |
-| -------- | ------------------------------------ | ------------------------------------------------------------- |
-| `file`   | default (Node self-host / Docker)    | `./web/public/presets.json`, same source as `/presets.json`, instant effect |
-| `cf-kv`  | `SETTINGS_KV` bound                  | Cloudflare KV                                                 |
-| `vercel` | `BLOB_READ_WRITE_TOKEN` present      | Vercel Blob                                                   |
-| `none`   | `STORAGE_DRIVER=none`                | server-side persistence off (frontend-only)                   |
-
-Use `STORAGE_DRIVER` to force a driver, and `SETTINGS_FILE` to override the file driver's path.
-
-## Environment variables
-
-| Variable                | Purpose                                                                      |
-| ----------------------- | ---------------------------------------------------------------------------- |
-| `APP_PASSWORD`          | Optional access password; when set, all `/api` requests must send `x-app-password` |
-| `ALLOWED_HOSTS`         | Optional target-host allowlist (comma-separated), prevents open proxy / SSRF; unrestricted if unset |
-| `BLOCK_PRIVATE_HOSTS`   | Set to `1` to reject targets resolving to private/loopback/link-local/cloud-metadata addresses (app-level SSRF guard); off by default. Do **not** enable if you need to test local/intranet endpoints (e.g. Ollama) |
-| `CORS_ORIGIN`           | Optional CORS allowed origins (comma-separated, `*` = open to all); no ACAO header if unset (same-origin) |
-| `STORAGE_DRIVER`        | Force a driver: `file` / `cf-kv` / `vercel` / `none`                         |
-| `SETTINGS_FILE`         | Presets path for the file driver; defaults to `./web/public/presets.json`    |
-| `PRIVATE_STATE_SECRET`  | Dedicated high-entropy encryption secret for private working state; uses the lower-CPU v2 format. Falls back to PBKDF2-protected `STATUS_SECRET`, then `APP_PASSWORD` |
-| `PRIVATE_STATE_SCOPE`   | Private-state persistence scope: `full` (default), `config` (conn/config/status only; no history), or `none` |
-| `DAILY_REQUEST_BUDGET`  | Status auto-refresh Worker request soft budget/day; Cloudflare config defaults to `60000` |
-| `PRIVATE_STATE_FILE`    | File-driver path for encrypted private working state; defaults to `./data/private-state.enc` |
-| `STATUS_SECRET`         | Optional legacy secret; used only as a private-state fallback                |
-| `BLOB_READ_WRITE_TOKEN` | Vercel Blob token (injected automatically once Blob is added)                |
-| `PORT`                  | Node server listen port; defaults to 8787                                    |
-
-## Security (important)
-
-- This tool is a **forwarding proxy**: the frontend sends baseUrl + key to the backend, which forwards to the target API.
-- Keys in history, last connection, and Status entries are persisted only in the encrypted private-state blob. If private-state persistence is unavailable, they remain in memory for the current browser session and are not written to localStorage; old sensitive localStorage keys are deleted after one migration pass.
-- **CORS is same-origin by default**: when `CORS_ORIGIN` is unset, the backend sends no `Access-Control-Allow-Origin`, so other sites' JS cannot call your `/api`. Configure allowed origins explicitly only when you need cross-site calls.
-- A bare public deployment is effectively an open proxy. Keep a strong `APP_PASSWORD`; for Docker, also expose it only behind HTTPS and either set `ALLOWED_HOSTS` or run the bundled `deploy/firewall-egress.sh` network-layer egress guard. On Cloudflare Workers, leave `BLOCK_PRIVATE_HOSTS=1` enabled unless you explicitly need private-address targets. `APP_PASSWORD` is compared in constant time to reduce password-enumeration risk.
-- When accessed through a non-local address, the UI shows a non-blocking safety warning if the instance appears to be missing an access password or target-host/private-address restrictions.
-- If you frequently test local/intranet endpoints, leave `BLOCK_PRIVATE_HOSTS` off and rely on the Docker egress firewall rules for what the public instance may reach. For untrusted multi-tenant deployments, set `BLOCK_PRIVATE_HOSTS=1` as an app-level complement; it rejects literal private/loopback/metadata IPs but cannot stop DNS rebinding.
-- The backend never logs keys or request bodies; keys/tokens/authorization in failure logs are redacted.
-
-## Project structure
-
-```
-src/
-  types.ts            Shared types
-  adapters/           4 protocol adapters + registry (openai-chat / openai-responses / gemini / anthropic)
-  runner.ts           fetch / timeout / retry / SSE parsing / usage aggregation / log redaction
-  balance.ts          Balance lookup (extensible registry matching each provider's endpoint by host)
-  models-fetch.ts     Fetch provider model list (picks /models endpoint by baseUrl shape)
-  presets-schema.ts   Presets validation (pure function shared by frontend & backend)
-  app.ts              Framework-agnostic Hono app (validation / password / CORS / allowlist / routes / persistence)
-  env.ts              Shared runtime env/store injection for Node / Vercel (Worker uses cf-kv directly)
-  node.ts             Node entry (@hono/node-server + static assets)
-  worker.ts           Cloudflare Workers entry (ASSETS binding)
-  store/              Persistence drivers: types / file / cf-kv / vercel / index (auto-selected by platform)
-api/
-  index.ts            Vercel serverless entry
-web/
-  index.html  main.tsx  styles.css
-  public/presets.json Default providers / models / parameters
-  lib/                types / api (incl. SSE) / storage / format / theme / presets / ccswitch
-  components/         App / ConnectionPanel / ConfigPanel / ModelTable / ModelPickerModal /
-                      HistoryPanel / SettingsPanel / ThemeToggle / CcSwitchButton / CopyButton
-```
-
-## Scripts
-
-| Command             | Purpose                                          |
-| ------------------- | ------------------------------------------------ |
-| `npm run dev`       | Dev (frontend + backend hot reload)              |
-| `npm run build`     | Build frontend (dist/client) + backend (dist/server) |
-| `npm run build:cf`  | Build frontend assets for Cloudflare Workers          |
-| `npm start`         | Run the built Node server                        |
-| `npm run typecheck` | Type checking                                    |
-| `npm run audit:prod` | Audit production dependencies; fail on any reported severity |
-| `npm run deploy:cf` | Build and deploy to Cloudflare                   |
-| `vercel`            | Deploy to Vercel (`vercel --prod` for production)|
-
-CI runs `npm run audit:prod` separately from `npm run verify`. This checks the deployed dependency tree, not the development/build toolchain; use `npm audit` for the full tree. Install from the committed lockfile with `npm ci`.
-
-`@vercel/blob` is intentionally pinned to `2.4.0`: the November 2026 audit of `2.9.0` introduced an affected `zod` through `@vercel/oidc` / `@vercel/cli-config`. The pinned SDK resolves to patched `undici` in the lockfile without that chain. Recheck both the audit and Blob read/overwrite tests before changing this pin; do not force incompatible transitive dependencies. Fixed-path settings writes explicitly set `allowOverwrite: true` for Blob SDK >= 1 compatibility.
-
-## License & credits
-
-Released under the [MIT License](./LICENSE) — free to use, modify, and distribute. See the `LICENSE` file in the repo root.
-
-The default models and curated provider presets are referenced from [farion1231/cc-switch](https://github.com/farion1231/cc-switch) (provider / baseUrl / model / balance endpoints). Each provider's protocols, model ids, and endpoints belong to their respective owners. This tool only forwards and tests; it bundles no API keys and is not responsible for third-party service availability or billing.
+Released under the [MIT License](./LICENSE). Provider presets reference [cc-switch](https://github.com/farion1231/cc-switch); the optional global catalog uses [Models.dev](https://models.dev/). See [third-party notices](./web/public/assets/toolbox-licenses.txt). ModelPing does not guarantee third-party availability, account access, or billing.

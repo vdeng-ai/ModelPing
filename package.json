@@ -23,7 +23,9 @@
     "audit:prod": "npm audit --omit=dev --audit-level=low",
     "verify": "npm run typecheck && npm run lint && npm test && npm run build",
     "format": "prettier --write .",
-    "test:workbench:browser": "npm run build:cf && node scripts/test-workbench-browser.mjs"
+    "test:workbench:browser": "npm run build:cf && node scripts/test-workbench-browser.mjs",
+    "docs:screenshots": "npm run build:cf && node scripts/capture-readme-screenshots.mjs",
+    "docs:check": "node scripts/check-docs.mjs"
   },
   "dependencies": {
     "@hono/node-server": "^2.1.8",

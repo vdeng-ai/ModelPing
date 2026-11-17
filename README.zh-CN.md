@@ -1,318 +1,129 @@
-# ModelPing · LLM API 测试工具
+# ModelPing · 凭据解码与 API 测试
 
 [English](./README.md) | **简体中文**
 
-开箱即用的轻量 Web 工具，用于快速点测各家大模型 API 是否可用，并测量延迟与 token 消耗。
+在一个工作区内完成凭据解码、模型选择和大模型 API 测试。不用编写测试脚本，即可检查协议兼容性、流式响应、请求延迟和 Token 用量。
 
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/vdeng-ai/ModelPing)
+![当前中文界面的凭据解码与 API 测试工作区](./docs/screenshots/workbench-zh.png)
 
-> Cloudflare 一键部署会自动克隆仓库、配置 Workers Builds，并 provision Wrangler 声明的资源。公网使用前请在部署配置中设置强 `APP_PASSWORD` 和独立的 `PRIVATE_STATE_SECRET`。
+_截图来自实际界面，端点、凭据、响应和耗时均为模拟数据，仅用于演示操作，不代表供应商实测结果。_
 
-![英文模型测试工作台](./docs/screenshots/workbench-en.png)
+## 项目能做什么
 
-*截图使用英文界面、示例端点及模拟响应，不包含真实 API Key。*
+| 页面         | 用途                                                                         |
+| ------------ | ---------------------------------------------------------------------------- |
+| 测试         | 同屏解码凭据、填写连接，搜索已配置模型与全球目录，测试选中的模型并查看响应。 |
+| 历史记录     | 搜索本次会话的测试，查看错误和请求详情，将筛选结果导出为 JSON。              |
+| 状态         | 保存常用端点与模型组合，手动检查连通性，也可在页面活跃时开启自动刷新。       |
+| 供应商与模型 | 管理可复用的接口地址和模型预设，导入、导出供应商配置。                       |
+
+支持中英文、浅色／深色／跟随系统主题，以及桌面和移动端布局。添加模型、选择预设或修改参数都不会自动开始测试。
+
+## 完成第一次测试
+
+打开一个可信的 ModelPing 实例，准备供应商的 **Base URL、API Key，以及账号有权调用的模型 ID**。项目不提供密钥或模型额度。需要自行运行时，参见[部署说明](./docs/deployment.zh-CN.md)。
+
+### 1. 填写连接信息
+
+进入「测试」，选择已保存的供应商，或使用自定义接口。填写 **Base URL** 和 **API Key**。只有输入的是完整请求端点而非基础地址时，才勾选「完整 URL」。
+
+拿到编码后的值时，在同页「凭据解码」区域选择格式，检查输出，再点击将结果带入 API Key 或 Base URL 的按钮。带入只填充表单，不发送模型请求；明文凭据也可以直接粘贴。
+
+### 2. 搜索并选择模型
+
+在「选择模型」输入名称、请求 ID 或目录供应商名称。候选结果合并已配置模型和缓存中的全球目录。选中目录模型后使用其**实际请求 ID**，保留当前连接与密钥，无须先导入供应商预设。
+
+模型标题旁的「全球模型目录」可浏览来源、点击「检查并更新目录」，或明确将模型加入供应商预设。输入关键词只筛选已有快照，只有更新按钮才会请求上游目录。
+
+**目录可用性：**当前目录存储仅接入绑定 `SETTINGS_KV` 的 Cloudflare Workers；Node／Docker 和 Vercel 暂未接入该存储。目录不可用时，仍可选择已有模型、「获取模型」或「添加自定义模型」。目录收录不代表当前接口或 API Key 一定有调用权限。
+
+「获取模型」读取当前供应商的模型列表，支持搜索、多选后添加；「添加自定义模型」可直接填写 ID。两者只增加候选项，不发起生成请求。
+
+### 3. 设置参数并测试
+
+点击测试按钮旁的「高级参数」，在同一个弹窗内调整输入文本、超时、输出上限、重试、并发和 User-Agent。关闭弹窗后，修改保留并用于后续请求。
+
+| 参数       | 初始值                         |
+| ---------- | ------------------------------ |
+| 输入文本   | 跟随界面语言的一句自我介绍请求 |
+| 超时       | 30 秒                          |
+| 最大输出   | 512 Token                      |
+| 重试次数   | 1                              |
+| 并发数     | 2                              |
+| User-Agent | 不覆盖运行时默认值             |
+
+恢复的个人设置可能覆盖这些初始值。点击「测试选中 1 项」测试当前模型；程序根据连接和模型匹配协议，检查非流式及流式请求。**一次点击可能产生多个上游请求，并消耗供应商额度。**
+
+### 4. 查看结果
+
+在下方查看协议徽章、成功／失败状态、延迟、首 Token 延迟和用量，展开结果可查看响应文本或失败详情。上游未返回的用量显示为不可用，不按零计算。结果筛选支持成功、失败和待测。
+
+| 协议                    | 请求格式                                      |
+| ----------------------- | --------------------------------------------- |
+| OpenAI Chat Completions | `/chat/completions`                           |
+| OpenAI Responses        | `/responses`                                  |
+| Gemini 原生             | `:generateContent` / `:streamGenerateContent` |
+| Anthropic Messages      | `/v1/messages`                                |
+
+协议匹配依据当前连接与模型，不仅取决于目录来源；兼容网关可能使用不同于原厂的请求协议。
+
+## 其他常用操作
+
+**本地解码。** 快速 Base64、Base64、Hex、URL、Base32、Unicode、HTML、ROT、摩斯电码、JWT 和哈希均在浏览器内运行，支持示例、方向／格式选项、复制和结果回填。离开测试页或刷新后清除草稿，仅保留工具偏好。格式和 JWT 限制见[凭据解码参考](./docs/credential-decoding.zh-CN.md)。解码成功不代表凭据有效或可信。
+
+**历史记录。** 查看当前页面会话的测试；切换导航不会丢失，刷新页面会清空。「导出筛选结果」移除明确的 API Key 字段，但分享前仍应检查响应正文和日志。
+
+**状态检查。** 在模型操作区点击「加入选中到状态」。保存条目不会自动探测；进入状态页默认手动模式，自动刷新需要主动开启，并在页面隐藏或离线时暂停。「连接可达」只说明模型列表端点有响应，不保证某个模型能生成；回退的最小生成探测可能消耗 Token。模型级验证请使用「测试」。
+
+**供应商与辅助功能。** 在「供应商与模型」保存接口地址和模型 ID，预设不包含 API Key。「查询余额」用于查询受支持供应商的额度；「cc-switch」将当前连接与模型导入兼容的本机应用，导入凭据前请确认目标。模型操作直接展示，不再藏在「更多」中。
+
+**键盘操作。** `Ctrl/Cmd + K` 跳转页面，在非输入状态按 `/` 聚焦当前页搜索。模型搜索支持方向键定位、Enter 选择、Escape 关闭，以及 Tab 离开。
+
+## 界面截图
 
 <details>
-<summary>更多截图：历史记录、状态监控、供应商配置与手机端</summary>
+<summary>模型搜索、全球目录、高级参数、历史记录、状态、供应商与手机端</summary>
 
-**历史记录与失败诊断**
+**搜索已配置模型与全球目录**
 
-![英文历史记录及展开的失败诊断](./docs/screenshots/history-en.png)
+![同时展示已配置模型与全球目录候选的搜索框](./docs/screenshots/model-search-zh.png)
 
-**端点状态监控**
+**目录浏览与导入**
 
-![英文端点状态监控面板](./docs/screenshots/status-en.png)
+![独立弹窗中的全球模型目录](./docs/screenshots/catalog-zh.png)
+
+**请求参数**
+
+![无嵌套折叠的高级参数弹窗](./docs/screenshots/parameters-zh.png)
+
+**会话历史与错误详情**
+
+![展开模拟认证失败详情的历史记录](./docs/screenshots/history-zh.png)
+
+**端点状态**
+
+![展示模拟结果的手动端点检查](./docs/screenshots/status-zh.png)
 
 **供应商配置**
 
-![英文供应商配置及未保存状态](./docs/screenshots/providers-en.png)
+![已保存的供应商地址和模型预设](./docs/screenshots/providers-zh.png)
 
-**手机端工作台**
+**移动端工作区**
 
-<img src="./docs/screenshots/mobile-en.png" alt="英文手机端模型测试工作台" width="393" />
+<img src="./docs/screenshots/mobile-zh.png" alt="手机端上下排列的凭据解码与 API 测试" width="390" />
 
 </details>
 
-支持的协议：
+## 隐私与安全使用
 
-| 协议               | 端点                                          | 典型供应商                                                       |
-| ------------------ | --------------------------------------------- | ---------------------------------------------------------------- |
-| `openai-chat`      | `/chat/completions`                           | OpenAI、DeepSeek、GLM、Qwen、Kimi、小米、各类聚合商…（多数兼容） |
-| `openai-responses` | `/responses`                                  | OpenAI Responses API                                             |
-| `gemini`           | `:generateContent` / `:streamGenerateContent` | Google Gemini 原生                                               |
-| `anthropic`        | `/v1/messages`                                | Anthropic Claude                                                 |
+解码在本地完成；实际测试、拉取模型和查询余额会把连接信息交给 ModelPing 后端，再转发到目标供应商。仅使用可信实例与目标接口。
 
-特性：
+启用加密私有工作态存储时，连接信息和保存的状态条目（包括 API Key）可以在服务端持久化；不可用时仅在内存中保留。**测试历史始终仅限当前会话**，不会因开启存储而持久化。解码结果带入连接表单后，也遵循连接信息的保存规则。
 
-- 选供应商自动填入 baseUrl；每个模型会按供应商自动探测合适协议
-- 自动探测非流式与流式（SSE）可用性
-- **查询余额**：按 baseUrl 主机识别供应商，一键查可用余额/额度（DeepSeek、SiliconFlow、OpenRouter、StepFun、Novita 等）
-- **拉取模型列表**：从供应商 `/models` 端点拉取可用模型，弹层搜索多选后批量加入测试表格
-- **一键导入 cc-switch**：把当前 provider 或已通过测试的 provider + model 导入到 Claude Code、Codex、Gemini CLI、OpenCode、OpenClaw
-- 可选自定义 User-Agent 预设，用于按客户端 UA 放行的 coding-plan 上游；模型测试、流式检测、模型列表和余额查询会一致生效
-- 返回总延迟、首字延迟（TTFT，流式）、输入/输出/总 token
-- 模型表格逐行状态灯：灰待测 → 蓝测试中 → 绿通过 / 红失败
-- 批量测试（默认并发 2）、自定义模型、可调超时/重试/maxTokens/输入文本
-- 历史记录（可持久化开关、复制 baseUrl/掩码 key、导出 JSON）
-- 状态页：保存常用 provider + model，批量刷新端点延迟；自动刷新会跨标签页选出单一轮询者，并支持 cc-switch 导入
-  - 绿色「连接可达」仅表示模型列表端点响应成功，同一连接下的模型可能共用结果；不代表该模型存在、有权限或能生成内容。
-  - 「最小生成通过」仅表示本次回退生成请求成功，回退可能消耗 Token。探测延迟不是生成速度或首 Token 延迟；实际模型生成请使用「测试」工作台验证。
-- **本地编解码工具箱**：11 个工具标签，涵盖 Base64 自动转换、Hex、URL、Base32、Unicode、HTML、ROT、摩斯电码、JWT 和哈希，无需提交内容到服务器
-- **密钥安全**：后端不明文存储、不打印任何 API Key；启用私有工作态时仅以加密 blob 保存
+不要分享真实密钥、未经检查的日志或含敏感内容的截图。公网实例需要访问控制，详见[部署与安全说明](./docs/deployment.zh-CN.md)。
 
-## 快速开始（本地）
+## 文档与许可证
 
-```bash
-npm install
-npm run dev      # 前端 5173（开发） + 后端 8787，浏览器开 http://localhost:5173
-```
+本地运行、开发、部署、环境配置和维护说明统一放在 [docs 文档导航](./docs/README.zh-CN.md)。
 
-生产模式（单进程，前后端同源）：
-
-```bash
-npm run build
-npm start        # http://localhost:8787
-```
-
-## 供应商辅助功能
-
-在连接面板填好供应商 `baseUrl` 和 API Key 后，ModelPing 还可以帮你完成几件常见配置工作：
-
-- **查询余额**：点击 API Key 输入框旁边的「余额」。后端会按 `baseUrl` 的 host 匹配供应商，调用对应余额端点；支持的供应商会返回剩余余额/额度，不支持的会明确提示不支持。
-- **拉取模型**：点击「拉模型」。ModelPing 会调用供应商 `/models` 端点，弹出可搜索、多选的模型列表，确认后批量加入测试表格。
-- **一键导入 cc-switch**：模型区的「→ cc-switch」可导入当前 provider；历史记录中测试成功的行也会出现同样按钮，可连同已验证的 model 一起导入。按钮左侧下拉可选择目标应用：Claude Code、Codex、Gemini CLI、OpenCode、OpenClaw，随后会唤起本机 `ccswitch://v1/import` 深链。
-
-这些辅助功能复用 UI 中配置的 `baseUrl`、API Key、完整 URL 模式和可选 User-Agent。API Key 只会在本次请求/深链导入动作中使用，后端不会持久化保存。
-
-## 本地编解码工具箱
-
-点击顶部导航的 **工具箱**，或在当前站点地址后添加 `#toolbox`。输入后自动转换，支持编码/解码方向切换、填入示例、清空、结果移到输入、点击输出全选以及复制结果。界面跟随应用的中英文和深浅色偏好，并支持移动端和键盘切换标签。
-
-| 工具 | 支持内容 |
-| --- | --- |
-| 快速 Base64 | 自动识别可解码为可读 UTF-8 的 Base64；也可固定编码或解码方向 |
-| Base64 | UTF-8、标准 Base64 / Base64URL、可选 `=` 补位 |
-| Hex | UTF-8 十六进制、大写/小写、无分隔/空格/冒号；解码兼容 `0x` 前缀和常见字节分隔符 |
-| URL | 单个组件、完整 URL、表单组件（空格与 `+` 互转） |
-| Base32 | RFC 4648 编解码；支持省略补位、小写输入和尾部位校验 |
-| Unicode | `\uXXXX`、`\u{…}`、`\xXX` 和常见转义；支持中文、Emoji 和代理对校验 |
-| HTML | HTML5 实体解码，特殊字符转义及全部字符的十进制/十六进制实体编码 |
-| ROT | ROT13、ROT5、ROT18、ROT47 |
-| 摩斯电码 | 英文字母、数字和常用标点；空格分隔字符，`/` 分隔单词，保留换行 |
-| JWT | Header / Payload 解析，HS256 / HS384 / HS512 本地签名及指定算法验签，`exp` / `nbf` 提示 |
-| 哈希 | MD5、SHA-1、SHA-256、SHA-384、SHA-512；十六进制或 Base64 摘要，包括空字符串 |
-
-转换在浏览器内完成，优先使用 Web Worker；Worker 不可用时回退到本地执行，不新增转换 API、轮询或远程资源请求。哈希与 HMAC 不依赖 Web Crypto，因此内网 HTTP 页面也可使用；剪贴板仍以浏览器权限为准，失败时可手动复制。
-
-只将工具、方向和格式偏好保存到 `modelping:toolbox:preferences:v1`。输入、输出和 JWT 密钥不写入 localStorage / sessionStorage，也不随 ModelPing 的私有工作态同步。不同工具的草稿仅在当前工具箱页面的内存中保留，离开工具箱或刷新后清除。单次输入限制为 1,000,000 个 UTF-16 代码单元；超限、非法字符和无效 UTF-8 都会明确报错，不静默截断或替换。
-
-使用边界：Base64 自动判断是启发式识别，有歧义时请固定方向。摩斯电码不支持中文，解码输出大写。哈希不可逆；MD5 / SHA-1 仅用于兼容性校验。JWT 签名输入为 `{"header":{"alg":"HS256","typ":"JWT"},"payload":{"sub":"demo"}}`，也可省略 `header`；HS256 / HS384 / HS512 的签名密钥分别至少需要 32 / 48 / 64 个 UTF-8 字节。其他 JWT 签名算法仅解析、不验签；不支持五段式 JWE。**解析不等于可信，HMAC 匹配也不验证发行者、受众或权限**，时间提示以本次解析时刻为准；本工具不能代替应用认证逻辑。
-
-验证命令：
-
-```bash
-npm run verify                 # 类型检查、Lint、全部单元测试、生产构建
-npm run test:toolbox:browser    # 构建后运行真实 Chromium 浏览器集成检查
-```
-
-浏览器检查优先使用本机 Chrome / Chromium，可通过 `CHROME_PATH` 指定路径；没有本机浏览器时，先运行 `npx playwright install chromium`。测试使用本地模拟 bootstrap，不连接真实供应商。截图写入 `node_modules/.cache/toolbox-browser/`。工具箱使用的 `@noble/hashes` 和 `entities` 许可证随构建一起保留，见 [第三方许可证](./web/public/assets/toolbox-licenses.txt)。
-
-## 默认模型
-
-预设里内置了一批默认模型与精选 provider，参考 `farion1231/cc-switch` 的 provider/baseUrl/model 预设维护：
-
-- 官方/原生：OpenAI、Anthropic、Google Gemini
-- 国内与编码计划：DeepSeek、智谱 GLM、通义千问 Qwen、Moonshot/Kimi、Kimi For Coding、小米 MiMo、火山 Ark 
-- 聚合与全球平台：SiliconFlow、OpenRouter、Nvidia
-
-默认模型包含 `gpt-5.5` / `gpt-5.4`、`claude-opus-4-8` / `claude-sonnet-4-6`、`gemini-3.5-flash` / `gemini-3.1-pro`、`deepseek-v4-flash` / `deepseek-v4-pro`、`glm-5.2`、`kimi-k2.7-code`、`mimo-v2.5-pro` 等。
-
-> ⚠️ 各家 model id 随官方持续演进。预设值仅供起步，请对照官方文档核对；UI「设置」里可增删改供应商和模型（保存在本机浏览器），也可以直接编辑 `web/public/presets.json` 后重新构建/部署作为新的默认配置。
-
-## 参数默认值
-
-| 参数           | 默认                                    |
-| -------------- | --------------------------------------- |
-| 输入文本       | 你好，请用一句话自我介绍。              |
-| 传输           | 自动探测非流式与流式                    |
-| 超时           | 30000 ms                                |
-| 最大重试       | 1（指数退避，仅网络/超时/429/5xx 重试） |
-| 最大输出 token | 512                                     |
-| 并发数         | 2                                       |
-| User-Agent     | 空（不覆盖运行时默认 UA）               |
-
-## 部署
-
-低成本个人公网部署推荐走 Cloudflare Workers。应用会部署成 Worker API + Workers Static Assets，普通页面和静态资源由 Assets 托管，只有 `/api/*` 会进入 Worker。
-
-### Docker（自托管 / 云服务器）
-
-仓库仍保留 GitHub Actions 工作流（`.github/workflows/docker-publish.yml`）作为自托管回退。它只在手动触发或推送 `v*` tag 时构建并推送 GHCR 镜像，日常 `main` push 可交给 Cloudflare Builds 自动部署。
-
-一次性配置：
-
-1. **公开镜像** —— 手动运行 workflow 或推送 `v*` tag 后会发布 `ghcr.io/<owner>/modelping`。到仓库 *Packages* 把可见性设为 **Public**，服务器才能免登录拉取。（fork 的话，把 `docker-compose.yml` 里的 `image:` 改成你自己的 `ghcr.io/<owner>/modelping`。）
-2. **在服务器上**：
-   ```bash
-   git clone https://github.com/<owner>/ModelPing.git
-   cd ModelPing
-   cp .env.example .env        # 设置 APP_PASSWORD 和 PRIVATE_STATE_SECRET（不入库）
-   docker compose up -d        # http://<server>:8787
-   ```
-
-`docker-compose.yml` 跑两个服务：`modelping`（应用）和 `watchtower`（每 5 分钟检查 GHCR，拉新镜像、重启、清理旧镜像）。镜像不烘焙任何 key。
-
-之后更新可手动重新运行 workflow 或推送 `v*` tag，Watchtower 会在一个间隔内自动重新部署。想在机器上本地构建而不走 GHCR？把 `image:` 换回 `build: .`，用 `docker compose up -d --build`。
-
-环境变量（写在 `.env`，或 `docker-compose.yml` 的 `environment:` 块）：
-
-- `APP_PASSWORD`（compose 要求必填）：`/api` 的访问口令闸
-- `PRIVATE_STATE_SECRET`（compose 要求必填）：私有工作态的长随机加密密钥；建议与 `APP_PASSWORD` 分开
-- `ALLOWED_HOSTS`：可选，逗号分隔的目标主机白名单（防开放代理 / SSRF）。留空则允许任意自定义目标主机；若留空，请改在网络层阻断内网访问（见安全说明）
-- `CORS_ORIGIN`：逗号分隔的允许跨站来源（缺省同源，见下方安全说明）
-
-设置持久化（presets 跨设备共享）默认用 file 驱动，`docker-compose.yml` 已把 `SETTINGS_FILE` 指到 `/data/presets.json` 并挂了命名卷 `presets-data`，重建容器不丢失。首次卷为空时 `/presets.json` 会自动回退到镜像内置的默认预设。
-
-私有工作态（历史记录、历史持久化开关、上次连接、测试参数、状态页条目，含 API Key）在存在 `PRIVATE_STATE_SECRET`、`STATUS_SECRET` 或 `APP_PASSWORD` 时，会以加密 blob 形式存到后端。Docker 建议单独设置 `PRIVATE_STATE_SECRET`，这样更换访问口令不会导致已有状态无法解密。`STATUS_SECRET` 仅作为旧版本兼容 fallback；旧版 localStorage 敏感键会被迁移一次并删除；主题、语言和非敏感 presets 缓存仍保留在本机。
-
-### Cloudflare Workers（免费版）
-
-最简单的方式是点击 README 顶部的 **Deploy to Cloudflare** 按钮。Cloudflare 会自动克隆仓库、配置 Workers Builds、为新部署 provision Wrangler 声明的 KV binding，并让你根据仓库的示例环境配置填写 `APP_PASSWORD` 与 `PRIVATE_STATE_SECRET`。
-
-仍然支持手动部署：
-
-```bash
-npx wrangler login
-npx wrangler kv namespace create SETTINGS_KV
-npm run deploy:cf
-npx wrangler secret put APP_PASSWORD
-npx wrangler secret put PRIVATE_STATE_SECRET
-```
-
-把返回的 KV id 填进 `wrangler.toml`：
-
-```toml
-[[kv_namespaces]]
-binding = "SETTINGS_KV"
-id = "<your-kv-namespace-id>"
-```
-
-静态资源经 `[assets]` 托管，SPA 路由自动回退 index.html。`run_worker_first = ["/api/*"]` 明确规定只有 API 请求进入 Worker；前端路由和静态文件直接由 Workers Static Assets 提供。
-
-免费版默认策略偏保守：
-
-- `PRIVATE_STATE_SCOPE=config`：KV 保存 presets、上次连接、测试参数和状态页条目，不保存测试历史。
-- `DAILY_REQUEST_BUDGET=60000`：状态页自动刷新默认只使用 10 万请求/日上限的 60%；每 10 条打成一个 Worker 请求，同连接的 `/models` 探测会去重。
-- `BLOCK_PRIVATE_HOSTS=1`：Workers 没有 Docker 版出站防火墙，公网部署默认启用应用层私网地址拦截。
-- `APP_PASSWORD` 和 `PRIVATE_STATE_SECRET` 必须用 Workers secret，不写进 `wrangler.toml`。
-
-要实现 GitHub push 自动部署，在 Cloudflare Workers Builds 连接本仓库：
-
-- Production branch：`main`
-- Build command：`npm run build:cf`
-- Deploy command：`npx wrangler deploy`
-
-Cloudflare 免费版参考额度：Workers Free 为 100,000 请求/天、10ms CPU/请求、50 个 subrequests/请求；KV Free 为 100,000 读/天、1,000 写/天、同一 key 1 写/秒、1GB 存储；Workers Static Assets 请求免费且不限量。
-
-### Vercel（免费版）
-
-```bash
-npm i -g vercel
-vercel            # 首次按提示关联项目，后续 vercel --prod
-```
-
-前端静态托管 + 单个 serverless function（`api/index.ts`，由 `vercel.json` 把 `/api/*` 路由过去）。设置/私有工作态持久化默认走 Vercel Blob：在项目里接入 Blob 后会自动注入 `BLOB_READ_WRITE_TOKEN`，store 据此启用 vercel 驱动；未接入则关闭服务端持久化，UI 尽量降级。
-
-> ⚠️ Vercel 免费版 serverless function 执行时长约 10s 上限，而本工具默认 `timeoutMs=30000`。测较慢的模型或长流式响应可能被平台中途切断，表现为非预期失败。建议私用、调小超时，或在 `vercel.json` 配置更高的 `maxDuration`（需对应套餐支持）。
-
-### 设置持久化（presets 跨设备共享）
-
-UI「设置」里增删改的供应商/模型默认存浏览器本地。若想跨设备共享，可启用服务端 presets 持久化（**presets 永不包含 apiKey**），按部署平台自动选驱动：
-
-| 驱动       | 触发条件                              | 存储位置                          |
-| ---------- | ------------------------------------- | --------------------------------- |
-| `file`     | 默认（Node 自托管 / Docker）          | `./web/public/presets.json`，与 `/presets.json` 同源，改即生效 |
-| `cf-kv`    | 绑定了 `SETTINGS_KV`                  | Cloudflare KV                     |
-| `vercel`   | 存在 `BLOB_READ_WRITE_TOKEN`          | Vercel Blob                       |
-| `none`     | `STORAGE_DRIVER=none`                 | 关闭服务端持久化（纯前端本地）    |
-
-可用 `STORAGE_DRIVER` 显式指定驱动，`SETTINGS_FILE` 覆盖 file 驱动路径。
-
-## 环境变量
-
-| 变量                   | 作用                                                         |
-| ---------------------- | ------------------------------------------------------------ |
-| `APP_PASSWORD`         | 可选访问口令；设置后所有 `/api` 请求须带 `x-app-password`     |
-| `ALLOWED_HOSTS`        | 可选目标主机白名单（逗号分隔），防开放代理 / SSRF；缺省不限制 |
-| `BLOCK_PRIVATE_HOSTS`  | 设为 `1` 时拒绝目标解析到私有/环回/链路本地/云元数据地址（应用层 SSRF 兜底）；缺省关闭。需测试本地/内网端点（如 Ollama）时**勿开启** |
-| `CORS_ORIGIN`          | 可选 CORS 允许来源（逗号分隔，`*` 表示全开）；缺省不下发 ACAO（默认同源） |
-| `STORAGE_DRIVER`       | 显式选驱动：`file` / `cf-kv` / `vercel` / `none`             |
-| `SETTINGS_FILE`        | file 驱动的 presets 路径，缺省 `./web/public/presets.json`   |
-| `PRIVATE_STATE_SECRET` | 私有工作态独立高熵加密密钥；使用低 CPU 的 v2 格式。缺省回退到 PBKDF2 保护的 `STATUS_SECRET`，再回退 `APP_PASSWORD` |
-| `PRIVATE_STATE_SCOPE`  | 私有工作态持久化范围：`full`（默认）、`config`（仅连接/参数/状态，不保存历史）或 `none` |
-| `DAILY_REQUEST_BUDGET` | 状态页自动刷新每天可使用的 Worker 请求软预算；Cloudflare 默认 `60000` |
-| `PRIVATE_STATE_FILE`   | file 驱动的私有工作态密文路径，缺省 `./data/private-state.enc` |
-| `STATUS_SECRET`        | 可选旧密钥兼容项；仅作为 private-state fallback             |
-| `BLOB_READ_WRITE_TOKEN`| Vercel Blob token（接入 Blob 后自动注入）                    |
-| `PORT`                 | Node 服务监听端口，缺省 8787                                 |
-
-## 安全说明（重要）
-
-- 本工具是一个**转发代理**：前端把 baseUrl + key 发给后端，后端转发给目标 API。
-- 历史记录、上次连接和状态页条目中的 key 只保存在后端加密私有工作态中；若服务端不可用，则仅保留在当前浏览器会话内，不写入 localStorage。
-- 旧版遗留的敏感 localStorage 键会在启动时迁移一次并删除，避免历史明文继续留在浏览器里。
-- **CORS 默认同源**：未配置 `CORS_ORIGIN` 时后端不下发 `Access-Control-Allow-Origin`，其他网站的 JS 调不动你的 `/api`。需要跨站调用时才显式配置允许来源。
-- 公网裸部署等于开放代理。务必设置强 `APP_PASSWORD`；Docker 用法还应放在 HTTPS 反代后面，并二选一：配置 `ALLOWED_HOSTS`，或运行内置 `deploy/firewall-egress.sh` 做网络层出站隔离。Cloudflare Workers 上除非明确要测私网地址，否则保持 `BLOCK_PRIVATE_HOSTS=1`。`APP_PASSWORD` 用常量时间比较，降低口令枚举风险。
-- 通过非本机地址访问时，如果实例缺少访问口令或目标主机/私有地址限制，UI 会显示非阻塞安全提醒。
-- 如果经常测试本地/内网端点，保持 `BLOCK_PRIVATE_HOSTS` 关闭，用 Docker 出站防火墙决定公网实例能访问哪些网段。不可信多租户环境可设 `BLOCK_PRIVATE_HOSTS=1` 作为应用层补充；它能拦截字面私有/环回/元数据 IP，但挡不住 DNS rebinding。
-- 后端全程不打印 key 与请求体；失败日志里的 key/token/authorization 均做脱敏。
-
-## 项目结构
-
-```
-src/
-  types.ts            统一类型
-  adapters/           4 个协议适配器 + 注册表（openai-chat / openai-responses / gemini / anthropic）
-  runner.ts           fetch / 超时 / 重试 / SSE 解析 / usage 聚合 / 日志脱敏
-  balance.ts          余额查询（按 host 匹配各家端点的可扩展注册表）
-  models-fetch.ts     拉取供应商模型列表（按 baseUrl 形态选 /models 端点）
-  presets-schema.ts   presets 校验（前后端共享的纯函数）
-  app.ts              框架无关的 Hono app（校验 / 口令 / CORS / 白名单 / 路由 / 设置持久化）
-  env.ts              Node / Vercel 共用运行时 env/store 注入（Worker 直接使用 cf-kv）
-  node.ts             Node 入口（@hono/node-server + 静态资源）
-  worker.ts           Cloudflare Workers 入口（ASSETS 绑定）
-  store/              设置持久化驱动：types / file / cf-kv / vercel / index（按平台自动选）
-api/
-  index.ts            Vercel serverless 入口
-web/
-  index.html  main.tsx  styles.css
-  public/presets.json 默认供应商 / 模型 / 参数配置
-  lib/                types / api(含 SSE) / storage / format / theme / presets / ccswitch
-  components/         App / ConnectionPanel / ConfigPanel / ModelTable / ModelPickerModal /
-                      HistoryPanel / SettingsPanel / ThemeToggle / CcSwitchButton / CopyButton
-```
-
-## 脚本
-
-| 命令                | 作用                                      |
-| ------------------- | ----------------------------------------- |
-| `npm run dev`       | 开发（前端 + 后端热重载）                 |
-| `npm run build`     | 构建前端(dist/client) + 后端(dist/server) |
-| `npm run build:cf`  | 构建 Cloudflare Workers 静态资源          |
-| `npm start`         | 运行已构建的 Node 服务                    |
-| `npm run typecheck` | 类型检查                                  |
-| `npm run audit:prod` | 审计生产依赖；任意级别告警均视为失败       |
-| `npm run deploy:cf` | 构建并部署到 Cloudflare                   |
-| `vercel`            | 部署到 Vercel（`vercel --prod` 上生产）   |
-
-CI 会在 `npm run verify` 之外单独运行 `npm run audit:prod`。此命令检查部署时的生产依赖，不包含开发/构建工具链；完整检查使用 `npm audit`。请使用 `npm ci` 按已提交的锁文件安装。
-
-`@vercel/blob` 有意固定为 `2.4.0`：2026 年 11 月复核时，`2.9.0` 会经 `@vercel/oidc` / `@vercel/cli-config` 引入存在告警的 `zod`。固定版本的锁文件使用已修复的 `undici`，且不引入上述依赖链。修改此固定版本前，应重新审计并运行 Blob 读写/覆盖测试，不要强制覆盖不兼容的传递依赖。固定路径的设置保存已显式设置 `allowOverwrite: true`，兼容 Blob SDK >= 1。
-
-## 开源声明
-
-本项目以 [MIT 许可证](./LICENSE) 开源，可自由使用、修改、分发，详见根目录 `LICENSE` 文件。
-
-默认模型与精选 provider 预设参考了 [farion1231/cc-switch](https://github.com/farion1231/cc-switch)（provider / baseUrl / model / 余额端点）。各家协议、模型 id 与端点归各自服务商所有，本工具仅作转发与测试，不附带任何 API Key，也不对第三方服务的可用性或计费负责。
-
-欢迎提 issue 与 PR。提交前请确保 `npm run typecheck`、`npm test`、`npm run lint` 与 `npm run build` 通过。
+项目以 [MIT 许可证](./LICENSE) 开源。供应商预设参考 [cc-switch](https://github.com/farion1231/cc-switch)，可选全球目录来自 [Models.dev](https://models.dev/)，另见[第三方许可证](./web/public/assets/toolbox-licenses.txt)。ModelPing 不保证第三方服务可用性、账号权限或计费结果。

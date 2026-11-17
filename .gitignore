@@ -16,5 +16,20 @@ CLAUDE.md
 .claude/
 .trae
 .codex/
-# 开发过程文档 / 个人环境专属部署笔记（软路由、内网拓扑等），不公开
-docs/
+# 默认忽略本地开发笔记；仅放行经过审核的公开文档和演示截图。
+docs/*
+!docs/README.md
+!docs/README.zh-CN.md
+!docs/development.md
+!docs/development.zh-CN.md
+!docs/deployment.md
+!docs/deployment.zh-CN.md
+!docs/credential-decoding.md
+!docs/credential-decoding.zh-CN.md
+!docs/model-catalog.md
+!docs/model-selection-workflow.md
+!docs/design-qa.md
+!docs/screenshots/
+docs/screenshots/*
+!docs/screenshots/*-en.png
+!docs/screenshots/*-zh.png
