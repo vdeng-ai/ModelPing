@@ -4,6 +4,10 @@
 
 Decode credentials, choose a model, and test an LLM API in one workspace. ModelPing helps you check protocol compatibility, streaming behavior, response latency, and token usage without writing a test script.
 
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/vdeng-ai/ModelPing)
+
+[Deployment](#deployment) · [Usage](#test-your-first-model) · [Screenshots](#screenshots)
+
 ![Credential decoding and API testing in the current English interface](./docs/screenshots/workbench-en.png)
 
 _Screenshots show the real interface with synthetic endpoints, credentials, responses, and timings. They are usage examples, not provider benchmarks._
@@ -19,9 +23,67 @@ _Screenshots show the real interface with synthetic endpoints, credentials, resp
 
 The interface supports English and Simplified Chinese, light/dark/system themes, and desktop/mobile layouts. Adding a model, choosing a preset, or editing parameters does not start a test.
 
+## Deployment
+
+Choose Cloudflare Workers for one-click setup with global catalog storage, or run your own Node/Docker or Vercel instance. Configure a strong `APP_PASSWORD` and a separate, randomly generated `PRIVATE_STATE_SECRET` before exposing any instance publicly. Neither value is a model provider's API key.
+
+### Cloudflare Workers — one-click deployment
+
+1. Click **Deploy to Cloudflare** above, sign in to Cloudflare and connect GitHub, then choose your account, new repository name, and Worker name.
+2. Review the build settings: production branch `main`, build command `npm run build:cf`, and deploy command `npx wrangler deploy`.
+3. Fill in the Worker secrets declared by [.env.example](./.env.example): `APP_PASSWORD` is the instance's access password; `PRIVATE_STATE_SECRET` encrypts saved connection details and Status entries. Use different strong values and keep them out of Git.
+4. Confirm the `SETTINGS_KV` binding, then deploy. Open the generated site and verify that it asks for the access password before entering provider credentials. To populate the catalog, open **Global model catalog → Check for model updates** in the app.
+
+The [official deployment flow](https://developers.cloudflare.com/workers/platform/deploy-buttons/) clones the repository into your GitHub account, configures Workers Builds, and provisions the declared KV resource with an account-specific ID. You do not need to manually reuse the KV ID from this repository when using the button. For manual CLI deployment, create your own namespace and replace that ID as described in the [Cloudflare deployment guide](./docs/deployment.md#cloudflare-workers).
+
+Keep `BLOCK_PRIVATE_HOSTS=1` for public deployments. Check your account's actual Workers/KV limits; deployment does not provide model credits. Subsequent pushes to the connected production branch use Workers Builds to redeploy.
+
+### Docker — self-hosted
+
+Clone the repository, configure the two secrets, and choose an image before starting:
+
+```bash
+git clone https://github.com/vdeng-ai/ModelPing.git
+cd ModelPing
+cp .env.example .env
+# Edit .env: set APP_PASSWORD and PRIVATE_STATE_SECRET.
+# In docker-compose.yml, use an image/tag you published,
+# or replace image: with build: . to build locally.
+docker compose up -d
+# For build: ., use: docker compose up -d --build
+```
+
+Open `http://localhost:8787` on the host. Before public access, add HTTPS and destination/egress restrictions. Ensure `./data` is writable by the container's `node` user. The supplied Compose file also runs Watchtower; remove that service to use manual image updates. See [Docker storage and updates](./docs/deployment.md#docker).
+
+### Node — local or server
+
+From a repository checkout, using Node.js 22:
+
+```bash
+npm ci
+npm run build
+cp .env.example .env
+# Edit .env: set APP_PASSWORD and PRIVATE_STATE_SECRET.
+node --env-file=.env dist/server/node.js
+```
+
+Open `http://localhost:8787`. `npm start` is also available when the environment is already supplied by your process manager; it does not load `.env` itself. See [Node storage and configuration](./docs/deployment.md#node).
+
+### Vercel
+
+Import this repository into Vercel and configure `APP_PASSWORD` and `PRIVATE_STATE_SECRET` before deployment. The included [vercel.json](./vercel.json) specifies the build, output directory, and API routes. From a checkout linked to the configured project, deploy with:
+
+```bash
+npx vercel --prod
+```
+
+Add Blob with `BLOB_READ_WRITE_TOKEN` for persistence; otherwise private state remains in memory. Check your project's function timeout for longer tests. Global catalog storage is currently wired up only on Cloudflare Workers; Node/Docker and Vercel can still use configured models, fetched model lists, and custom IDs. See [Vercel configuration](./docs/deployment.md#vercel).
+
+Full environment-variable, storage, and public-instance security guidance remains in the [deployment reference](./docs/deployment.md). Development setup, testing, and maintenance remain in [docs](./docs/README.md).
+
 ## Test your first model
 
-Open a ModelPing instance you trust. You need your provider's **Base URL**, **API key**, and a model ID that your account can access. ModelPing does not supply credentials or model credits. To run your own instance, see the [deployment guide](./docs/deployment.md).
+Open a ModelPing instance you trust. You need your provider's **Base URL**, **API key**, and a model ID that your account can access. ModelPing does not supply credentials or model credits. To run your own instance, follow [Deployment](#deployment) above.
 
 ### 1. Set up the connection
 
@@ -124,6 +186,6 @@ Do not share real credentials, unreviewed logs, or sensitive screenshots. Public
 
 ## Documentation and license
 
-[Documentation](./docs/README.md) contains local setup, development, deployment, configuration, and maintenance instructions.
+[Documentation](./docs/README.md) contains development, testing, detailed deployment/configuration, and maintenance instructions. Deployment quick starts are included above.
 
 Released under the [MIT License](./LICENSE). Provider presets reference [cc-switch](https://github.com/farion1231/cc-switch); the optional global catalog uses [Models.dev](https://models.dev/). See [third-party notices](./web/public/assets/toolbox-licenses.txt). ModelPing does not guarantee third-party availability, account access, or billing.

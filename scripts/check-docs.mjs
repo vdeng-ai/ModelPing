@@ -69,8 +69,28 @@ for (const name of documents) {
   }
 }
 const stems = ["workbench", "model-search", "catalog", "parameters", "history", "status", "providers", "mobile"];
+const deployButton =
+  "[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/vdeng-ai/ModelPing)";
 for (const lang of ["en", "zh"]) {
   const readme = await readFile(join(root, lang === "en" ? "README.md" : "README.zh-CN.md"), "utf8");
+  try {
+    assert.ok(stripCode(readme).includes(deployButton), "Missing Cloudflare one-click deployment button");
+    assert.ok(
+      readme.indexOf(deployButton) < readme.indexOf("docs/screenshots/"),
+      "Deployment button must remain visible above the first screenshot",
+    );
+    const heading = lang === "en" ? "## Deployment" : "## 部署";
+    const section = readme.split(`${heading}\n`)[1]?.split(/\n## /)[0];
+    assert.ok(section, "Missing README deployment instructions");
+    for (const runtime of ["Cloudflare Workers", "Docker", "Node", "Vercel"]) {
+      assert.ok(section.includes(`### ${runtime}`), `Missing ${runtime} deployment instructions`);
+    }
+    for (const setting of ["APP_PASSWORD", "PRIVATE_STATE_SECRET", "SETTINGS_KV", "npm run build:cf", "npx wrangler deploy"]) {
+      assert.ok(section.includes(setting), `Missing deployment setting: ${setting}`);
+    }
+  } catch (error) {
+    errors.push(`README ${lang}: ${error.message}`);
+  }
   const references = [
     ...new Set([...readme.matchAll(/docs\/screenshots\/([\w-]+\.png)/g)].map((match) => match[1])),
   ].sort();

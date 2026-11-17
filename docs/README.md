@@ -2,7 +2,7 @@
 
 [Project introduction and usage](../README.md) · [简体中文](./README.zh-CN.md)
 
-The root README covers the product and everyday usage. This directory contains detailed references, development, deployment, and maintenance.
+The root README covers the product, deployment quick starts (including the Cloudflare one-click button), and everyday usage. This directory contains development, testing, detailed deployment/configuration references, and maintenance.
 
 | Document                                                  | Contents                                                                                      |
 | --------------------------------------------------------- | --------------------------------------------------------------------------------------------- |

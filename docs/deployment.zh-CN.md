@@ -50,11 +50,21 @@ Watchtower 每 300 秒检查带标签的容器，持有 Docker socket 访问能�
 
 ## Cloudflare Workers
 
-[Deploy to Cloudflare](https://deploy.workers.cloudflare.com/?url=https://github.com/vdeng-ai/ModelPing)
+### 一键部署
 
-部署向导中的资源绑定和密钥需要逐项检查，部署按钮不等于已完成安全配置。使用自己账号下的 KV 命名空间：[wrangler.toml](../wrangler.toml) 中已提交的 ID 不能直接用于其他账号。
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/vdeng-ai/ModelPing)
 
-CLI 部署准备：
+登录 Cloudflare 并连接 GitHub，选择目标账号、仓库名称和 Worker 名称。在部署配置中使用生产分支 `main`、构建命令 `npm run build:cf`、部署命令 `npx wrangler deploy`。
+
+填写 [.env.example](../.env.example) 声明的两项密钥：`APP_PASSWORD` 用于实例访问控制；独立的高熵 `PRIVATE_STATE_SECRET` 用于加密保存连接信息和状态条目。它们应配置为运行时 Worker secrets，不只是构建环境变量；不要留空后直接公开实例。
+
+按钮流程会创建 [wrangler.toml](../wrangler.toml) 声明的 KV 命名空间，将其绑定为 `SETTINGS_KV`，并更新新仓库中的资源 ID。确认绑定属于自己的账号。部署后先验证口令门，再通过「全球模型目录 → 检查并更新目录」填充目录。后续向关联生产分支推送，由 Workers Builds 继续部署。
+
+流程参考 Cloudflare [部署按钮文档](https://developers.cloudflare.com/workers/platform/deploy-buttons/)与 [Worker secrets 配置](https://developers.cloudflare.com/workers/configuration/secrets/)。资源绑定和密钥仍需检查，按钮不等于已完成安全配置。
+
+### 手动 CLI 部署
+
+与一键部署不同，手动克隆的仓库需要使用自己账号的 KV 命名空间；`wrangler.toml` 中已提交的 ID 不能直接用于其他账号。在仓库根目录执行：
 
 ```bash
 npm ci

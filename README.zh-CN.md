@@ -4,6 +4,10 @@
 
 在一个工作区内完成凭据解码、模型选择和大模型 API 测试。不用编写测试脚本，即可检查协议兼容性、流式响应、请求延迟和 Token 用量。
 
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/vdeng-ai/ModelPing)
+
+[部署说明](#部署) · [使用说明](#完成第一次测试) · [界面截图](#界面截图)
+
 ![当前中文界面的凭据解码与 API 测试工作区](./docs/screenshots/workbench-zh.png)
 
 _截图来自实际界面，端点、凭据、响应和耗时均为模拟数据，仅用于演示操作，不代表供应商实测结果。_
@@ -19,9 +23,67 @@ _截图来自实际界面，端点、凭据、响应和耗时均为模拟数据�
 
 支持中英文、浅色／深色／跟随系统主题，以及桌面和移动端布局。添加模型、选择预设或修改参数都不会自动开始测试。
 
+## 部署
+
+需要一键部署和全球目录存储时可选 Cloudflare Workers，也可使用 Node／Docker 自托管或 Vercel。任何实例公开前，都应设置强 `APP_PASSWORD` 和独立随机生成的 `PRIVATE_STATE_SECRET`；这两个值都不是模型供应商的 API Key。
+
+### Cloudflare Workers — 一键部署
+
+1. 点击上方 **Deploy to Cloudflare** 按钮，登录 Cloudflare 并连接 GitHub，选择账号、新仓库名称和 Worker 名称。
+2. 检查构建设置：生产分支 `main`，构建命令 `npm run build:cf`，部署命令 `npx wrangler deploy`。
+3. 按 [.env.example](./.env.example) 中声明的名称填写 Worker secrets：`APP_PASSWORD` 是实例访问口令；`PRIVATE_STATE_SECRET` 用于加密保存连接信息和状态条目。使用两个不同的高强度值，不要提交到 Git。
+4. 确认 `SETTINGS_KV` 绑定后部署。打开生成的站点，先验证访问口令提示，再输入供应商凭据。需要填充模型目录时，在应用内点击「全球模型目录 → 检查并更新目录」。
+
+[官方一键部署流程](https://developers.cloudflare.com/workers/platform/deploy-buttons/)会将仓库克隆到你的 GitHub 账号，配置 Workers Builds，并创建所需 KV 资源、写入你账号对应的 ID。走按钮流程无须手动复用本仓库中的 KV ID；手动 CLI 部署则需要创建自己的命名空间并替换该 ID，详见 [Cloudflare 部署参考](./docs/deployment.zh-CN.md#cloudflare-workers)。
+
+公网部署保留 `BLOCK_PRIVATE_HOSTS=1`。Workers／KV 额度以账号实际配置为准，部署不包含模型调用额度。后续向关联的生产分支推送代码，由 Workers Builds 自动重新部署。
+
+### Docker — 自托管
+
+克隆仓库，设置两项密钥并选择镜像后启动：
+
+```bash
+git clone https://github.com/vdeng-ai/ModelPing.git
+cd ModelPing
+cp .env.example .env
+# 编辑 .env，填写 APP_PASSWORD 和 PRIVATE_STATE_SECRET。
+# 将 docker-compose.yml 中的 image: 改为实际发布的镜像与标签，
+# 或将 image: 替换为 build: .，改用本机构建。
+docker compose up -d
+# 使用 build: . 时执行：docker compose up -d --build
+```
+
+在宿主机打开 `http://localhost:8787`。公网访问前配置 HTTPS 和目标主机／出站限制，并确保 `./data` 允许容器内 `node` 用户写入。默认 Compose 还包含 Watchtower；不需要自动更新镜像时移除该服务。卷挂载和更新方式见 [Docker 部署参考](./docs/deployment.zh-CN.md#docker)。
+
+### Node — 本地或服务器
+
+使用 Node.js 22，在仓库目录执行：
+
+```bash
+npm ci
+npm run build
+cp .env.example .env
+# 编辑 .env，填写 APP_PASSWORD 和 PRIVATE_STATE_SECRET。
+node --env-file=.env dist/server/node.js
+```
+
+打开 `http://localhost:8787`。进程管理器已注入环境变量时也可用 `npm start`；该命令不会自行读取 `.env`。存储路径和配置方式见 [Node 部署参考](./docs/deployment.zh-CN.md#node)。
+
+### Vercel
+
+在 Vercel 导入本仓库，部署前设置 `APP_PASSWORD` 和 `PRIVATE_STATE_SECRET`。仓库中的 [vercel.json](./vercel.json) 已声明构建命令、输出目录和 API 路由。已关联并配置好项目的本地仓库可执行：
+
+```bash
+npx vercel --prod
+```
+
+需要持久化时接入 Blob 并配置 `BLOB_READ_WRITE_TOKEN`，否则私有工作态仅保留在内存中。长时间测试需检查实际项目的函数超时限制。全球目录存储目前仅接入 Cloudflare Workers；Node／Docker 和 Vercel 仍可使用已配置模型、获取模型列表及自定义 ID。详见 [Vercel 部署参考](./docs/deployment.zh-CN.md#vercel)。
+
+完整环境变量、存储策略和公网安全配置见[部署参考](./docs/deployment.zh-CN.md)；开发运行、测试和维护说明继续放在 [docs](./docs/README.zh-CN.md)。
+
 ## 完成第一次测试
 
-打开一个可信的 ModelPing 实例，准备供应商的 **Base URL、API Key，以及账号有权调用的模型 ID**。项目不提供密钥或模型额度。需要自行运行时，参见[部署说明](./docs/deployment.zh-CN.md)。
+打开一个可信的 ModelPing 实例，准备供应商的 **Base URL、API Key，以及账号有权调用的模型 ID**。项目不提供密钥或模型额度。需要自行运行时，按照上方[部署说明](#部署)操作。
 
 ### 1. 填写连接信息
 
@@ -124,6 +186,6 @@ _截图来自实际界面，端点、凭据、响应和耗时均为模拟数据�
 
 ## 文档与许可证
 
-本地运行、开发、部署、环境配置和维护说明统一放在 [docs 文档导航](./docs/README.zh-CN.md)。
+README 保留部署上手步骤；开发、测试、详细部署／环境配置和维护说明见 [docs 文档导航](./docs/README.zh-CN.md)。
 
 项目以 [MIT 许可证](./LICENSE) 开源。供应商预设参考 [cc-switch](https://github.com/farion1231/cc-switch)，可选全球目录来自 [Models.dev](https://models.dev/)，另见[第三方许可证](./web/public/assets/toolbox-licenses.txt)。ModelPing 不保证第三方服务可用性、账号权限或计费结果。

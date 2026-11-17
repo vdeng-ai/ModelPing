@@ -50,11 +50,21 @@ Watchtower checks labeled containers every 300 seconds and has access to the Doc
 
 ## Cloudflare Workers
 
-[Deploy to Cloudflare](https://deploy.workers.cloudflare.com/?url=https://github.com/vdeng-ai/ModelPing)
+### One-click deployment
 
-Review the deployment wizard's resource bindings and secrets rather than treating a button as a security configuration. Use a KV namespace in your own account: the namespace ID checked into [wrangler.toml](../wrangler.toml) is not portable to a different account.
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/vdeng-ai/ModelPing)
 
-For CLI deployment:
+Sign in to Cloudflare and connect GitHub. Choose the target account, repository name, and Worker name. In the deployment setup, use production branch `main`, build command `npm run build:cf`, and deploy command `npx wrangler deploy`.
+
+Fill the two secrets declared in [.env.example](../.env.example): `APP_PASSWORD` protects access to the instance; a separate, high-entropy `PRIVATE_STATE_SECRET` encrypts saved connection information and Status entries. Configure them as runtime Worker secrets, not only build-time environment variables. Never publish an instance with these fields left blank.
+
+The button flow provisions the KV namespace declared by [wrangler.toml](../wrangler.toml), binds it as `SETTINGS_KV`, and updates the new repository's resource ID. Confirm that the binding belongs to your account. After deployment, verify the password gate, then populate the catalog using **Global model catalog → Check for model updates**. Workers Builds handles subsequent pushes to the connected production branch.
+
+See Cloudflare's [deploy-button documentation](https://developers.cloudflare.com/workers/platform/deploy-buttons/) and [Worker secret configuration](https://developers.cloudflare.com/workers/configuration/secrets/) for the deployment flow. Review bindings and secrets rather than treating a button as a security configuration.
+
+### Manual CLI deployment
+
+Unlike the one-click flow, a manual checkout needs a KV namespace from your own account: the ID checked into `wrangler.toml` is not portable to another account. From the repository root:
 
 ```bash
 npm ci
