@@ -21,6 +21,11 @@ another stylesheet. Do not reintroduce `backdrop-filter`, external fonts or an a
 library for routine controls. Use semantic `--ds-*` variables instead of feature-specific
 colors. `--row-padding` is the density contract; density changes never enter private state.
 
+The browser icon, navigation logo and password-gate logo share [one SVG](../public/favicon.svg)
+through `BrandLogo`. Its purple/white palette does not change with the page or OS theme.
+When changing the asset, update the matching cache version in `web/index.html` and
+`BrandLogo.tsx`; the branding regression tests check that these references stay aligned.
+
 ## Interaction contract
 
 - One four-item top navigation with real hash links and `aria-current`; there is no

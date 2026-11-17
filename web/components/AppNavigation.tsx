@@ -3,6 +3,7 @@ import { useI18n } from "../lib/i18n.js";
 import { hashForAppRoute, type AppRoute } from "../lib/navigation.js";
 import { LangToggle } from "./LangToggle.js";
 import { ThemeToggle } from "./ThemeToggle.js";
+import { BrandLogo } from "./BrandLogo.js";
 
 export const NAV_ITEMS = [
   { route: "test-models", label: "app.tabTest", icon: FlaskConical },
@@ -32,9 +33,7 @@ export function AppNavigation({
             navigate("test-models");
           }}
         >
-          <span class="brand-logo" aria-hidden="true">
-            <Activity size={23} strokeWidth={2.2} />
-          </span>
+          <BrandLogo />
           <span class="brand-copy">
             <strong>
               ModelPing<span class="brand-dot">.</span>

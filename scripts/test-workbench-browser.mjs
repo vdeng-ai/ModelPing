@@ -208,6 +208,49 @@ try {
   await page.goto(`${origin}/#test/models`);
   await page.locator(".model-result-row").first().waitFor();
 
+  await check("favicon and navigation logo share one SVG across light, dark and system themes", async () => {
+    const icon = page.locator('link[rel="icon"]');
+    const href = await icon.getAttribute("href");
+    assert.equal(href, "/favicon.svg?v=brand-activity-1");
+    assert.equal(await icon.getAttribute("type"), "image/svg+xml");
+    assert.equal(await icon.getAttribute("sizes"), "any");
+    const response = await page.request.get(new URL(href, origin).href);
+    assert.ok(response.ok());
+    assert.match(response.headers()["content-type"], /image\/svg\+xml/);
+    assert.equal(await response.text(), await readFile(join(root, "web/public/favicon.svg"), "utf8"));
+
+    let expectedPixels;
+    for (const [preference, system] of [["light", "dark"], ["dark", "light"], ["system", "dark"], ["system", "light"]]) {
+      await page.emulateMedia({ colorScheme: system });
+      await page.locator(".theme-toggle button").nth(["light", "dark", "system"].indexOf(preference)).click();
+      await page.waitForFunction((theme) => document.documentElement.dataset.theme === theme, preference === "system" ? system : preference);
+      const rendered = await page.locator(".brand-lockup img.brand-logo").evaluate(async (image) => {
+        await image.decode();
+        const canvas = document.createElement("canvas");
+        canvas.width = canvas.height = 38;
+        const drawing = canvas.getContext("2d");
+        drawing.drawImage(image, 0, 0, 38, 38);
+        return {
+          src: image.currentSrc,
+          favicon: document.querySelector('link[rel="icon"]').href,
+          size: [image.naturalWidth, image.naturalHeight],
+          corner: [...drawing.getImageData(0, 0, 1, 1).data],
+          purple: [...drawing.getImageData(19, 4, 1, 1).data],
+          pixels: canvas.toDataURL(),
+        };
+      });
+      assert.equal(rendered.src, rendered.favicon);
+      assert.deepEqual(rendered.size, [38, 38]);
+      assert.equal(rendered.corner[3], 0, "Corners remain transparent");
+      assert.deepEqual(rendered.purple, [91, 75, 219, 255], "Brand purple must not follow page theme colors");
+      expectedPixels ??= rendered.pixels;
+      assert.equal(rendered.pixels, expectedPixels);
+      await page.locator(".brand-lockup").screenshot({ path: join(artifacts, `brand-${preference}-${system}.png`) });
+    }
+    await page.locator(".theme-toggle button").first().click();
+    await page.emulateMedia({ colorScheme: "light" });
+  });
+
   await check("model discovery reads the cache once; selection and navigation never run or sync", async () => {
     assert.equal(count("/api/bootstrap"), 1);
     assert.equal(count("/api/model-catalog"), 0);
@@ -555,6 +598,14 @@ try {
             `${name} overflow at ${width}px/${theme}`,
           );
           assert.equal(await page.locator("h1").count(), 1);
+          const mark = await page.locator(".brand-lockup img.brand-logo").evaluate(async (image) => {
+            await image.decode();
+            const box = image.getBoundingClientRect();
+            return { src: image.currentSrc, icon: document.querySelector('link[rel="icon"]').href, width: box.width, height: box.height };
+          });
+          assert.equal(mark.src, mark.icon);
+          assert.equal(mark.width, width <= 760 ? 30 : 38);
+          assert.equal(mark.height, mark.width);
           if (name === "测试") {
             await page.getByRole("combobox", { name: "选择模型", exact: true }).click();
             await page.locator(".model-search-option").first().waitFor();

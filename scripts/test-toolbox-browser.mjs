@@ -408,6 +408,12 @@ try {
     const gate = await locked.newPage();
     await gate.goto(`${origin}/#test/models`);
     await gate.getByRole("heading", { name: "Access password required" }).waitFor();
+    const mark = await gate.locator("img.pw-gate-logo").evaluate(async (image) => {
+      await image.decode();
+      return { src: image.currentSrc, icon: document.querySelector('link[rel="icon"]').href, width: image.naturalWidth };
+    });
+    assert.equal(mark.src, mark.icon, "The password gate uses the same artwork as the favicon");
+    assert.equal(mark.width, 38);
     assert.equal(await input(gate).count(), 0);
     await locked.close();
   });

@@ -32,11 +32,8 @@
 .brand-logo {
   width: 38px;
   height: 38px;
-  display: grid;
-  place-items: center;
-  border-radius: 11px;
-  color: var(--ds-on-accent);
-  background: var(--ds-accent);
+  display: block;
+  /* The SVG owns the palette, padding and corners; keep it identical to the favicon. */
   flex-shrink: 0;
 }
 .brand-copy {

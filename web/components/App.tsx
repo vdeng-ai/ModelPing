@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import { lazy, Suspense } from "preact/compat";
-import { Activity, Command, LayoutList, Rows3, WifiOff, X } from "lucide-preact";
+import { Command, LayoutList, Rows3, WifiOff, X } from "lucide-preact";
 import type {
   ConfigState,
   Defaults,
@@ -59,6 +59,7 @@ import { appRouteFromHash, hashForAppRoute, type AppRoute } from "../lib/navigat
 import { DEFAULT_MODELPING_DAILY_BUDGET } from "../lib/status-budget.js";
 
 import { AppNavigation, NAV_ITEMS } from "./AppNavigation.js";
+import { BrandLogo } from "./BrandLogo.js";
 import { CommandPalette } from "./CommandPalette.js";
 import { useOnline } from "./useOnline.js";
 import { readDensity, writeDensity } from "../lib/ui-preferences.js";
@@ -771,9 +772,7 @@ export function App() {
   if (needPassword && !authed) {
     return (
       <div class="pw-gate">
-        <span class="brand-logo pw-gate-logo" aria-hidden="true">
-          <Activity size={25} />
-        </span>
+        <BrandLogo className="pw-gate-logo" />
         <h1>{t("app.pwTitle")}</h1>
         <section class="panel">
           <div class="field">
